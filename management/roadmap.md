@@ -9,7 +9,8 @@
 | 1 | Classificação de Solicitações (assunto, urgência, sentimento) | created | — |
 | 2 | Agrupamento de Mensagens e Detecção de Incidentes | created | 1 |
 | 3 | Registro de Correções e Taxa de Acerto | created | 1 |
-| 4 | Painel de Monitoramento e Métricas | created | 1, 2, 3 |
+| 4 | Painel de Monitoramento e Métricas | created | 1, 2, 3, 5 |
+| 5 | Prazos de Resposta (SLA) e Primeira Resposta | created | 1 |
 
 ## Status
 
@@ -29,9 +30,12 @@ graph TD
   S1["1 · Classificação"]
   S2["2 · Agrupamento/Incidentes"]
   S3["3 · Correções/Taxa de Acerto"]
+  S5["5 · Prazos (SLA)"]
   S4["4 · Painel"]
   S1 --> S2
   S1 --> S3
+  S1 --> S5
   S2 --> S4
   S3 --> S4
+  S5 --> S4
 ```

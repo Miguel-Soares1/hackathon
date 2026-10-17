@@ -13,7 +13,9 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 ## Escopo
 
 - **Entrada:** texto de uma solicitação (ticket, mensagem, chamado) recebida via webhook (ADR-001).
-- **Processamento:** uma única chamada a um LLM com saída JSON estruturada (ADR-003). Provedor: API da DeepSeek.
+- **Processamento (ADR-003, ADR-009):** o webhook salva o ticket como `pendente` e responde `202`; uma tarefa em background faz uma única chamada a um LLM com saída JSON estruturada (provedor: API da DeepSeek), com timeout e uma nova tentativa se o JSON vier inválido.
+- **Plano B:** se a API falhar, classificação por regras de palavras-chave, marcada com `origem = fallback` e confiança baixa.
+- **Segurança:** o texto do cliente é tratado como dado (nunca como instrução) e a saída é validada contra os valores permitidos (ver `docs/threat-model.md`).
 - **Saída (JSON):**
   - `assunto`: categoria/tópico de um conjunto predefinido (ex.: cobrança, suporte técnico, cancelamento, reclamação).
   - `urgencia`: nível de prioridade (ex.: baixa, média, alta, crítica).
@@ -28,7 +30,10 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 - [ ] A saída do LLM é um JSON válido e estruturado.
 - [ ] É feita uma única chamada ao LLM por ticket.
 - [ ] Cada predição inclui um score de confiança.
-- [ ] O resultado é persistido em MySQL (ADR-002) associado ao identificador do ticket.
+- [ ] O resultado é persistido em MySQL (ADR-006) associado ao identificador do ticket, com `origem` (`llm` ou `fallback`) e `received_at`.
+- [ ] O webhook responde `202` sem aguardar o LLM e exige a chave de API no header.
+- [ ] Se o JSON for inválido, há uma nova tentativa; persistindo a falha, aplica-se o plano B.
+- [ ] Valores fora do conjunto permitido (assunto, urgência, sentimento, equipe) são rejeitados.
 
 ## Fora de Escopo (V1)
 

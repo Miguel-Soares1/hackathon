@@ -1,7 +1,7 @@
 ---
 name: Registro de Correções e Medição da Taxa de Acerto
 status: created
-references: []
+references: [1]
 ---
 
 # Registro de Correções e Medição da Taxa de Acerto
@@ -14,7 +14,7 @@ Permitir que o atendente corrija a classificação automática e registrar essas
 
 - **Entrada:** correções do atendente sobre assunto, urgência, sentimento, equipe e/ou resposta sugerida, associadas à predição original.
 - **Processamento:** comparar predição vs. correção (acerto/erro por dimensão).
-- **Persistência:** tickets, correções e métricas são guardados em MySQL (ADR-002).
+- **Persistência:** tickets, correções e métricas são guardados em MySQL (ADR-006).
 - **Saída:** métricas de precisão (taxa de acerto) por dimensão e no agregado.
 
 ## Critérios de Aceitação

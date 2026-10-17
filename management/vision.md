@@ -10,4 +10,4 @@ O produto classifica automaticamente cada solicitação de cliente por **assunto
 
 **Problema resolvido:** a triagem manual de solicitações é lenta, inconsistente e sem visibilidade sobre incidentes, prazos de resposta e qualidade da própria triagem.
 
-**Entregue por:** Spec 1 (Classificação), Spec 2 (Agrupamento/Incidentes), Spec 3 (Correções/Taxa de Acerto) e Spec 4 (Painel).
+**Entregue por:** Spec 1 (Classificação), Spec 2 (Agrupamento/Incidentes), Spec 3 (Correções/Taxa de Acerto), Spec 5 (Prazos de Resposta) e Spec 4 (Painel).
