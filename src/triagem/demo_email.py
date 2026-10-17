@@ -75,6 +75,8 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
   @keyframes entra { from { background:var(--prs); } to { background:transparent; } }
   .item .l1 { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--mu); }
   .item .as { font-weight:600; margin:2px 0 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item.resposta { cursor:pointer; } .item.resposta.novo { background:var(--prs); } .item.resposta.novo .as { font-weight:800; }
+  .item.resposta .prev { white-space:pre-wrap; color:var(--tx); }
   .prev { font-size:13px; color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   @media (max-width: 980px) { .app { grid-template-columns:1fr; height:auto; } nav, .busca { display:none; } .painel { min-height:340px; } }
 </style>
@@ -89,8 +91,8 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
 <div class="app">
   <nav>
     <button class="escrever" id="novo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>Escrever</button>
-    <a href="#">Caixa de entrada <span></span></a>
-    <a href="#" class="on">Enviados <span id="qtd">0</span></a>
+    <a href="#" data-pasta="entrada">Caixa de entrada <span id="qtd-entrada"></span></a>
+    <a href="#" data-pasta="enviados" class="on">Enviados <span id="qtd">0</span></a>
     <a href="#">Rascunhos <span></span></a>
   </nav>
 
@@ -115,8 +117,9 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
   </section>
 
   <section class="painel" aria-label="Enviados">
-    <h2>Enviados</h2>
+    <h2 id="titulo-pasta">Enviados</h2>
     <div class="lista" id="lista"><div class="vazio" id="vazio">Nenhum e-mail enviado ainda.</div></div>
+    <div class="lista" id="lista-entrada" hidden><div class="vazio" id="vazio-entrada">As respostas do atendimento (painel → Atendimento) chegam aqui.</div></div>
   </section>
 </div>
 <script>
@@ -148,6 +151,56 @@ function adicionar(para, assunto, corpo) {
   $('lista').prepend(it); $('qtd').textContent = $('lista').querySelectorAll('.item').length;
 }
 
+// Pastas: Enviados (o que o cliente mandou) e Caixa de entrada (respostas do atendimento).
+function abrirPasta(nome) {
+  document.querySelectorAll('nav a[data-pasta]').forEach((a) => a.classList.toggle('on', a.dataset.pasta === nome));
+  $('titulo-pasta').textContent = nome === 'entrada' ? 'Caixa de entrada' : 'Enviados';
+  $('lista').hidden = nome !== 'enviados'; $('lista-entrada').hidden = nome !== 'entrada';
+}
+document.querySelectorAll('nav a[data-pasta]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); abrirPasta(a.dataset.pasta); }));
+const naoLidas = () => { const n = $('lista-entrada').querySelectorAll('.item.novo').length; $('qtd-entrada').textContent = n || ''; };
+
+// Respostas que o atendente envia pelo painel chegam como e-mail, no mesmo fio do cliente (ADR-016).
+const fios = {};  // remetente -> { ticket, senha, ultimo, nome, assunto }
+const urlConversa = (f) => '/demo/conversa/' + f.ticket + '?senha=' + encodeURIComponent(f.senha) + '&depois_de=' + f.ultimo;
+async function lembrarFio(dados, d) {
+  const chave = dados.de_email.toLowerCase(); const f = fios[chave];
+  if (f && f.ticket === d.ticket_id) return;
+  let ultimo = 0;  // remetente que já tinha conversa aberta no servidor: não repete respostas antigas
+  if (d.status === 'anexada') { try { ultimo = (await (await fetch(urlConversa({ ticket: d.ticket_id, senha: d.senha, ultimo: 0 }))).json()).ultimo_id || 0; } catch (_) {} }
+  fios[chave] = { ticket: d.ticket_id, senha: d.senha, ultimo, email: dados.de_email, nome: dados.de_nome,
+                  assunto: (dados.assunto || '(sem assunto)').replace(/^(re:\s*)+/i, '') };
+}
+function receber(f, x) {
+  $('vazio-entrada')?.remove();
+  const it = el('div', 'item resposta novo');
+  const l1 = el('div', 'l1'); l1.append(el('span', null, 'De: ' + (x.autor || 'Atendimento') + ' · Sua Empresa  ·  Para: ' + f.email),
+    el('span', null, new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })));
+  it.append(l1, el('div', 'as', 'Re: ' + f.assunto + ' [Protocolo #' + f.ticket + ']'), el('div', 'prev', x.texto));
+  it.title = 'Clique para responder no mesmo assunto';
+  it.addEventListener('click', () => {  // continua a conversa: mesmo cliente, "Re:" no assunto
+    it.classList.remove('novo'); naoLidas();
+    $('nome').value = f.nome || ''; $('de').value = f.email; $('assunto').value = 'Re: ' + f.assunto; $('corpo').value = ''; $('corpo').focus();
+  });
+  $('lista-entrada').prepend(it); naoLidas();
+  const a = $('aviso'); a.className = 'okt'; a.textContent = 'Nova resposta do atendimento na Caixa de entrada.';
+}
+let buscando = false;
+async function buscarRespostas() {
+  if (buscando) return;
+  buscando = true;
+  try {
+    for (const f of Object.values(fios)) {
+      try {
+        const r = await (await fetch(urlConversa(f))).json();
+        if (r.ultimo_id != null) f.ultimo = r.ultimo_id;
+        (r.atendente || []).forEach((x) => receber(f, x));
+      } catch (_) {}
+    }
+  } finally { buscando = false; }
+}
+setInterval(buscarRespostas, 3000);
+
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
   const a = $('aviso'); a.className = ''; a.textContent = '';
@@ -160,6 +213,7 @@ $('f').addEventListener('submit', async (e) => {
     const resp = await fetch('/demo/email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(dados) });
     const d = await resp.json().catch(() => ({}));
     if (resp.status === 202) { a.className = 'okt'; a.textContent = 'Mensagem enviada.'; adicionar(dados.para, dados.assunto, dados.corpo);
+      await lembrarFio(dados, d);
       $('assunto').value = ''; $('corpo').value = ''; novaPessoa(); }
     else { a.className = 'er'; a.textContent = d.detail || 'Não foi possível enviar.'; }
   } catch (_) { a.className = 'er'; a.textContent = 'API fora do ar? Confira o terminal do uvicorn.'; }

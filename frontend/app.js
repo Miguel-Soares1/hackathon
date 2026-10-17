@@ -108,6 +108,11 @@ function agendar() {
   if (s > 0) estado.timer = setInterval(carregar, s * 1000);
 }
 
+// A conversa aberta no Atendimento é um chat: atualiza a cada 3 s, sem esperar o ciclo do painel.
+setInterval(() => {
+  if (estado.chave && estado.pagina === "atendimento" && estado.selecionado && !document.hidden) carregarConversa(estado.selecionado);
+}, 3000);
+
 // ---------------------------------------------------------------- dashboard
 function renderKpis() {
   const r = estado.resumo;

@@ -50,10 +50,13 @@ Ou seja: do conversor em diante (ticket, triagem, incidentes, prazos, painel) é
 As telas são **só a visão do cliente** (código das telas da pasta `hackathon-com-canais-demo`): ele manda a
 mensagem e vê só a entrega (✓✓ no WhatsApp; a pasta "Enviados" no e-mail), sem nenhuma classificação. A triagem aparece
 apenas no **painel do atendimento** (http://localhost:8000 → **Atendimento**): deixe as duas janelas lado a lado.
-As mensagens seguintes do mesmo cliente entram **na mesma conversa** (ADR-016), e o atendente responde pelo painel.
+As mensagens seguintes do mesmo cliente entram **na mesma conversa** (ADR-016).
 
-A API ainda oferece `/demo/conversa/{ticket}?senha=…` (senha HMAC devolvida no envio) para uma tela de cliente que
-queira mostrar as respostas do atendente; as telas atuais não a usam.
+**A conversa vai e volta:** o atendente abre o cartão do cliente no painel e responde; a resposta aparece no celular do
+cliente (tiques azuis) ou na **Caixa de entrada** do e-mail em até 3 s, e clicar nela prepara o "Re:" para continuar.
+O que o cliente escreve de novo aparece na conversa aberta no painel também em até 3 s. A tela do cliente lê só a
+própria conversa por `/demo/conversa/{ticket}?senha=…&depois_de=…` (senha HMAC devolvida no envio): recebe as mensagens
+do atendente, nunca a classificação.
 
 - **Cliente:** escolha na lista ou clique em **Outro cliente**. Mandar "Conta bloqueada" com 3 clientes diferentes gera um **incidente**.
 - Ligadas por padrão em desenvolvimento; **sempre desligadas** com `ENVIRONMENT=production`. Para desligar no dev: `DEMO=0`.

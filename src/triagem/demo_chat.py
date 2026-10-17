@@ -94,6 +94,8 @@ _PAGINA = r"""<!doctype html>
   .b.ele { align-self:flex-start; background:var(--ele); color:var(--eletx); border-bottom-left-radius:4px; }
   [data-canal=instagram] .b { border-radius:20px; padding:9px 14px; }
   .b .h { display:block; text-align:right; font-size:11px; opacity:.65; margin-top:2px; }
+  .b.ele .h { text-align:left; }
+  .b .t.lido { color:var(--tick); opacity:1; }
   [data-canal=instagram] .b.eu .h { display:none; }
   .chips { display:flex; gap:6px; overflow-x:auto; padding:8px 10px 0; background:var(--fundo); scrollbar-width:none; }
   .chips button { flex:none; font:inherit; font-size:12px; border:1px solid var(--bd); background:var(--card); color:var(--tx); border-radius:14px; padding:5px 10px; cursor:pointer; }
@@ -151,7 +153,13 @@ const MODELOS = [
 ];
 PESSOAS.forEach((p, i) => { const o = document.createElement('option'); o.value = i;
   o.textContent = CANAL === 'whatsapp' ? p[0] + ' · +' + p[1].replace(/^(\d{2})(\d{2})(\d{5})(\d{4})$/, '$1 $2 $3-$4') : p[0]; $('pessoa').append(o); });
-function trocar(i) { $('pessoa').value = i; const c = $('chat'); c.textContent = ''; const d = document.createElement('div'); d.className = 'dia'; d.textContent = 'Hoje'; c.append(d); }
+// Conversa de cada cliente simulado nesta aba: mensagens na tela e o ticket no servidor (ticket, senha, última vista).
+const conversas = {};
+const conversa = () => { const p = PESSOAS[+$('pessoa').value]; return conversas[p[1]] || (conversas[p[1]] = { msgs: [], ticket: null }); };
+function trocar(i) {
+  $('pessoa').value = i; const c = $('chat'); c.textContent = ''; const d = document.createElement('div'); d.className = 'dia'; d.textContent = 'Hoje'; c.append(d);
+  conversa().msgs.forEach((m) => desenharBolha(m)); c.scrollTop = c.scrollHeight;
+}
 $('pessoa').addEventListener('change', () => trocar($('pessoa').value));
 $('outro').addEventListener('click', () => trocar((+$('pessoa').value + 1 + Math.floor(Math.random() * (PESSOAS.length - 1))) % PESSOAS.length));
 trocar(Math.floor(Math.random() * PESSOAS.length));
@@ -162,10 +170,44 @@ function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.c
 const hora = () => new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
 const rolar = () => { const c = $('chat'); c.scrollTop = c.scrollHeight; };
 
-function bolha(texto) {
-  const b = el('div', 'b eu', texto); const h = el('span', 'h', hora() + ' '); const t = el('span', 't', '✓'); h.append(t); b.append(h);
-  $('chat').append(b); rolar(); return t;
+function desenharBolha(m) {
+  const b = el('div', 'b ' + m.de, m.texto); const h = el('span', 'h', m.hora + ' ');
+  if (m.de === 'eu') { m.tick = el('span', 't' + (m.lido ? ' lido' : ''), m.estado); h.append(m.tick); }
+  b.append(h); $('chat').append(b); return m;
 }
+function bolha(texto) {
+  const m = { de: 'eu', texto, hora: hora(), estado: '✓' };
+  conversa().msgs.push(m); desenharBolha(m); rolar();
+  return { set textContent(v) { m.estado = v; if (m.tick) m.tick.textContent = v; } };
+}
+
+// Respostas que o atendente envia pelo painel (Atendimento) chegam aqui, como no canal real (ADR-016).
+const urlConversa = (c) => '/demo/conversa/' + c.ticket + '?senha=' + encodeURIComponent(c.senha) + '&depois_de=' + c.ultimo;
+async function lembrarTicket(c, d) {
+  if (c.ticket === d.ticket_id) return;
+  let ultimo = 0;  // cliente que já tinha conversa aberta no servidor: não repete respostas antigas
+  if (d.status === 'anexada') { try { ultimo = (await (await fetch(urlConversa({ ticket: d.ticket_id, senha: d.senha, ultimo: 0 }))).json()).ultimo_id || 0; } catch (_) {} }
+  Object.assign(c, { ticket: d.ticket_id, senha: d.senha, ultimo });
+}
+let buscando = false;
+async function buscarRespostas() {
+  if (buscando) return;
+  buscando = true;
+  try {
+    for (const [contato, c] of Object.entries(conversas)) {
+      if (!c.ticket) continue;
+      try {
+        const r = await (await fetch(urlConversa(c))).json();
+        if (r.ultimo_id != null) c.ultimo = r.ultimo_id;
+        if (!r.atendente || !r.atendente.length) continue;
+        c.msgs.forEach((m) => { if (m.de === 'eu') { m.lido = true; m.estado = '✓✓'; } });
+        r.atendente.forEach((x) => c.msgs.push({ de: 'ele', texto: x.texto, hora: hora() }));
+        if (contato === PESSOAS[+$('pessoa').value][1]) trocar($('pessoa').value);
+      } catch (_) {}
+    }
+  } finally { buscando = false; }
+}
+setInterval(buscarRespostas, 3000);
 
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -179,6 +221,7 @@ $('f').addEventListener('submit', async (e) => {
     const d = await resp.json().catch(() => ({}));
     if (resp.status === 202) {
       tick.textContent = '✓✓';  // entregue
+      await lembrarTicket(conversas[p[1]], d);
     } else { tick.textContent = '!'; $('aviso').textContent = d.detail || 'Não foi possível enviar.'; }
   } catch (_) { tick.textContent = '!'; $('aviso').textContent = 'API fora do ar? Confira o terminal do uvicorn.'; }
   finally { $('b').disabled = false; $('texto').focus(); }
