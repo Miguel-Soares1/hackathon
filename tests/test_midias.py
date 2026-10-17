@@ -187,3 +187,33 @@ def test_baixar_midia_exige_chave_e_devolve_o_arquivo(client):
     assert arq.headers["content-type"] == "image/png"
     assert "sandbox" in arq.headers["content-security-policy"]
     assert client.get(f"/tickets/{tid + 1}/midias/{mid}", headers=CHAVE).status_code == 404  # mídia de outro ticket
+
+
+# ---------- mídia + conversa (ADR-016 e ADR-017) ----------
+def test_audio_que_abre_o_ticket_aparece_transcrito_na_conversa(client, monkeypatch):
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "Meu boleto não gera.")
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "conversa_id": "5511999990001",
+        "midias": [{"tipo": "audio", "mime": "audio/ogg", "dados_base64": b64(OGG)}],
+    }).json()
+    [msg] = client.get(f"/tickets/{r['ticket_id']}/mensagens", headers=CHAVE).json()
+    assert msg["texto"] == "[Áudio transcrito pela IA]: Meu boleto não gera."
+
+
+def test_foto_na_continuacao_da_conversa_fica_no_ticket_e_na_mensagem(client, monkeypatch):
+    # Arrange: a conversa já existe e foi classificada pelo texto
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "Print com 'cartão recusado'.")
+    a = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "conversa_id": "5511999990002", "texto": "meu cartão foi recusado"}).json()
+    triagem_antes = client.get(f"/tickets/{a['ticket_id']}", headers=CHAVE).json()
+    # Act: o cliente manda uma foto na mesma conversa
+    b = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "conversa_id": "5511999990002", "texto": "olha o erro",
+        "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(PNG)}]}).json()
+    # Assert: anexada ao mesmo ticket, a foto lida vai para a mensagem e a triagem não muda
+    assert b == {"ticket_id": a["ticket_id"], "status": "anexada"}
+    t = client.get(f"/tickets/{a['ticket_id']}", headers=CHAVE).json()
+    assert [m["status"] for m in t["midias"]] == ["lido"]
+    assert t["texto"] == "meu cartão foi recusado" and t["assunto"] == triagem_antes["assunto"]
+    conversa = client.get(f"/tickets/{a['ticket_id']}/mensagens", headers=CHAVE).json()
+    assert conversa[-1]["texto"] == "olha o erro\n\n[Foto descrita pela IA]: Print com 'cartão recusado'."
