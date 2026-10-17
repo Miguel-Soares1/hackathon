@@ -284,4 +284,22 @@ Consequências: ...
 - A transcrição é texto controlado pelo cliente: entra na triagem pelo mesmo caminho delimitado da mensagem (defesa contra prompt injection), e o prompt do Gemini manda ignorar instruções contidas na mídia.
 - O arquivo original é servido só com a chave, com o tipo conferido e `Content-Security-Policy: sandbox`.
 - O atendente também envia imagem e áudio na resposta do chat: a mídia fica ligada à mensagem (`ticket_midias.mensagem_id`), com status `enviado`, aparece no balão da conversa e não passa pela IA. Sem texto, a mensagem leva um rótulo ("📷 Imagem") para quem só lê texto.
-- Migração de bancos existentes: `db/migrations/006_midias.sql` e `db/migrations/008_midias_chat.sql`.
+- Migração de bancos existentes: `db/migrations/006_midias.sql` e `db/migrations/009_midias_chat.sql`.
+
+---
+
+## ADR-018: Login do painel por usuário e senha, com sessões no banco
+
+**Status:** accepted
+
+**Contexto:** o painel pedia a `API_KEY` do servidor toda vez que era aberto, e todos os atendentes usavam a mesma chave: não havia como saber quem respondeu, tirar o acesso de uma pessoa ou trocar a senha sem trocar a chave das integrações.
+
+**Decisão:** tabelas `usuarios` (usuário único, nome, papel `admin` ou `atendente`, ativo) e `sessoes`. A senha é guardada com PBKDF2-SHA256 (390 mil iterações, sal aleatório, biblioteca padrão do Python). O login devolve um token aleatório; no banco fica só o SHA-256 dele. A sessão dura 12 h, ou 30 dias com "manter conectado" (guardada no `localStorage` do navegador). As rotas do painel aceitam `Authorization: Bearer <token>`; a `X-API-Key` continua valendo só para integrações e não administra usuários. O primeiro administrador é criado na tela inicial quando o banco não tem usuários, mediante a `API_KEY` do servidor. A área **Administração** cria usuários, troca nome e papel, desativa e redefine senhas; cada usuário troca a própria senha.
+
+**Alternativas descartadas:** manter a chave única (sem identidade nem revogação); JWT sem estado (não dá para derrubar uma sessão ao desativar alguém); bcrypt/argon2 (dependência nova; PBKDF2 da biblioteca padrão atende ao caso).
+
+**Consequências:**
+- A resposta no chat sai assinada com o nome de quem está logado (não dá para assinar como outra pessoa).
+- Desativar um usuário ou redefinir a senha derruba as sessões abertas dele; trocar a própria senha derruba as outras sessões e mantém a atual.
+- O sistema nunca fica sem administrador ativo; login errado não diz se o usuário existe; tentativas limitadas a 10 por minuto por IP.
+- Bancos existentes: `db/migrations/007_usuarios.sql`.

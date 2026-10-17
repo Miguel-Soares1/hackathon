@@ -7,7 +7,7 @@ A integração com o chat do cliente usa a API abaixo (todas as rotas exigem o h
 ## Como as mensagens viram conversa
 - `POST /webhook/mensagens` aceita `conversa_id` (opcional): identifica o cliente no canal (id da sessão do chat, telefone, e-mail).
 - Mensagens com o mesmo `canal` + `conversa_id` entram **na mesma conversa** enquanto ela está aberta ou foi respondida há menos de 24 h. Depois disso nasce um ticket novo.
-- Sem `conversa_id`, cada mensagem é um ticket (comportamento anterior). WhatsApp usa o número como `conversa_id`; Instagram, o id do remetente; e-mail, o endereço do remetente. As telas `/demo/*` seguem a mesma regra.
+- Sem `conversa_id`, o cliente é reconhecido pelo contato no mesmo canal (telefone entre parênteses no WhatsApp, usuário no Instagram, e-mail ou o nome no chat): as mensagens dele entram na mesma conversa. Sem cliente identificado, cada mensagem é um ticket. WhatsApp usa o número como `conversa_id`; Instagram, o id do remetente; e-mail, o endereço do remetente. As telas `/demo/*` seguem a mesma regra.
 - Resposta: `{"status": "pendente"}` (ticket novo, vai para a IA), `"anexada"` (entrou numa conversa existente) ou `"duplicado"` (mesmo `external_id` já recebido).
 - Mensagens anexadas não são reclassificadas: a triagem e o SLA valem para a primeira mensagem do ticket.
 
@@ -20,6 +20,9 @@ A integração com o chat do cliente usa a API abaixo (todas as rotas exigem o h
    o arquivo sai em `GET /tickets/{ticket_id}/midias/{id}`. Sem texto, a mensagem leva o rótulo "📷 Imagem" ou "🎙 Áudio".
 
 A primeira resposta do atendente (pelo chat do painel ou pela API) registra o prazo de resposta (SLA). Respostas seguintes não o alteram.
+
+## Tickets duplicados de antes do chat
+Tickets criados antes do agrupamento (um por mensagem) podem ser unidos com `python scripts/unificar_conversas.py` (mostra o plano) e `--aplicar` (une: mensagens e mídias vão para o ticket mais antigo da conversa, os duplicados são apagados).
 
 ## Banco de dados
 Bancos já existentes: rode `db/migrations/005_chat.sql` uma vez (depois da `004`).

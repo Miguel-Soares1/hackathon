@@ -147,6 +147,29 @@ INSERT IGNORE INTO app_config (chave, valor) VALUES
   ('slo_janela_dias', '7');
 
 -- Visão com os valores efetivos (predição da IA ou última correção do atendente).
+-- Usuários do painel e sessões de login (ADR-018). Senha só como hash PBKDF2; sessão só como hash do token.
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  usuario VARCHAR(60) NOT NULL,
+  nome VARCHAR(120) NOT NULL,
+  senha_hash VARCHAR(200) NOT NULL,
+  papel VARCHAR(20) NOT NULL DEFAULT 'atendente',
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  ultimo_login DATETIME NULL,
+  UNIQUE KEY uq_usuarios_usuario (usuario)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sessoes (
+  token_hash CHAR(64) PRIMARY KEY,
+  usuario_id INT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL,
+  expira_em DATETIME NOT NULL,
+  INDEX idx_sessoes_usuario (usuario_id),
+  INDEX idx_sessoes_expira (expira_em),
+  CONSTRAINT fk_sessao_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,

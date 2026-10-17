@@ -30,12 +30,49 @@ def test_nova_mensagem_do_mesmo_cliente_entra_na_mesma_conversa(client, db):
         assert conn.execute(text("SELECT COUNT(*) FROM messages")).scalar() == 2
 
 
-def test_clientes_diferentes_ou_sem_conversa_id_geram_tickets_separados(client, db):
+def test_clientes_diferentes_ou_sem_identificacao_geram_tickets_separados(client, db):
     a = _post(client).json()["ticket_id"]
     b = _post(client, conversa_id="cli-2").json()["ticket_id"]
-    c = _post(client, conversa_id=None).json()["ticket_id"]
-    d = _post(client, conversa_id=None).json()["ticket_id"]
+    c = _post(client, conversa_id=None, cliente=None).json()["ticket_id"]
+    d = _post(client, conversa_id=None, cliente=None).json()["ticket_id"]
     assert len({a, b, c, d}) == 4
+
+
+def test_sem_conversa_id_o_mesmo_cliente_fica_na_mesma_conversa(client):
+    # Integrações que não mandam conversa_id: o cliente é reconhecido pelo contato (telefone, e-mail, usuário ou nome).
+    a = _post(client, canal="whatsapp", conversa_id=None, cliente="Mariana Souza (5511987654321)").json()
+    b = _post(client, canal="WhatsApp", conversa_id=None, cliente="Mariana Souza (5511987654321)").json()
+    c = _post(client, canal="whatsapp", conversa_id="5511987654321", cliente="Mariana").json()  # vindo da Meta
+    assert a["status"] == "pendente" and b == c == {"ticket_id": a["ticket_id"], "status": "anexada"}
+    assert tickets.chave_conversa("instagram", "instagram:Ana.Ribeiro") == "ana.ribeiro"
+
+
+def test_unificar_junta_duplicados_antigos_do_mesmo_cliente(client, db):
+    # Arrange: tickets antigos, um por mensagem e sem conversa_id (antes do chat)
+    ids = [tickets.criar_ticket("whatsapp", f"mensagem {n}", "Mariana Souza (5511987654321)") for n in range(3)]
+    outro = tickets.criar_ticket("whatsapp", "outra pessoa", "Carlos Lima (5521998761234)")
+    tickets.marcar_respondido(ids[1])
+    # Act: o plano não altera nada; aplicar une
+    assert tickets.unificar_conversas() == [{"principal": ids[0], "canal": "whatsapp",
+                                             "cliente": "Mariana Souza (5511987654321)", "unidos": ids[1:]}]
+    tickets.unificar_conversas(aplicar=True)
+    # Assert: um ticket só, com as 3 mensagens e a 1ª resposta; o outro cliente não muda
+    with db.connect() as conn:
+        restantes = [r.id for r in conn.execute(text("SELECT id FROM tickets ORDER BY id"))]
+    assert restantes == [ids[0], outro]
+    assert [m["texto"] for m in tickets.mensagens(ids[0])] == ["mensagem 0", "mensagem 1", "mensagem 2"]
+    assert tickets.obter(ids[0])["first_response_at"] is not None
+    # e a próxima mensagem dela entra nessa conversa
+    assert _post(client, canal="whatsapp", conversa_id="5511987654321").json()["ticket_id"] == ids[0]
+    assert tickets.unificar_conversas() == []
+
+
+def test_unificar_respeita_conversa_encerrada_ha_mais_de_24h(db):
+    antigo = tickets.criar_ticket("email", "pedido antigo", "ana@exemplo.com", utcnow() - timedelta(days=3))
+    tickets.marcar_respondido(antigo, utcnow() - timedelta(days=3) + timedelta(hours=1))
+    novo = tickets.criar_ticket("email", "assunto novo", "ana@exemplo.com")
+    assert tickets.unificar_conversas() == []
+    assert novo != antigo
 
 
 def test_canais_diferentes_nao_misturam_a_conversa(client):

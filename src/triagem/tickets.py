@@ -1,4 +1,5 @@
 """Ingestão e consulta de tickets (Specs 1 e 5)."""
+import re
 from datetime import datetime, timedelta
 from typing import Optional, Sequence
 
@@ -34,6 +35,25 @@ DESFECHOS = ("encerrado", "cancelado")
 
 
 JANELA_CONVERSA = timedelta(hours=24)
+_TELEFONE_NO_NOME = re.compile(r"\((\+?\d{8,15})\)\s*$")
+
+
+def chave_conversa(canal: str, cliente: Optional[str]) -> Optional[str]:
+    """Identifica o cliente quando a mensagem chega sem `conversa_id` (ADR-016).
+
+    Usa a mesma chave dos conversores dos canais: telefone no WhatsApp ("Nome (5511...)" -> "5511..."), usuário no
+    Instagram ("instagram:fulano" -> "fulano") e o próprio contato nos demais (e-mail, nome no chat). Sem cliente,
+    não há como agrupar e cada mensagem vira um ticket.
+    """
+    c = (cliente or "").strip()
+    if not c:
+        return None
+    telefone = _TELEFONE_NO_NOME.search(c)
+    if telefone:
+        return telefone.group(1).lstrip("+")
+    if c.lower().startswith("instagram:"):
+        return c[10:].strip().lower()[:190] or None
+    return c.lower()[:190]
 
 
 def _chave_msg(canal: str, external_id: Optional[str]) -> Optional[str]:
@@ -107,6 +127,7 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
     As mídias de uma mensagem anexada ficam no ticket e são lidas pela IA depois (`midias.processar` com o id da
     mensagem); a triagem do ticket não muda (ADR-016).
     """
+    conversa_id = conversa_id or chave_conversa(canal, cliente)
     if conversa_id:
         if external_id and _ticket_do_externo(canal, external_id) is not None:
             raise TicketDuplicado(int(_ticket_do_externo(canal, external_id)))
@@ -306,3 +327,60 @@ def reabrir(ticket_id: int) -> dict:
             raise TicketNaoEncontrado(ticket_id)
         conn.execute(text("UPDATE tickets SET desfecho = NULL, encerrado_em = NULL WHERE id = :id"), {"id": ticket_id})
     return obter(ticket_id)
+
+
+def unificar_conversas(aplicar: bool = False) -> list[dict]:
+    """Junta tickets duplicados do mesmo cliente (mesmo canal e conversa) criados antes do agrupamento (ADR-016).
+
+    1. Tickets sem `conversa_id` (ou do antigo modo "IA como cliente", `demo:...`) ganham a chave de `chave_conversa`.
+    2. Em cada conversa, em ordem de chegada, um ticket entra no anterior enquanto a conversa está aberta (sem
+       resposta, ou respondida há menos de 24 h), como faria `receber_mensagem`. Mensagens e mídias passam para o
+       ticket principal (o mais antigo, que tem a triagem da 1ª mensagem); a 1ª resposta mais antiga é mantida;
+       o duplicado é apagado (classificação, revisões e vínculos com incidentes dele vão junto).
+    Sem `aplicar`, só devolve o plano: [{"principal", "canal", "cliente", "unidos": [ids]}].
+    """
+    plano: list[dict] = []
+    with get_engine().begin() as conn:
+        sem_chave = conn.execute(text(
+            "SELECT id, canal, cliente FROM tickets WHERE conversa_id IS NULL OR conversa_id LIKE 'demo:%'")).fetchall()
+        for r in sem_chave:
+            chave = chave_conversa(r.canal, r.cliente)
+            if chave and aplicar:
+                conn.execute(text("UPDATE tickets SET conversa_id = :c WHERE id = :i"), {"c": chave, "i": r.id})
+        chaves = {r.id: chave_conversa(r.canal, r.cliente) for r in sem_chave}
+
+        linhas = conn.execute(text(
+            "SELECT t.id, t.canal, t.cliente, t.conversa_id, t.received_at, t.first_response_at, "
+            "(SELECT MAX(m.created_at) FROM messages m WHERE m.ticket_id = t.id AND m.direcao = 'saida') AS ultima_saida "
+            "FROM tickets t ORDER BY t.received_at, t.id")).fetchall()
+        conversas: dict[tuple, list] = {}
+        for r in linhas:
+            chave = chaves.get(r.id, r.conversa_id)
+            if chave:
+                conversas.setdefault(((r.canal or "").lower(), chave), []).append(r)
+
+        for (_, _), itens in conversas.items():
+            principal, ref, grupo = itens[0], None, None
+            ref = max([x for x in (principal.first_response_at, principal.ultima_saida) if x], default=None)
+            for r in itens[1:]:
+                if ref is not None and r.received_at - ref > JANELA_CONVERSA:  # conversa encerrada: começa outra
+                    principal, grupo = r, None
+                    ref = max([x for x in (r.first_response_at, r.ultima_saida) if x], default=None)
+                    continue
+                if grupo is None:
+                    grupo = {"principal": principal.id, "canal": principal.canal, "cliente": principal.cliente, "unidos": []}
+                    plano.append(grupo)
+                grupo["unidos"].append(r.id)
+                ref = max([x for x in (ref, r.first_response_at, r.ultima_saida) if x], default=None)
+                if aplicar:
+                    conn.execute(text("UPDATE messages SET ticket_id = :p WHERE ticket_id = :d"), {"p": principal.id, "d": r.id})
+                    conn.execute(text("UPDATE ticket_midias SET ticket_id = :p WHERE ticket_id = :d"), {"p": principal.id, "d": r.id})
+                    if r.first_response_at:
+                        conn.execute(text(
+                            "UPDATE tickets SET first_response_at = :q WHERE id = :p "
+                            "AND (first_response_at IS NULL OR first_response_at > :q)"), {"q": r.first_response_at, "p": principal.id})
+                    conn.execute(text("DELETE FROM tickets WHERE id = :d"), {"d": r.id})
+        if aplicar and plano:
+            # Os grupos de incidente perdem os duplicados apagados: recalcula o tamanho de cada um.
+            conn.execute(text("UPDATE incident_groups g SET size = (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id)"))
+    return plano

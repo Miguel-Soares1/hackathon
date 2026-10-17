@@ -8,3 +8,6 @@ venv/
 backups/*
 !backups/.gitkeep
 .env.production
+
+# Senha local do administrador (nunca versionar)
+admin-senha.local.txt

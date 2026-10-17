@@ -9,17 +9,37 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <!-- Tela de acesso: a chave fica só nesta aba (sessionStorage) -->
+  <!-- Tela de acesso: usuário e senha (ADR-018). Com "manter conectado" a sessão vale 30 dias neste navegador. -->
   <main id="login" class="login" hidden>
     <form id="form-login" class="card login-card">
       <img class="logo-nexus" src="img/nexus-logo.webp" alt="Nexus — Conexão e Inovação" width="660" height="240">
       <div class="marca"><img class="logo" src="img/nexus-icone.png" alt=""><div class="nome">NEXUS</div></div>
-      <p class="muted">Painel de atendimento. Informe a chave de API do servidor.</p>
-      <label>Chave de API
-        <input id="chave" type="password" autocomplete="current-password" required>
+      <p class="muted">Painel de atendimento. Entre com o seu usuário e senha.</p>
+      <label>Usuário
+        <input id="usuario" autocomplete="username" maxlength="60" required>
       </label>
+      <label>Senha
+        <input id="senha" type="password" autocomplete="current-password" maxlength="200" required>
+      </label>
+      <label class="toggle"><input type="checkbox" id="manter" checked> Manter conectado neste computador</label>
       <p id="login-erro" class="erro" hidden></p>
       <button type="submit" class="btn primario">Entrar</button>
+    </form>
+
+    <!-- Primeiro acesso: o banco ainda não tem usuários. A chave de API do servidor prova que é o dono. -->
+    <form id="form-primeiro" class="card login-card" hidden>
+      <img class="logo-nexus" src="img/nexus-logo.webp" alt="Nexus — Conexão e Inovação" width="660" height="240">
+      <h2>Primeiro acesso</h2>
+      <p class="muted">Crie o administrador do painel. Depois ele cadastra os atendentes em <b>Administração</b>.</p>
+      <label>Chave de API do servidor (<code>API_KEY</code> do <code>.env</code>)
+        <input name="chave_api" type="password" autocomplete="off" required>
+      </label>
+      <label>Seu nome <input name="nome" maxlength="120" required></label>
+      <label>Usuário <input name="usuario" autocomplete="username" maxlength="60" required></label>
+      <label>Senha (mínimo 8 caracteres) <input name="senha" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+      <label>Repita a senha <input name="senha2" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+      <p id="primeiro-erro" class="erro" hidden></p>
+      <button type="submit" class="btn primario">Criar administrador e entrar</button>
     </form>
   </main>
 
@@ -34,9 +54,12 @@
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
         <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
         <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
+        <button type="button" data-pagina="admin" id="menu-admin" hidden><span aria-hidden="true">🛡️</span> Administração</button>
+        <button type="button" data-pagina="conta"><span aria-hidden="true">👤</span> Minha conta</button>
       </nav>
       <hr>
-      <label>Seu nome no chat <input id="atendente" maxlength="60" value="Atendente"></label>
+      <div class="quem-logado"><div class="avatar" id="eu-inicial">?</div>
+        <div><div class="nome" id="eu-nome"></div><div class="legenda" id="eu-papel"></div></div></div>
       <label>Atualização automática
         <select id="intervalo">
           <option value="5">a cada 5 s</option>
@@ -103,6 +126,39 @@
 
       <section id="pagina-correcoes" class="pagina" hidden>
         <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
+      </section>
+
+      <!-- Administração (só admin): usuários do painel -->
+      <section id="pagina-admin" class="pagina" hidden>
+        <div class="tabela-wrap"><table id="tabela-usuarios" class="tabela"></table></div>
+        <p id="admin-status" class="muted" aria-live="polite"></p>
+        <form id="form-usuario" class="card form-nova">
+          <h2>Novo usuário</h2>
+          <div class="linha">
+            <label>Nome <input name="nome" maxlength="120" required></label>
+            <label>Usuário <input name="usuario" maxlength="60" autocomplete="off" required></label>
+          </div>
+          <div class="linha">
+            <label>Senha inicial (mínimo 8) <input name="senha" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+            <label>Papel
+              <select name="papel"><option value="atendente">Atendente</option><option value="admin">Administrador</option></select>
+            </label>
+          </div>
+          <button type="submit" class="btn primario">Criar usuário</button>
+        </form>
+      </section>
+
+      <!-- Minha conta: troca da própria senha -->
+      <section id="pagina-conta" class="pagina" hidden>
+        <form id="form-senha" class="card form-nova">
+          <h2>Alterar minha senha</h2>
+          <p class="muted">As outras sessões abertas com a sua conta são encerradas; esta continua.</p>
+          <label>Senha atual <input name="senha_atual" type="password" autocomplete="current-password" required></label>
+          <label>Nova senha (mínimo 8) <input name="nova_senha" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+          <label>Repita a nova senha <input name="nova_senha2" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+          <button type="submit" class="btn primario">Alterar senha</button>
+          <p id="senha-status" class="muted" aria-live="polite"></p>
+        </form>
       </section>
 
       <!-- Atendimentos: relatório de controle (abertos e finalizados), filtros e exportação -->

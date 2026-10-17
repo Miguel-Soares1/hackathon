@@ -1,5 +1,5 @@
--- Atendimento encerrado ou cancelado (cartões do Dashboard). Rode uma vez (depois da 006):
---   mysql -u root -p hackathon < db/migrations/007_desfecho.sql
+-- Atendimento encerrado ou cancelado (cartões do Dashboard). Rode uma vez (depois da 007):
+--   mysql -u root -p hackathon < db/migrations/008_desfecho.sql
 ALTER TABLE tickets ADD COLUMN desfecho VARCHAR(12) NULL AFTER first_response_at;
 ALTER TABLE tickets ADD COLUMN encerrado_em DATETIME NULL AFTER desfecho;
 CREATE OR REPLACE VIEW vw_tickets AS
