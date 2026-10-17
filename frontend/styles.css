@@ -254,6 +254,19 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 /* ---------- simular mensagem */
 .form-nova { max-width: 640px; display: flex; flex-direction: column; gap: 12px; }
 .linha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#gravar[aria-pressed="true"] { border-color: var(--critica); color: var(--critica); font-weight: 600; }
+
+/* ---------- mídias (áudio e foto do cliente) */
+.anexos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.anexos:empty { display: none; }
+.anexo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--borda); border-radius: 8px; padding: 8px; }
+.anexo img, .midia img { max-width: 100%; max-height: 220px; border-radius: 6px; display: block; }
+.anexo img { max-height: 80px; }
+.anexo audio, .midia audio { max-width: 100%; }
+.midias { display: flex; flex-direction: column; gap: 10px; }
+.midia { border: 1px solid var(--borda); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.midia .estado-midia { font-size: 0.85em; }
+.midia .estado-midia.erro { color: var(--critica); }
 
 @media (max-width: 1100px) {
   .atendimento { grid-template-columns: minmax(0, 1fr); }

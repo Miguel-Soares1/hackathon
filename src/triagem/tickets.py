@@ -1,10 +1,11 @@
 """Ingestão e consulta de tickets (Specs 1 e 5)."""
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+from . import midias as midias_mod
 from . import sla
 from .db import com_retry_deadlock, get_engine, utcnow
 
@@ -52,11 +53,13 @@ def _ticket_do_externo(canal: str, external_id: str) -> Optional[int]:
 
 
 def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received_at: Optional[datetime] = None,
-                 external_id: Optional[str] = None, conversa_id: Optional[str] = None) -> int:
+                 external_id: Optional[str] = None, conversa_id: Optional[str] = None,
+                 midias: Sequence[midias_mod.Midia] = ()) -> int:
     """Persiste o ticket como 'pendente' (ADR-009) e a 1ª mensagem da conversa. Classificação é em background.
 
     Com `external_id` (id da mensagem no WhatsApp, Message-ID do e-mail) a criação é idempotente:
     repetir (canal, external_id) levanta TicketDuplicado com o ticket já existente.
+    As `midias` (áudio/foto, ADR-017) são gravadas na mesma transação e lidas pela IA no background.
     """
     agora = utcnow()
     quando = received_at or agora
@@ -72,6 +75,7 @@ def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received
             )
             ticket_id = int(res.lastrowid)
             _inserir_mensagem(conn, ticket_id, "entrada", texto, cliente, quando, _chave_msg(canal, external_id))
+            midias_mod.salvar(conn, ticket_id, list(midias))
             return ticket_id
     except IntegrityError:
         if external_id is None:
@@ -87,11 +91,14 @@ def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received
 
 
 def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, received_at: Optional[datetime] = None,
-                     external_id: Optional[str] = None, conversa_id: Optional[str] = None) -> tuple[int, bool]:
-    """Entrada de mensagem de um canal. Retorna (ticket_id, novo).
+                     external_id: Optional[str] = None, conversa_id: Optional[str] = None,
+                     midias: Sequence[midias_mod.Midia] = ()) -> tuple[int, bool, Optional[int]]:
+    """Entrada de mensagem de um canal. Retorna (ticket_id, novo, id da mensagem anexada ou None).
 
     Com `conversa_id`, a mensagem entra na conversa já existente do cliente (mesmo canal) enquanto ela está
     aberta ou foi respondida há menos de 24 h; fora disso (ou sem `conversa_id`) nasce um ticket novo.
+    As mídias de uma mensagem anexada ficam no ticket e são lidas pela IA depois (`midias.processar` com o id da
+    mensagem); a triagem do ticket não muda (ADR-016).
     """
     if conversa_id:
         if external_id and _ticket_do_externo(canal, external_id) is not None:
@@ -111,19 +118,22 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
                 if ultimo is not None:
                     ref = max([x for x in (ultimo.first_response_at, ultimo.ultima_saida) if x is not None], default=None)
                     if ref is None or agora - ref <= JANELA_CONVERSA:
-                        _inserir_mensagem(conn, int(ultimo.id), "entrada", texto, cliente, quando, _chave_msg(canal, external_id))
-                        return int(ultimo.id), False
+                        msg_id = _inserir_mensagem(conn, int(ultimo.id), "entrada", texto, cliente, quando,
+                                                   _chave_msg(canal, external_id))
+                        midias_mod.salvar(conn, int(ultimo.id), list(midias))
+                        return int(ultimo.id), False, msg_id
         except IntegrityError:
             existente = _ticket_do_externo(canal, external_id) if external_id else None
             if existente is None:
                 raise
             raise TicketDuplicado(int(existente)) from None
-    return criar_ticket(canal, texto, cliente, received_at, external_id, conversa_id), True
+    return criar_ticket(canal, texto, cliente, received_at, external_id, conversa_id, midias), True, None
 
 
-def _linha_para_dict(row, prazos, risco_pct, agora) -> dict:
+def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
     d = dict(row._mapping)
     d["revisado"] = bool(d.get("revisado"))
+    d["midias"] = midias
     est = sla.avaliar(d["received_at"], d.get("urgencia"), prazos, d["first_response_at"], agora, risco_pct)
     d["sla"] = {
         "estado": est.estado,
@@ -166,7 +176,8 @@ def listar(limite: int = 200, apenas_abertos: bool = False, agora: Optional[date
             ),
             {"limite": limite, "so_abertos": 1 if apenas_abertos else 0},
         ).fetchall()
-    return [_linha_para_dict(r, prazos, risco, agora) for r in rows]
+        midias = midias_mod.por_ticket(conn, [r.ticket_id for r in rows])
+    return [_linha_para_dict(r, prazos, risco, agora, midias.get(r.ticket_id, [])) for r in rows]
 
 
 def obter(ticket_id: int, agora: Optional[datetime] = None) -> dict:
@@ -175,9 +186,10 @@ def obter(ticket_id: int, agora: Optional[datetime] = None) -> dict:
         prazos = sla.carregar_prazos(conn)
         risco = sla.carregar_config(conn)["sla_risco_pct"]
         row = conn.execute(text(_SQL_CONVERSA + "WHERE v.ticket_id = :id"), {"id": ticket_id}).fetchone()
+        midias = midias_mod.por_ticket(conn, [ticket_id])
     if row is None:
         raise TicketNaoEncontrado(ticket_id)
-    return _linha_para_dict(row, prazos, risco, agora)
+    return _linha_para_dict(row, prazos, risco, agora, midias.get(ticket_id, []))
 
 
 @com_retry_deadlock()

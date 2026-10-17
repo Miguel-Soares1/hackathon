@@ -268,3 +268,19 @@ Consequências: ...
 - No painel HTML (ADR-010), o layout segue a dashboard de atendimento desenhada para o chat (menu lateral; página Atendimento com cartões "Em espera" × "Respondidos", conversa e a triagem num painel recolhível). A conversa atualiza a cada ciclo de atualização automática, não em tempo real.
 - WhatsApp, Instagram e e-mail usam o remetente como `conversa_id`, inclusive nas telas `/demo/*`.
 
+## ADR-017: Áudio e foto do cliente lidos pelo Gemini e convertidos em texto antes da triagem
+
+**Status:** accepted
+
+**Contexto:** clientes querem mandar áudio e foto (print de erro, boleto, produto danificado), não só texto. O DeepSeek só entende texto, então outra IA precisa ler a mídia.
+
+**Decisão:** o webhook aceita até 3 mídias por mensagem em base64 (`midias: [{tipo, mime, dados_base64}]`, até 8 MB cada), validadas pelo tipo declarado **e** pelos primeiros bytes do arquivo, e guardadas em `ticket_midias` na mesma transação do ticket. No background, antes da triagem, o **Gemini** (`GEMINI_MODEL`, padrão `gemini-3.8-flash`) transcreve cada áudio e descreve cada foto em uma chamada própria. O resultado é anexado ao texto do ticket com um rótulo (`[Áudio transcrito pela IA]: …`), e daí em diante triagem, few-shot e incidentes funcionam sem mudança. As chamadas acontecem fora de transação e o resultado é gravado de uma vez, então reprocessar após uma queda não duplica o texto.
+
+**Alternativas descartadas:** Whisper local + outro modelo para foto (duas peças e, sem GPU, transcrição lenta no notebook); OCR local (lê texto, mas não entende foto sem texto); guardar o arquivo em disco (mais um volume para backup; o MEDIUMBLOB basta na escala do projeto).
+
+**Consequências:**
+- Uma chave só (Google AI Studio, com plano gratuito) cobre áudio e foto. O conteúdo da mídia sai do notebook para o Google.
+- Sem chave ou com falha do Gemini, o ticket não trava: segue com o texto que houver, a mídia fica com status `erro` e o painel avisa o atendente, que pode ouvir ou ver o original.
+- A transcrição é texto controlado pelo cliente: entra na triagem pelo mesmo caminho delimitado da mensagem (defesa contra prompt injection), e o prompt do Gemini manda ignorar instruções contidas na mídia.
+- O arquivo original é servido só com a chave, com o tipo conferido e `Content-Security-Policy: sandbox`.
+- Migração de bancos existentes: `db/migrations/006_midias.sql`.

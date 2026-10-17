@@ -1,0 +1,189 @@
+import base64
+import json
+from dataclasses import replace
+
+import httpx
+import pytest
+
+from conftest import CHAVE
+from triagem import midias
+from triagem.config import get_settings
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+OGG = b"OggS" + b"\x00" * 32
+WEBM = b"\x1aE\xdf\xa3" + b"\x00" * 32
+
+
+def b64(dados: bytes) -> str:
+    return base64.b64encode(dados).decode()
+
+
+def settings(chave="k"):
+    return replace(get_settings(), gemini_api_key=chave, gemini_base_url="https://gemini.exemplo.test",
+                   gemini_model="modelo", midia_timeout=5.0)
+
+
+def cliente_http(*respostas):
+    """Cliente httpx falso que devolve as respostas na ordem (sem rede)."""
+    fila = list(respostas)
+    chamadas = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chamadas.append(request)
+        return fila.pop(0)
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), chamadas
+
+
+def ok(texto):
+    return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": texto}]}}]})
+
+
+# ---------- validação ----------
+def test_validar_aceita_audio_do_navegador_com_codec_no_mime():
+    m = midias.validar("audio", "audio/webm;codecs=opus", b64(WEBM))
+    assert m.mime == "audio/webm" and m.dados == WEBM
+
+
+@pytest.mark.parametrize("tipo, mime, dados, erro", [
+    ("video", "video/mp4", b64(PNG), "tipo de mídia"),
+    ("imagem", "image/gif", b64(PNG), "formato não aceito"),
+    ("imagem", "image/png", "não é base64!", "base64 inválido"),
+    ("imagem", "image/png", "", "vazio"),
+    ("imagem", "image/jpeg", b64(PNG), "não é image/jpeg"),   # extensão trocada
+    ("audio", "audio/ogg", b64(b"<script>alert(1)</script>"), "não é audio/ogg"),
+])
+def test_validar_recusa_midia_invalida(tipo, mime, dados, erro):
+    with pytest.raises(midias.MidiaInvalida, match=erro):
+        midias.validar(tipo, mime, dados)
+
+
+def test_validar_recusa_arquivo_grande(monkeypatch):
+    monkeypatch.setattr(midias, "MAX_BYTES", 10)
+    with pytest.raises(midias.MidiaInvalida, match="maior que"):
+        midias.validar("imagem", "image/png", b64(PNG))
+
+
+# ---------- leitura com o Gemini ----------
+def test_ler_com_ia_envia_a_midia_e_devolve_o_texto():
+    client, chamadas = cliente_http(ok("  Meu Pix não está funcionando.  "))
+    texto = midias.ler_com_ia(midias.Midia("audio", "audio/ogg", OGG), settings(), client)
+
+    assert texto == "Meu Pix não está funcionando."
+    req = chamadas[0]
+    assert req.url == "https://gemini.exemplo.test/models/modelo:generateContent"
+    assert req.headers["x-goog-api-key"] == "k"
+    partes = json.loads(req.content)["contents"][0]["parts"]
+    assert "Transcreva" in partes[0]["text"]
+    assert partes[1]["inline_data"] == {"mime_type": "audio/ogg", "data": b64(OGG)}
+
+
+def test_ler_com_ia_ignora_partes_de_raciocinio():
+    resp = httpx.Response(200, json={"candidates": [{"content": {"parts": [
+        {"text": "pensando...", "thought": True}, {"text": "Tela com erro 500."}]}}]})
+    client, _ = cliente_http(resp)
+    assert midias.ler_com_ia(midias.Midia("imagem", "image/png", PNG), settings(), client) == "Tela com erro 500."
+
+
+@pytest.mark.parametrize("resposta", [
+    httpx.Response(500, json={}),
+    httpx.Response(200, json={"candidates": []}),
+    ok("   "),
+])
+def test_ler_com_ia_levanta_erro_na_falha(resposta):
+    client, _ = cliente_http(resposta)
+    with pytest.raises(midias.MidiaErro):
+        midias.ler_com_ia(midias.Midia("imagem", "image/png", PNG), settings(), client)
+
+
+def test_ler_com_ia_sem_chave_nao_chama_a_rede():
+    client, chamadas = cliente_http()
+    with pytest.raises(midias.MidiaErro, match="GEMINI_API_KEY"):
+        midias.ler_com_ia(midias.Midia("imagem", "image/png", PNG), settings(chave=""), client)
+    assert chamadas == []
+
+
+# ---------- webhook + pipeline ----------
+def test_webhook_so_com_audio_transcreve_e_classifica(client, monkeypatch):
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "Meu Pix não funciona, estou perdendo vendas!")
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "midias": [{"tipo": "audio", "mime": "audio/ogg", "dados_base64": b64(OGG)}],
+    })
+    assert r.status_code == 202
+
+    t = client.get(f"/tickets/{r.json()['ticket_id']}", headers=CHAVE).json()
+    assert t["status"] == "classificado"
+    assert t["texto"] == "[Áudio transcrito pela IA]: Meu Pix não funciona, estou perdendo vendas!"
+    assert t["assunto"] == "pagamento"  # a triagem leu a transcrição
+    [m] = t["midias"]
+    assert m["tipo"] == "audio" and m["status"] == "lido" and m["conteudo"].startswith("Meu Pix")
+    assert "dados" not in m  # os bytes não vão na listagem
+
+
+def test_webhook_texto_e_foto_juntam_os_dois(client, monkeypatch):
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "Print da tela com 'erro no pagamento'.")
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "chat", "texto": "Olha o que aparece:",
+        "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(PNG)}],
+    })
+    t = client.get(f"/tickets/{r.json()['ticket_id']}", headers=CHAVE).json()
+    assert t["texto"] == "Olha o que aparece:\n\n[Foto descrita pela IA]: Print da tela com 'erro no pagamento'."
+
+
+def test_webhook_com_falha_da_ia_ainda_classifica_e_avisa(client):
+    # Sem GEMINI_API_KEY no teste: a mídia não é lida, mas o ticket não trava.
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "texto": "Mandei um áudio explicando",
+        "midias": [{"tipo": "audio", "mime": "audio/ogg", "dados_base64": b64(OGG)}],
+    })
+    t = client.get(f"/tickets/{r.json()['ticket_id']}", headers=CHAVE).json()
+    assert t["status"] == "classificado"
+    assert "[Áudio enviado: não foi possível transcrever]" in t["texto"]
+    assert t["midias"][0]["status"] == "erro"
+
+
+def test_reprocessar_nao_duplica_o_texto(client, monkeypatch):
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "transcrição")
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "midias": [{"tipo": "audio", "mime": "audio/ogg", "dados_base64": b64(OGG)}],
+    })
+    tid = r.json()["ticket_id"]
+    assert midias.processar(tid, "qualquer") is None  # mídia já lida: nada muda
+    assert client.get(f"/tickets/{tid}", headers=CHAVE).json()["texto"] == "[Áudio transcrito pela IA]: transcrição"
+
+
+def test_webhook_sem_texto_e_sem_midia_retorna_400(client):
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={"canal": "whatsapp"})
+    assert r.status_code == 400
+
+
+def test_webhook_midia_invalida_retorna_400_e_nao_cria_ticket(client):
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "whatsapp", "texto": "segue foto",
+        "midias": [{"tipo": "imagem", "mime": "image/jpeg", "dados_base64": b64(PNG)}],
+    })
+    assert r.status_code == 400 and "não é image/jpeg" in r.json()["detail"]
+    assert client.get("/tickets", headers=CHAVE).json() == []
+
+
+def test_webhook_mais_midias_que_o_limite_retorna_400(client):
+    m = {"tipo": "imagem", "mime": "image/png", "dados_base64": b64(PNG)}
+    r = client.post("/webhook/mensagens", headers=CHAVE,
+                    json={"canal": "chat", "midias": [m] * (midias.MAX_MIDIAS + 1)})
+    assert r.status_code == 400
+
+
+# ---------- download para o painel ----------
+def test_baixar_midia_exige_chave_e_devolve_o_arquivo(client):
+    r = client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "chat", "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(PNG)}],
+    })
+    tid = r.json()["ticket_id"]
+    mid = client.get(f"/tickets/{tid}", headers=CHAVE).json()["midias"][0]["id"]
+
+    assert client.get(f"/tickets/{tid}/midias/{mid}").status_code == 401
+    arq = client.get(f"/tickets/{tid}/midias/{mid}", headers=CHAVE)
+    assert arq.status_code == 200 and arq.content == PNG
+    assert arq.headers["content-type"] == "image/png"
+    assert "sandbox" in arq.headers["content-security-policy"]
+    assert client.get(f"/tickets/{tid + 1}/midias/{mid}", headers=CHAVE).status_code == 404  # mídia de outro ticket

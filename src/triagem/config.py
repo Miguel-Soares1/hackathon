@@ -29,6 +29,10 @@ class Settings:
     demo_enabled: bool
     fewshot_k: int = 4
     fewshot_sim_min: float = 0.45
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    gemini_model: str = "gemini-3.8-flash"
+    midia_timeout: float = 60.0
 
 
 def _bool(nome: str, padrao: bool) -> bool:
@@ -48,6 +52,10 @@ def get_settings() -> Settings:
         llm_timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "15")),
         fewshot_k=int(os.getenv("FEWSHOT_K", "4")),
         fewshot_sim_min=float(os.getenv("FEWSHOT_SIM_MIN", "0.45")),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        gemini_base_url=os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+        midia_timeout=float(os.getenv("MIDIA_TIMEOUT_SECONDS", "60")),
         embedding_backend=os.getenv("EMBEDDING_BACKEND", "onnx").lower(),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
