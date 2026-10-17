@@ -22,7 +22,8 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
   - `urgencia`: nível de prioridade (ex.: baixa, média, alta, crítica).
   - `sentimento`: polaridade (positivo, neutro, negativo).
   - `equipe`: time responsável pelo atendimento.
-  - `resposta_sugerida`: texto de resposta sugerida ao cliente.
+  - `resposta_sugerida`: texto de resposta sugerida ao cliente, no idioma do cliente (Spec 9).
+  - `idioma`: código ISO 639-1 do idioma em que o cliente escreveu (Spec 9).
   - `confianca`: score de confiança por dimensão.
 
 ## Critérios de Aceitação
@@ -39,7 +40,7 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 ## Fora de Escopo (V1)
 
 - Treinamento com dados reais de produção.
-- Suporte multilíngue automático (idiomas suportados a definir em design).
+- (Suporte multilíngue entregue na Spec 9.)
 - Retreino automático do modelo (as correções orientam o LLM por few-shot, Spec 6).
 
 ## Dependências

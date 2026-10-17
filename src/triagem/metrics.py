@@ -19,6 +19,18 @@ def motivos_contato() -> list[dict]:
     return [{"assunto": r.assunto, "total": int(r.total)} for r in rows]
 
 
+def idiomas() -> list[dict]:
+    """Quantos tickets chegaram em cada idioma (ADR-015)."""
+    with get_engine().connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT idioma, COUNT(*) AS total FROM vw_tickets WHERE idioma IS NOT NULL "
+                "GROUP BY idioma ORDER BY total DESC, idioma"
+            )
+        ).fetchall()
+    return [{"idioma": r.idioma, "total": int(r.total)} for r in rows]
+
+
 def sli_slo(agora: Optional[datetime] = None) -> dict:
     """SLI de cumprimento do prazo na janela móvel do SLO (docs/slo.md)."""
     agora = agora or utcnow()
@@ -55,6 +67,7 @@ def resumo(agora: Optional[datetime] = None) -> dict:
     risco = prazos_em_risco(agora)
     return {
         "motivos_contato": motivos_contato(),
+        "idiomas": idiomas(),
         "prazos_em_risco": [
             {"ticket_id": t["ticket_id"], "urgencia": t["urgencia"], "estado": t["sla"]["estado"],
              "consumido_pct": t["sla"]["consumido_pct"]}

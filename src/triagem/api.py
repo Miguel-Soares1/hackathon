@@ -19,6 +19,7 @@ from . import canais, corrections, incidents, metrics, pipeline, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
+from .idioma import IDIOMAS
 from .pagina_envio import PAGINA_ENVIO
 from .ratelimit import LimitadorJanela
 
@@ -274,7 +275,8 @@ def create_app() -> FastAPI:
     @app.get("/dominio", dependencies=[Depends(exigir_chave)])
     def dominio():
         """Valores permitidos na triagem, para o painel montar os formulários de correção."""
-        return {"assuntos": ASSUNTOS, "urgencias": URGENCIAS, "sentimentos": SENTIMENTOS, "equipes": EQUIPES}
+        return {"assuntos": ASSUNTOS, "urgencias": URGENCIAS, "sentimentos": SENTIMENTOS, "equipes": EQUIPES,
+                "idiomas": IDIOMAS}
 
     # Painel (HTML/CSS/JS estáticos) servido pela própria API: um único serviço para subir.
     # Montado por último para não sombrear as rotas acima.

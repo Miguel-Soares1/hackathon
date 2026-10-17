@@ -6,7 +6,8 @@ Modos:
   fewshot  DeepSeek + exemplos: para cada mensagem, as `k` mais parecidas do PRÓPRIO conjunto (sem ela mesma)
            entram como "tickets já revisados", simulando o histórico de correções do atendente (leave-one-out).
 
-Mede a taxa de acerto por dimensão e no agregado, a matriz de confusão da urgência, a taxa de JSON válido
+Mede a taxa de acerto por dimensão e no agregado (inclui `idioma` quando o arquivo tem esse rótulo, ADR-015), se a
+resposta sugerida saiu no idioma do cliente, a matriz de confusão da urgência, a taxa de JSON válido
 (uma chamada por mensagem, sem nova tentativa) e a resistência a prompt injection.
 
 Uso:
@@ -14,6 +15,7 @@ Uso:
   python scripts/avaliar_triagem.py --so-regras              # sem chamar a API
   python scripts/avaliar_triagem.py --modos llm fewshot --saida data/avaliacoes/v2.json
   python scripts/avaliar_triagem.py --arquivo data/mensagens_demo.json --modos regras llm
+  python scripts/avaliar_triagem.py --arquivo data/avaliacao_idiomas.json   # mensagens em en, es, fr, it, de e pt
 Rode sempre que mudar o prompt (e incremente PROMPT_VERSION em src/triagem/classifier.py). Não usa o banco.
 """
 import argparse
@@ -34,6 +36,7 @@ from triagem.config import get_settings  # noqa: E402
 from triagem.domain import DIMENSOES_CLASSIFICACAO, URGENCIAS  # noqa: E402
 from triagem.exemplos import Exemplo, selecionar  # noqa: E402
 from triagem.fallback import classificar_por_regras  # noqa: E402
+from triagem.idioma import detectar  # noqa: E402
 
 MODOS = ("regras", "llm", "fewshot")
 
@@ -71,7 +74,8 @@ def classificar_modo(modo, msgs, settings, vetores, workers):
         return [(classificar_por_regras(m["texto"]), 0) for m in msgs]
 
     # O few-shot precisa das 4 dimensões rotuladas (assunto, urgência, sentimento e equipe).
-    candidatos = [Exemplo(i, m["texto"], **m["esperado"]) for i, m in enumerate(msgs)] if modo == "fewshot" else []
+    candidatos = [Exemplo(i, m["texto"], **{d: m["esperado"][d] for d in DIMENSOES_CLASSIFICACAO})
+                  for i, m in enumerate(msgs)] if modo == "fewshot" else []
 
     def um(i):
         refs = []
@@ -97,6 +101,12 @@ def avaliar(nome, msgs, resultados, dimensoes, max_erros):
         print(f"  {d:<11} {ok:>2}/{len(validos)}  = {ok / len(validos):6.1%}")
     agregado = round(sum(por_dim.values()) / len(dimensoes), 1)
     print(f"  {'agregado':<11} {agregado / 100:6.1%}")
+    resposta_ok = None
+    com_idioma = [(m, p) for m, p in validos if "idioma" in m["esperado"]]
+    if com_idioma:
+        ok = sum(1 for m, p in com_idioma if detectar(p.resposta_sugerida).codigo == m["esperado"]["idioma"])
+        resposta_ok = round(ok / len(com_idioma) * 100, 1)
+        print(f"  resposta no idioma do cliente: {ok}/{len(com_idioma)} = {ok / len(com_idioma):.1%}")
     n_ex = [e for p, e in resultados if p is not None]
     if any(n_ex):
         print(f"  exemplos por mensagem: {sum(n_ex) / len(n_ex):.1f}")
@@ -120,6 +130,7 @@ def avaliar(nome, msgs, resultados, dimensoes, max_erros):
         if len(erros) > max_erros:
             print(f"   … e mais {len(erros) - max_erros}")
     return {"classificadas": len(validos), "n": len(msgs), "por_dimensao": por_dim, "agregado": agregado,
+            "resposta_no_idioma_pct": resposta_ok,
             "confusao_urgencia": {f"{a}->{b}": v for (a, b), v in sorted(conf.items())}, "erros": erros}
 
 
@@ -165,7 +176,7 @@ def main() -> int:
         modos = [m for m in modos if m == "regras"]
 
     msgs = json.loads(Path(args.arquivo).read_text(encoding="utf-8"))[: args.limite]
-    dimensoes = [d for d in DIMENSOES_CLASSIFICACAO if all(d in m["esperado"] for m in msgs)]
+    dimensoes = [d for d in DIMENSOES_CLASSIFICACAO + ("idioma",) if all(d in m["esperado"] for m in msgs)]
     if "fewshot" in modos and "equipe" not in dimensoes:
         print("Aviso: o few-shot precisa do rótulo de equipe; este arquivo não tem. Pulando o modo fewshot.")
         modos.remove("fewshot")

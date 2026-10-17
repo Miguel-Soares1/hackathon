@@ -16,7 +16,7 @@ mensagens parecidas, sem fine-tuning (indisponível na API do DeepSeek), e a mel
 - **Entrada:** a mensagem nova e os tickets já revisados (confirmados ou corrigidos), com seus embeddings locais.
 - **Processamento:** selecionar até `FEWSHOT_K` (padrão 4) revisados com similaridade de cosseno ≥ `FEWSHOT_SIM_MIN`
   (padrão 0,45) e enviá-los ao LLM como exemplos, com os valores efetivos (a última correção).
-- **Persistência:** cada classificação grava `prompt_version` (`v1`, `v2`, `v2+fewshot`, `regras`) e os ids dos exemplos.
+- **Persistência:** cada classificação grava `prompt_version` (`v1`, `v2`, `v3`, com ou sem `+fewshot`, e `regras`) e os ids dos exemplos.
 - **Saída:** taxa de acerto por versão do prompt no painel e em `/metricas`; avaliação offline em um conjunto fixo.
 
 ## Critérios de Aceitação

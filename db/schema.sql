@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS classifications (
   sentimento VARCHAR(10) NOT NULL,
   equipe VARCHAR(30) NOT NULL,
   resposta_sugerida TEXT NOT NULL,
+  -- Idioma do cliente (ISO 639-1); a resposta sugerida sai no mesmo idioma (ADR-015).
+  idioma VARCHAR(5) NOT NULL DEFAULT 'pt',
   conf_assunto DECIMAL(4,3) NOT NULL,
   conf_urgencia DECIMAL(4,3) NOT NULL,
   conf_sentimento DECIMAL(4,3) NOT NULL,
@@ -112,7 +114,7 @@ INSERT IGNORE INTO app_config (chave, valor) VALUES
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
-  cl.origem, cl.prompt_version, cl.exemplos,
+  cl.origem, cl.prompt_version, cl.exemplos, cl.idioma,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,
   cl.resposta_sugerida AS resposta_original,

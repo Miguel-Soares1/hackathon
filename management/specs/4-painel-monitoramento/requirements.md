@@ -1,7 +1,7 @@
 ---
 name: Painel de Monitoramento e Métricas
 status: implemented
-references: [1, 2, 3, 5, 6]
+references: [1, 2, 3, 5, 6, 9]
 ---
 
 # Painel de Monitoramento e Métricas
@@ -33,6 +33,7 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 - [x] O detalhe do ticket mostra a versão do prompt e os tickets revisados usados como exemplo (Spec 6).
 - [x] O painel exibe a taxa de acerto por versão do prompt (Spec 6).
 - [x] Sem a `API_KEY`, o painel não carrega dados.
+- [x] A fila e o detalhe mostram o idioma do cliente, e Métricas mostra a distribuição de idiomas (Spec 9).
 
 ## Fora de Escopo (V1)
 
@@ -41,4 +42,4 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 
 ## Dependências
 
-- Spec 1, Spec 2, Spec 3, Spec 5 e Spec 6.
+- Spec 1, Spec 2, Spec 3, Spec 5, Spec 6 e Spec 9.

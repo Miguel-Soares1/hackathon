@@ -46,7 +46,7 @@ def test_k_zero_ou_sem_candidatos_nao_seleciona_nada():
 def test_exemplos_vao_no_prompt_antes_da_mensagem_e_marcam_a_versao():
     http, chamadas = cliente_http(ok(VALIDO))
     c = classifier.classificar(PIX, settings(), http, exemplos=[ex(7, "Pix caiu de novo", "critica")])
-    assert c.prompt_version == "v2+fewshot" and c.exemplos == [7]
+    assert c.prompt_version == f"{classifier.PROMPT_VERSION}+fewshot" and c.exemplos == [7]
     corpo = json.loads(chamadas[0].content)
     assert "exemplos_revisados" in corpo["messages"][0]["content"]
     usuario = corpo["messages"][1]["content"]
@@ -57,7 +57,7 @@ def test_exemplos_vao_no_prompt_antes_da_mensagem_e_marcam_a_versao():
 def test_sem_exemplos_o_prompt_e_a_versao_base():
     http, chamadas = cliente_http(ok(VALIDO))
     c = classifier.classificar(PIX, settings(), http)
-    assert c.prompt_version == "v2" and c.exemplos == []
+    assert c.prompt_version == classifier.PROMPT_VERSION and c.exemplos == []
     assert "exemplos_revisados" not in json.loads(chamadas[0].content)["messages"][0]["content"]
 
 
@@ -70,7 +70,7 @@ def test_texto_de_exemplo_nao_consegue_fechar_os_blocos():
 def test_llm_nao_consegue_forjar_versao_origem_ou_exemplos():
     http, _ = cliente_http(ok({**VALIDO, "prompt_version": "v9", "origem": "fallback", "exemplos": [666]}))
     c = classifier.classificar(PIX, settings(), http)
-    assert (c.prompt_version, c.origem, c.exemplos) == ("v2", "llm", [])
+    assert (c.prompt_version, c.origem, c.exemplos) == (classifier.PROMPT_VERSION, "llm", [])
 
 
 def test_fallback_marca_a_versao_regras():
@@ -119,19 +119,20 @@ def test_pipeline_passa_os_exemplos_e_grava_a_versao(client, db, monkeypatch):
     with db.connect() as conn:
         row = conn.execute(text("SELECT prompt_version, exemplos FROM classifications WHERE ticket_id = :id"),
                            {"id": tid}).fetchone()
-    assert (row.prompt_version, row.exemplos) == ("v2+fewshot", str(revisado))
+    assert (row.prompt_version, row.exemplos) == (f"{classifier.PROMPT_VERSION}+fewshot", str(revisado))
     t = client.get(f"/tickets/{tid}", headers=CHAVE).json()
-    assert t["prompt_version"] == "v2+fewshot" and t["exemplos"] == str(revisado)
+    assert t["prompt_version"] == f"{classifier.PROMPT_VERSION}+fewshot" and t["exemplos"] == str(revisado)
 
 
 def test_precisao_por_versao_separa_as_versoes(client, db):
     a, b = novo_ticket(client), novo_ticket(client, "Como altero o e-mail do cadastro?")
     with db.begin() as conn:
-        conn.execute(text("UPDATE classifications SET prompt_version = 'v2+fewshot' WHERE ticket_id = :id"), {"id": b})
+        conn.execute(text("UPDATE classifications SET prompt_version = :pv WHERE ticket_id = :id"),
+                     {"pv": f"{classifier.PROMPT_VERSION}+fewshot", "id": b})
     corrections.registrar_correcoes(a, {"urgencia": "alta"})
     corrections.confirmar_revisao(b)
 
     por_versao = {v["prompt_version"]: v for v in corrections.precisao_por_versao()}
-    assert set(por_versao) == {"regras", "v2+fewshot"}
+    assert set(por_versao) == {"regras", f"{classifier.PROMPT_VERSION}+fewshot"}
     assert por_versao["regras"]["por_dimensao"]["urgencia"] == 0.0
-    assert por_versao["v2+fewshot"]["agregado"] == 100.0
+    assert por_versao[f"{classifier.PROMPT_VERSION}+fewshot"]["agregado"] == 100.0

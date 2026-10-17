@@ -14,6 +14,7 @@
 | 6 | Aprendizado com Correções (few-shot dinâmico, avaliação e versão do prompt) | implemented | 1, 2, 3 |
 | 7 | Canais Reais e Entrada Pública (WhatsApp, e-mail, formulário com limite de taxa) | implemented | 1 |
 | 8 | Deploy em Produção (Docker Compose, HTTPS, backup) | implemented (falta executar num servidor) | 4, 7 |
+| 9 | Idioma do Cliente e Resposta no Mesmo Idioma | implemented | 1, 4 |
 
 ## Status
 
@@ -38,6 +39,7 @@ graph TD
   S6["6 · Aprendizado com correções"]
   S7["7 · Canais reais"]
   S8["8 · Deploy"]
+  S9["9 · Idiomas"]
   S1 --> S2
   S1 --> S3
   S1 --> S5
@@ -50,4 +52,6 @@ graph TD
   S1 --> S7
   S4 --> S8
   S7 --> S8
+  S1 --> S9
+  S9 --> S4
 ```
