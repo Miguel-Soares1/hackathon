@@ -301,17 +301,6 @@ def create_app() -> FastAPI:
             background.add_task(pipeline.processar_ticket, ticket_id)
             return {"ticket_id": ticket_id, "status": "pendente"}
 
-        def _ticket_demo(ticket_id: int) -> dict:
-            try:
-                t = tickets.obter(ticket_id)
-            except tickets.TicketNaoEncontrado:
-                raise HTTPException(status_code=404, detail="ticket não encontrado")
-            campos = ("ticket_id", "canal", "cliente", "status", "origem", "assunto", "urgencia", "sentimento",
-                      "equipe", "resposta_sugerida")
-            return {k: t.get(k) for k in campos}
-
-        app.get("/demo/tickets/{ticket_id}", include_in_schema=False)(_ticket_demo)
-        app.get("/demo/email/tickets/{ticket_id}", include_in_schema=False)(_ticket_demo)
 
     @app.get("/tickets", dependencies=[Depends(exigir_chave)])
     def listar_tickets(limite: int = Query(100, ge=1, le=1000), apenas_abertos: bool = False):

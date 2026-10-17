@@ -75,15 +75,7 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
   @keyframes entra { from { background:var(--prs); } to { background:transparent; } }
   .item .l1 { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--mu); }
   .item .as { font-weight:600; margin:2px 0 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .chips { display:flex; gap:6px; flex-wrap:wrap; }
-  .chip { font-size:12px; padding:2px 8px; border-radius:10px; background:var(--side); color:var(--tx); }
-  .chip.u-critica, .chip.u-alta, .chip.s-negativo { background:var(--ers); color:var(--er); }
-  .chip.u-media { background:var(--was); color:var(--wa); }
-  .chip.u-baixa, .chip.s-positivo { background:var(--oks); color:var(--ok); }
-  .chip.wait { color:var(--mu); }
-  .resp { margin-top:8px; font-size:13px; color:var(--mu); border-left:3px solid var(--bd); padding-left:8px; }
-  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--pr); margin-right:6px; animation:pisca 1s infinite; }
-  @keyframes pisca { 50% { opacity:.25; } }
+  .prev { font-size:13px; color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   @media (max-width: 980px) { .app { grid-template-columns:1fr; height:auto; } nav, .busca { display:none; } .painel { min-height:340px; } }
 </style>
 </head>
@@ -122,9 +114,9 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
     </form>
   </section>
 
-  <section class="painel" aria-label="Enviados e triagem">
-    <h2>Enviados · triagem em tempo real</h2>
-    <div class="lista" id="lista"><div class="vazio" id="vazio">Os e-mails enviados aparecem aqui com a classificação feita pela IA.</div></div>
+  <section class="painel" aria-label="Enviados">
+    <h2>Enviados</h2>
+    <div class="lista" id="lista"><div class="vazio" id="vazio">Nenhum e-mail enviado ainda.</div></div>
   </section>
 </div>
 <script>
@@ -146,37 +138,14 @@ document.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click',
 $('novo').addEventListener('click', limpar);
 novaPessoa();
 
-const ROT = { cobranca:'Cobrança', pagamento:'Pagamento', acesso:'Acesso', instabilidade:'Instabilidade', cancelamento:'Cancelamento',
-  reclamacao:'Reclamação', duvida:'Dúvida', elogio:'Elogio', baixa:'baixa', media:'média', alta:'alta', critica:'crítica',
-  positivo:'positivo', neutro:'neutro', negativo:'negativo', financeiro:'Financeiro', suporte_tecnico:'Suporte técnico',
-  engenharia:'Engenharia', retencao:'Retenção', atendimento:'Atendimento' };
-const r = (v) => ROT[v] || v || '—';
 function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 
-function adicionar(id, de, assunto) {
+function adicionar(para, assunto, corpo) {
   $('vazio')?.remove();
-  const it = el('div', 'item'); it.id = 't' + id;
-  const l1 = el('div', 'l1'); l1.append(el('span', null, 'de ' + de), el('span', null, 'Ticket #' + id));
-  const ch = el('div', 'chips'); const w = el('span', 'chip wait'); w.prepend(el('span', 'dot')); w.append('Triagem em andamento…'); ch.append(w);
-  it.append(l1, el('div', 'as', assunto || '(sem assunto)'), ch);
+  const it = el('div', 'item');
+  const l1 = el('div', 'l1'); l1.append(el('span', null, 'Para: ' + para), el('span', null, new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })));
+  it.append(l1, el('div', 'as', assunto || '(sem assunto)'), el('div', 'prev', corpo.replace(/\s+/g, ' ')));
   $('lista').prepend(it); $('qtd').textContent = $('lista').querySelectorAll('.item').length;
-  acompanhar(id, 0);
-}
-async function acompanhar(id, n) {
-  try {
-    const resp = await fetch('/demo/email/tickets/' + id);
-    const t = await resp.json();
-    if (t.status === 'classificado') return mostrar(id, t);
-  } catch (_) {}
-  if (n < 60) setTimeout(() => acompanhar(id, n + 1), 1000);
-}
-function mostrar(id, t) {
-  const it = $('t' + id); if (!it) return;
-  const ch = it.querySelector('.chips'); ch.textContent = '';
-  ch.append(el('span', 'chip', r(t.assunto)), el('span', 'chip u-' + t.urgencia, 'Urgência ' + r(t.urgencia)),
-            el('span', 'chip s-' + t.sentimento, r(t.sentimento)), el('span', 'chip', '→ ' + r(t.equipe)));
-  if (t.origem === 'fallback') ch.append(el('span', 'chip wait', 'regras'));
-  if (t.resposta_sugerida) it.append(el('div', 'resp', 'Resposta sugerida: ' + t.resposta_sugerida));
 }
 
 $('f').addEventListener('submit', async (e) => {
@@ -190,7 +159,7 @@ $('f').addEventListener('submit', async (e) => {
   try {
     const resp = await fetch('/demo/email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(dados) });
     const d = await resp.json().catch(() => ({}));
-    if (resp.status === 202) { a.className = 'okt'; a.textContent = 'Mensagem enviada.'; adicionar(d.ticket_id, dados.de_email, dados.assunto);
+    if (resp.status === 202) { a.className = 'okt'; a.textContent = 'Mensagem enviada.'; adicionar(dados.para, dados.assunto, dados.corpo);
       $('assunto').value = ''; $('corpo').value = ''; novaPessoa(); }
     else { a.className = 'er'; a.textContent = d.detail || 'Não foi possível enviar.'; }
   } catch (_) { a.className = 'er'; a.textContent = 'API fora do ar? Confira o terminal do uvicorn.'; }

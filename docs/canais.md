@@ -46,8 +46,9 @@ Com a API rodando, abra **http://localhost:8000/demo** (abas WhatsApp · Instagr
 | `/demo/instagram` | Direct no celular | JSON idêntico ao da Meta → `canais.mensagens_instagram` |
 | `/demo/email` | webmail | e-mail RFC 5322 → `canais.email_para_mensagem` (o mesmo do IMAP) |
 
-Ou seja: do conversor em diante (ticket, triagem, incidentes, prazos, painel) é exatamente o caminho real. Ao lado do celular aparece a
-**visão do atendimento** com a classificação em tempo real; o ticket também aparece no painel Streamlit.
+Ou seja: do conversor em diante (ticket, triagem, incidentes, prazos, painel) é exatamente o caminho real.
+As telas são **só a visão do cliente**: ele manda a mensagem e não vê nenhuma classificação. A triagem aparece apenas no
+**painel do atendimento** (http://localhost:8000, com a `API_KEY`) — deixe as duas janelas lado a lado na apresentação.
 
 - **Cliente:** escolha na lista ou clique em **Outro cliente**. Mandar "Conta bloqueada" com 3 clientes diferentes gera um **incidente**.
 - Ligadas por padrão em desenvolvimento; **sempre desligadas** com `ENVIRONMENT=production`. Para desligar no dev: `DEMO=0`.

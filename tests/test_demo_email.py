@@ -1,5 +1,6 @@
 """Tela de demonstração do canal e-mail (/demo/email)."""
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from triagem.demo_email import email_demo_para_mensagem
 
@@ -22,15 +23,20 @@ def test_pagina_demo_disponivel_em_desenvolvimento(client):
     assert "connect-src 'self'" in r.headers["content-security-policy"]
 
 
-def test_envio_demo_cria_ticket_do_canal_email(client):
+def test_envio_demo_cria_ticket_do_canal_email(client, db):
     # Act
     r = client.post("/demo/email", json=EMAIL)
     # Assert
     assert r.status_code == 202
-    t = client.get(f"/demo/email/tickets/{r.json()['ticket_id']}").json()
-    assert t["canal"] == "email"
-    assert t["status"] == "classificado"  # o TestClient roda a tarefa em background antes de devolver
-    assert t["assunto"] is not None
+    with db.connect() as conn:
+        canal, status = conn.execute(text("SELECT canal, status FROM tickets WHERE id = :i"), {"i": r.json()["ticket_id"]}).one()
+    assert canal == "email" and status == "classificado"  # o TestClient roda a tarefa em background antes de devolver
+
+
+def test_tela_do_cliente_nao_expoe_a_triagem(client):
+    r = client.post("/demo/email", json=EMAIL)
+    assert client.get(f"/demo/email/tickets/{r.json()['ticket_id']}").status_code == 404
+    assert "triagem" not in client.get("/demo/email").text.lower()
 
 
 def test_envio_demo_respeita_filtro_de_remetente_automatico(client):

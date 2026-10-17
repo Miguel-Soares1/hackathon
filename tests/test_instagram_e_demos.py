@@ -110,12 +110,21 @@ def test_telas_de_demo_disponiveis(client):
     assert client.get("/demo/telegram").status_code == 404
 
 
-def test_demo_whatsapp_e_instagram_criam_ticket_do_canal(client):
+def test_demo_whatsapp_e_instagram_criam_ticket_do_canal(client, db):
     for canal, remetente in (("whatsapp", "5511987654321"), ("instagram", "mari.souza")):
         r = client.post(f"/demo/{canal}", json={"remetente": remetente, "nome": "Mariana", "texto": "não consigo entrar na conta"})
         assert r.status_code == 202
-        t = client.get(f"/demo/tickets/{r.json()['ticket_id']}").json()
-        assert t["canal"] == canal and t["status"] == "classificado"
+        with db.connect() as conn:
+            c, status = conn.execute(text("SELECT canal, status FROM tickets WHERE id = :i"), {"i": r.json()["ticket_id"]}).one()
+        assert c == canal and status == "classificado"
+
+
+def test_telas_de_conversa_nao_mostram_a_triagem_ao_cliente(client):
+    for canal in ("whatsapp", "instagram"):
+        html = client.get(f"/demo/{canal}").text.lower()
+        assert "triagem" not in html and "urgência" not in html and "/demo/tickets" not in html
+    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "não consigo entrar na conta"})
+    assert client.get(f"/demo/tickets/{r.json()['ticket_id']}").status_code == 404
 
 
 def test_demo_valida_remetente_por_canal(client):

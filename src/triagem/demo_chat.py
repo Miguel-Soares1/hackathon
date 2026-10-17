@@ -75,7 +75,7 @@ _PAGINA = r"""<!doctype html>
   .abas a { padding:5px 14px; border-radius:16px; color:var(--mu); text-decoration:none; font-size:13px; font-weight:600; }
   .abas a.on { background:var(--acento); color:#fff; }
   .tag-demo { margin-left:auto; font-size:12px; font-weight:600; color:var(--wa); background:var(--was); padding:4px 10px; border-radius:12px; }
-  .app { display:grid; grid-template-columns:minmax(320px,400px) 1fr; gap:24px; padding:0 20px 20px; max-width:1200px; margin:0 auto; }
+  .app { padding:0 20px 20px; max-width:440px; margin:0 auto; }
 
   .quem { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; color:var(--mu); }
   .quem select { min-width:0; font:inherit; color:var(--tx); background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:5px 8px; flex:1; }
@@ -94,9 +94,7 @@ _PAGINA = r"""<!doctype html>
   .b.ele { align-self:flex-start; background:var(--ele); color:var(--eletx); border-bottom-left-radius:4px; }
   [data-canal=instagram] .b { border-radius:20px; padding:9px 14px; }
   .b .h { display:block; text-align:right; font-size:11px; opacity:.65; margin-top:2px; }
-  .b .t.lido { color:var(--tick); opacity:1; }
   [data-canal=instagram] .b.eu .h { display:none; }
-  .visto { align-self:flex-end; font-size:11px; color:var(--mu); margin:-2px 6px 0; }
   .chips { display:flex; gap:6px; overflow-x:auto; padding:8px 10px 0; background:var(--fundo); scrollbar-width:none; }
   .chips button { flex:none; font:inherit; font-size:12px; border:1px solid var(--bd); background:var(--card); color:var(--tx); border-radius:14px; padding:5px 10px; cursor:pointer; }
   form { display:flex; gap:8px; padding:8px 10px 10px; background:var(--fundo); align-items:flex-end; }
@@ -105,26 +103,8 @@ _PAGINA = r"""<!doctype html>
   .env:disabled { opacity:.5; }
   #aviso { font-size:12px; color:var(--er); padding:0 14px 6px; background:var(--fundo); min-height:4px; }
 
-  .painel { background:var(--card); border:1px solid var(--bd); border-radius:16px; overflow:hidden; align-self:start; }
-  .painel h2 { font-size:15px; margin:0; padding:12px 16px; border-bottom:1px solid var(--bd); background:var(--side); }
-  .painel p.s { margin:0; padding:8px 16px; font-size:13px; color:var(--mu); border-bottom:1px solid var(--bd); }
-  .lista { max-height:calc(100vh - 210px); overflow:auto; }
-  .vazio { color:var(--mu); padding:28px 16px; font-size:14px; text-align:center; }
-  .item { padding:12px 16px; border-bottom:1px solid var(--bd); animation:pisca1 .6s ease-out; }
-  @keyframes pisca1 { from { background:var(--side); } }
-  .l1 { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--mu); }
-  .tx { margin:3px 0 7px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-  .tags { display:flex; gap:6px; flex-wrap:wrap; }
-  .chip { font-size:12px; padding:2px 8px; border-radius:10px; background:var(--side); }
-  .chip.u-critica, .chip.u-alta, .chip.s-negativo { background:var(--ers); color:var(--er); }
-  .chip.u-media { background:var(--was); color:var(--wa); }
-  .chip.u-baixa, .chip.s-positivo { background:var(--oks); color:var(--ok); }
-  .chip.wait { color:var(--mu); }
-  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--acento); margin-right:6px; animation:pp 1s infinite; }
-  @keyframes pp { 50% { opacity:.25; } }
-  .resp { margin-top:8px; font-size:13px; color:var(--mu); border-left:3px solid var(--bd); padding-left:8px; }
   .app > * { min-width:0; }
-  @media (max-width: 820px) { .app { grid-template-columns:1fr; padding:0 16px 16px; } .topo { padding:12px 16px; } .celular { border-width:8px; } .celular { height:600px; } .lista { max-height:none; } }
+  @media (max-width: 820px) { .app { padding:0 16px 16px; } .topo { padding:12px 16px; } .celular { border-width:8px; } .celular { height:600px; } }
 </style>
 </head>
 <body>
@@ -149,11 +129,6 @@ _PAGINA = r"""<!doctype html>
       <div id="aviso" role="status"></div>
     </div>
   </div>
-  <section class="painel" aria-label="Visão do atendimento">
-    <h2>Visão do atendimento · triagem em tempo real</h2>
-    <p class="s">O cliente não vê isto: é o que chega para a equipe, já classificado pela IA.</p>
-    <div class="lista" id="lista"><div class="vazio" id="vazio">Mande uma mensagem pelo celular ao lado.</div></div>
-  </section>
 </div>
 <script>
 const CANAL = document.documentElement.dataset.canal;
@@ -183,11 +158,6 @@ trocar(Math.floor(Math.random() * PESSOAS.length));
 document.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click', () => { $('texto').value = MODELOS[+b.dataset.m]; $('texto').focus(); }));
 $('texto').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
 
-const ROT = { cobranca:'Cobrança', pagamento:'Pagamento', acesso:'Acesso', instabilidade:'Instabilidade', cancelamento:'Cancelamento',
-  reclamacao:'Reclamação', duvida:'Dúvida', elogio:'Elogio', baixa:'baixa', media:'média', alta:'alta', critica:'crítica',
-  positivo:'positivo', neutro:'neutro', negativo:'negativo', financeiro:'Financeiro', suporte_tecnico:'Suporte técnico',
-  engenharia:'Engenharia', retencao:'Retenção', atendimento:'Atendimento' };
-const r = (v) => ROT[v] || v || '—';
 function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 const hora = () => new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
 const rolar = () => { const c = $('chat'); c.scrollTop = c.scrollHeight; };
@@ -195,27 +165,6 @@ const rolar = () => { const c = $('chat'); c.scrollTop = c.scrollHeight; };
 function bolha(texto) {
   const b = el('div', 'b eu', texto); const h = el('span', 'h', hora() + ' '); const t = el('span', 't', '✓'); h.append(t); b.append(h);
   $('chat').append(b); rolar(); return t;
-}
-function itemPainel(id, quem, texto) {
-  $('vazio')?.remove();
-  const it = el('div', 'item'); it.id = 't' + id;
-  const l1 = el('div', 'l1'); l1.append(el('span', null, quem), el('span', null, 'Ticket #' + id));
-  const tags = el('div', 'tags'); const w = el('span', 'chip wait'); w.append(el('span', 'dot'), 'Triagem em andamento…'); tags.append(w);
-  it.append(l1, el('div', 'tx', texto), tags); $('lista').prepend(it);
-}
-function mostrar(id, t, tick) {
-  const it = $('t' + id); if (!it) return;
-  const tags = it.querySelector('.tags'); tags.textContent = '';
-  tags.append(el('span', 'chip', r(t.assunto)), el('span', 'chip u-' + t.urgencia, 'Urgência ' + r(t.urgencia)),
-              el('span', 'chip s-' + t.sentimento, r(t.sentimento)), el('span', 'chip', '→ ' + r(t.equipe)));
-  if (t.origem === 'fallback') tags.append(el('span', 'chip wait', 'regras'));
-  if (t.resposta_sugerida) it.append(el('div', 'resp', 'Resposta sugerida: ' + t.resposta_sugerida));
-  tick.textContent = '✓✓'; tick.classList.add('lido');
-  if (CANAL === 'instagram') { $('chat').querySelectorAll('.visto').forEach((v) => v.remove()); $('chat').append(el('div', 'visto', 'Visto')); rolar(); }
-}
-async function acompanhar(id, tick, n) {
-  try { const t = await (await fetch('/demo/tickets/' + id)).json(); if (t.status === 'classificado') return mostrar(id, t, tick); } catch (_) {}
-  if (n < 60) setTimeout(() => acompanhar(id, tick, n + 1), 1000);
 }
 
 $('f').addEventListener('submit', async (e) => {
@@ -229,8 +178,7 @@ $('f').addEventListener('submit', async (e) => {
       body: JSON.stringify({ remetente: p[1], nome: CANAL === 'whatsapp' ? p[0] : null, texto }) });
     const d = await resp.json().catch(() => ({}));
     if (resp.status === 202) {
-      tick.textContent = '✓✓';
-      itemPainel(d.ticket_id, p[0], texto); acompanhar(d.ticket_id, tick, 0);
+      tick.textContent = '✓✓';  // entregue
     } else { tick.textContent = '!'; $('aviso').textContent = d.detail || 'Não foi possível enviar.'; }
   } catch (_) { tick.textContent = '!'; $('aviso').textContent = 'API fora do ar? Confira o terminal do uvicorn.'; }
   finally { $('b').disabled = false; $('texto').focus(); }
