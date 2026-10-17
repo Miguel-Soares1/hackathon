@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS tickets (
   status VARCHAR(20) NOT NULL DEFAULT 'pendente',
   received_at DATETIME NOT NULL,
   first_response_at DATETIME NULL,
+  desfecho VARCHAR(12) NULL,
+  encerrado_em DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
   INDEX idx_tickets_status (status),
@@ -130,6 +132,7 @@ INSERT IGNORE INTO app_config (chave, valor) VALUES
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
+  t.desfecho, t.encerrado_em,
   cl.origem, cl.prompt_version, cl.exemplos, cl.idioma,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,

@@ -17,7 +17,7 @@ const POLITICA_TEXTO = {
   congelar_funcionalidades: "Error budget esgotado: congelar funcionalidades novas e corrigir as causas dos atrasos.",
   sem_dados: "Ainda não há tickets com desfecho para calcular o SLI.",
 };
-const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", nova: "Simular mensagem" };
+const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", atendimentos: "Atendimentos" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
 
@@ -28,6 +28,7 @@ const estado = {
   resumo: null,
   pagina: "dashboard",
   lista: "espera",
+  canal: "",
   selecionado: null,
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
   triagemAberta: false,
@@ -61,6 +62,50 @@ const pill = (u) => (u ? selo(u, `u-${esc(u)}`) : "—");
 const inicial = (nome) => esc((nome || "?").trim().replace(/^@/, "").slice(0, 1).toUpperCase() || "?");
 const aguardando = (t) => t.aguardando ?? !t.first_response_at;
 
+// Canal de origem do cliente: rótulo, cor e ícone genérico (sem logotipos de marca).
+const CANAIS = {
+  whatsapp: { rotulo: "WhatsApp", ic: '<path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.8z"/><path d="M9 9.5c.3 1.6 1.9 3.3 3.6 3.8l1-1 1.6.7-.3 1.4c-2.9.2-6-2.9-5.9-5.9l1.4-.3.7 1.6z"/>' },
+  instagram: { rotulo: "Instagram", ic: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r=".6"/>' },
+  email: { rotulo: "E-mail", ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>' },
+  chat: { rotulo: "Chat do site", ic: '<path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l2.1-5.7A8.4 8.4 0 1 1 21 11.5z"/>' },
+  formulario: { rotulo: "Formulário", ic: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>' },
+  outro: { rotulo: "Outro canal", ic: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>' },
+};
+function chaveCanal(c) {
+  const v = String(c || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+  if (v.startsWith("whats")) return "whatsapp";
+  if (v.startsWith("insta")) return "instagram";
+  if (v.startsWith("email") || v === "mail") return "email";
+  if (v.startsWith("formulario") || v === "web") return "formulario";
+  if (v.startsWith("chat")) return "chat";
+  return "outro";
+}
+const svgCanal = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${CANAIS[k].ic}</svg>`;
+function tagCanal(canal) {
+  const k = chaveCanal(canal);
+  return `<span class="canal c-${k}">${svgCanal(k)}${esc(CANAIS[k].rotulo)}</span>`;
+}
+// Nome amigável + contato: "Ana (5511...)" -> Ana / 5511...; "instagram:ana.r" -> @ana.r
+function telefone(n) {
+  const d = String(n).replace(/\D/g, "");
+  const m = d.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
+  return m ? `+55 (${m[1]}) ${m[2]}-${m[3]}` : "+" + d;
+}
+function contato(t) {
+  const bruto = (t.cliente || "").trim();
+  if (!bruto) return { nome: "Cliente sem identificação", detalhe: "" };
+  const ig = bruto.match(/^instagram:(.+)$/i);
+  if (ig) return { nome: "@" + ig[1], detalhe: "" };
+  const wa = bruto.match(/^(.*?)\s*\((\+?\d{8,15})\)$/);
+  if (wa) return { nome: wa[1] || wa[2], detalhe: telefone(wa[2]) };
+  return { nome: bruto, detalhe: "" };
+}
+function avatar(t, grande) {
+  const k = chaveCanal(t.canal);
+  return `<div class="avatar${grande ? " grande" : ""}">${inicial(contato(t).nome)}<span class="avatar-canal c-${k}" title="${esc(CANAIS[k].rotulo)}">${svgCanal(k)}</span></div>`;
+}
+const horaCurta = (iso) => (hora(iso).split(", ")[1] || hora(iso));
+
 class NaoAutorizado extends Error {}
 
 async function api(caminho, opcoes = {}) {
@@ -81,7 +126,7 @@ async function api(caminho, opcoes = {}) {
 async function carregar() {
   try {
     const [tickets, resumo, incidentes] = await Promise.all([
-      api("/tickets?limite=500"),
+      api("/tickets?limite=1000"),
       api("/metricas"),
       api(`/incidentes?todos_os_grupos=${$("#todos-grupos").checked}`),
     ]);
@@ -91,11 +136,14 @@ async function carregar() {
     renderAlertas(incidentes.filter((g) => g.status === "incidente"));
     renderMetricas();
     renderCartoes();
+    renderRelatorio();
     if (!estado.editando) renderDetalhe();
     else if (estado.selecionado) carregarConversa(estado.selecionado); // a conversa continua atualizando
     renderIncidentes(incidentes);
     if (estado.pagina === "correcoes") renderCorrecoes(await api("/correcoes"));
-    $("#status").textContent = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
+    const agora = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
+    $("#status").textContent = agora;
+    $("#hero-hora").textContent = agora;
   } catch (e) {
     if (e instanceof NaoAutorizado) return sair("Chave inválida ou expirada.");
     $("#status").textContent = `⚠ ${e.message}`;
@@ -114,18 +162,46 @@ setInterval(() => {
 }, 3000);
 
 // ---------------------------------------------------------------- dashboard
+const ICONES = {
+  relogio: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  balao: '<path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l2.1-5.7A8.4 8.4 0 1 1 21 11.5z"/>',
+  xis: '<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.5L16 9.5"/>',
+  alerta: '<path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  sirene: '<path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M5 21h14v-3H5zM12 3v2M4.2 6.2l1.4 1.4M19.8 6.2l-1.4 1.4"/>',
+  medidor: '<path d="M3.5 17a9 9 0 1 1 17 0"/><path d="m12 13 4-4"/>',
+  alvo: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+};
+const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
+
+function cardInd(ic, rotulo, valor, lista) {
+  const attrs = lista ? ` role="button" tabindex="0" data-ir-lista="${lista}" title="Abrir em Atendimento"` : "";
+  return `<div class="card-ind${lista ? " clicavel" : ""}"${attrs}><div class="card-icone">${icone(ic)}</div>
+    <div><div class="card-rotulo">${esc(rotulo)}</div><div class="card-valor">${esc(valor)}</div></div></div>`;
+}
+
+// Situação de cada cliente: em espera (falta responder), em atendimento (respondido e em aberto), cancelado, encerrado.
+function situacao(t) {
+  if (t.desfecho) return t.desfecho === "cancelado" ? "cancelado" : "encerrado";
+  return aguardando(t) ? "espera" : "atendimento";
+}
+
 function renderKpis() {
+  const n = { espera: 0, atendimento: 0, cancelado: 0, encerrado: 0 };
+  estado.tickets.forEach((t) => { n[situacao(t)] += 1; });
+  $("#cards-atendimento").innerHTML = [
+    cardInd("relogio", "Clientes em espera", n.espera, "espera"),
+    cardInd("balao", "Clientes em atendimento", n.atendimento, "atendimento"),
+    cardInd("xis", "Clientes cancelados", n.cancelado, "finalizados"),
+    cardInd("check", "Clientes encerrados", n.encerrado, "finalizados"),
+  ].join("");
   const r = estado.resumo;
-  const itens = [
-    ["Tickets", estado.tickets.length],
-    ["Em risco / estourados", r.prazos_em_risco.length],
-    ["Incidentes", r.incidentes],
-    [`SLI (meta ${r.sli.alvo_pct.toFixed(0)}%)`, pct(r.sli.sli_pct)],
-    [`Precisão (${r.precisao.revisados} revisados)`, pct(r.precisao.agregado)],
-  ];
-  $("#kpis").innerHTML = itens
-    .map(([rot, val]) => `<div class="kpi"><div class="rotulo">${esc(rot)}</div><div class="valor">${esc(val)}</div></div>`)
-    .join("");
+  $("#kpis").innerHTML = [
+    cardInd("alerta", "Prazos em risco", r.prazos_em_risco.length),
+    cardInd("sirene", "Incidentes", r.incidentes),
+    cardInd("medidor", `SLI (meta ${r.sli.alvo_pct.toFixed(0)}%)`, pct(r.sli.sli_pct)),
+    cardInd("alvo", `Precisão da IA (${r.precisao.revisados} rev.)`, pct(r.precisao.agregado)),
+  ].join("");
 }
 
 function renderAlertas(incidentes) {
@@ -189,39 +265,48 @@ function renderMetricas() {
 // ---------------------------------------------------------------- atendimento: fila estilo chat
 function filtrados() {
   const q = $("#busca").value.trim().toLowerCase();
+  const base = estado.canal ? estado.tickets.filter((t) => chaveCanal(t.canal) === estado.canal) : estado.tickets;
   const todos = q
-    ? estado.tickets.filter((t) => [t.cliente, t.canal, t.texto, t.ultima_texto, t.assunto].join(" ").toLowerCase().includes(q))
-    : estado.tickets;
-  const espera = todos.filter(aguardando).sort((a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 4) - (ORDEM_URGENCIA[b.urgencia] ?? 4)
+    ? base.filter((t) => [t.cliente, t.canal, t.texto, t.ultima_texto, t.assunto].join(" ").toLowerCase().includes(q))
+    : base;
+  const espera = todos.filter((t) => situacao(t) === "espera").sort((a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 4) - (ORDEM_URGENCIA[b.urgencia] ?? 4)
     || (b.sla.consumido_pct ?? 0) - (a.sla.consumido_pct ?? 0));
-  const respondidos = todos.filter((t) => !aguardando(t));
-  return { espera, respondidos };
+  const atendimento = todos.filter((t) => situacao(t) === "atendimento");
+  const finalizados = todos.filter((t) => t.desfecho);
+  return { espera, atendimento, finalizados };
 }
 
 // O texto vem do cliente (não confiável): tudo passa por esc() (threat model T19).
 function cartao(t) {
-  const s = t.sla;
+  const c = contato(t);
   const ultimo = t.ultima_texto || t.texto || "";
-  const novo = t.first_response_at && aguardando(t) ? selo("cliente respondeu", "s-novo") : "";
+  const marcas = [];
+  if (t.desfecho) marcas.push(selo(t.desfecho, t.desfecho === "cancelado" ? "u-critica" : "s-no_prazo"));
+  else {
+    if (t.first_response_at && aguardando(t)) marcas.push(selo("nova mensagem", "s-novo"));
+    if (t.urgencia === "critica" || t.urgencia === "alta") marcas.push(pill(t.urgencia));
+    if (aguardando(t) && (t.sla.estado === "estourado" || t.sla.estado === "em_risco")) marcas.push(selo(ROTULO_SLA_CURTO[t.sla.estado], `s-${esc(t.sla.estado)}`));
+  }
   return `<button type="button" class="cartao${t.ticket_id === estado.selecionado ? " sel" : ""}" data-id="${t.ticket_id}">
-    <div class="topo"><div class="avatar">${inicial(t.cliente)}</div>
-      <div><div class="nome">${esc(t.cliente || "Cliente sem identificação")}</div>
-      <div class="sub">#${t.ticket_id} · ${esc(t.canal)} · ${esc(hora(t.received_at))}</div></div></div>
-    <div class="linha-c">${novo}${t.urgencia ? pill(t.urgencia) : ""}${selo(ROTULO_SLA_CURTO[s.estado] || s.estado, `s-${esc(s.estado)}`)}${t.idioma && t.idioma !== "pt" ? selo(t.idioma.toUpperCase(), "s-respondido") : ""}</div>
-    <div class="linha-c"><b>Fila:</b> ${esc((t.equipe || "a definir").replace("_", " "))} · <b>Assunto:</b> ${esc(t.assunto || "classificando")}</div>
-    <div class="msg">${esc(ultimo.length > 110 ? ultimo.slice(0, 110) + "…" : ultimo)}</div>
+    ${avatar(t)}
+    <div class="cartao-corpo">
+      <div class="cartao-linha"><span class="nome">${esc(c.nome)}</span><span class="quando">${esc(horaCurta(t.ultima_entrada_at || t.received_at))}</span></div>
+      <div class="cartao-linha">${tagCanal(t.canal)}${marcas.join("")}</div>
+      <div class="msg">${esc(ultimo)}</div>
+    </div>
   </button>`;
 }
 
 function renderCartoes() {
-  const { espera, respondidos } = filtrados();
-  $("#qtd-espera").textContent = espera.length;
-  $("#qtd-respondidos").textContent = respondidos.length;
+  const listas = filtrados();
+  $("#qtd-espera").textContent = listas.espera.length;
+  $("#qtd-atendimento").textContent = listas.atendimento.length;
+  $("#qtd-finalizados").textContent = listas.finalizados.length;
   const badge = $("#badge-espera");
-  const totalEspera = estado.tickets.filter(aguardando).length;
+  const totalEspera = estado.tickets.filter((t) => situacao(t) === "espera").length;
   badge.hidden = !totalEspera;
   badge.textContent = totalEspera;
-  const itens = (estado.lista === "espera" ? espera : respondidos).slice(0, 80);
+  const itens = (listas[estado.lista] || listas.espera).slice(0, 80);
   $("#cartoes").innerHTML = itens.map(cartao).join("") || `<div class="vazio">Nenhum atendimento aqui.</div>`;
 }
 
@@ -233,26 +318,30 @@ function renderDetalhe() {
   const t = estado.tickets.find((x) => x.ticket_id === estado.selecionado);
   const painel = $("#detalhe");
   if (!t) {
-    painel.innerHTML = `<div class="vazio">Escolha um atendimento na lista para conversar com o cliente, ver a triagem e a resposta sugerida, e corrigir a IA.</div>`;
+    painel.innerHTML = `<div class="vazio">Escolha um atendimento na lista para conversar com o cliente.</div>`;
     return;
   }
   const classificado = t.status === "classificado";
+  const c = contato(t);
+  const acoes = t.desfecho
+    ? `<span class="finalizado">${t.desfecho === "cancelado" ? "Cancelado" : "Encerrado"} · ${esc(horaCurta(t.encerrado_em))}</span><button type="button" class="btn pequeno" data-acao="reabrir">↺ Reabrir</button>`
+    : `<button type="button" class="btn pequeno ok" data-acao="encerrar">✓ Encerrar</button><button type="button" class="btn pequeno perigo" data-acao="cancelar">✕ Cancelar</button>`;
   // Conversa (ADR-016): a primeira mensagem do cliente aparece até a conversa carregar.
   painel.innerHTML = `
-    <div class="cab-chat"><div class="avatar">${inicial(t.cliente)}</div>
-      <div><div class="nome">${esc(t.cliente || "Cliente sem identificação")}</div>
-      <div class="sub">#${t.ticket_id} · ${esc(t.canal)} · ${esc(hora(t.received_at))} · ${esc(ROTULO_ESTADO[t.sla.estado] || t.sla.estado)}</div></div></div>
+    <div class="cab-chat">${avatar(t, true)}
+      <div class="cab-info"><div class="nome">${esc(c.nome)}</div>
+        <div class="sub">${tagCanal(t.canal)}${c.detalhe ? `<span>${esc(c.detalhe)}</span>` : ""}<span>#${t.ticket_id}</span></div></div>
+      <div class="cab-acoes">${acoes}</div></div>
     <div id="conversa" class="conversa" aria-live="polite">${bolha({ direcao: "entrada", autor: t.cliente, texto: t.texto, created_at: t.received_at })}</div>
-    <form id="form-chat" class="form-chat">
-      <textarea name="texto" maxlength="2000" required placeholder="Escreva a resposta ao cliente…" aria-label="Resposta ao cliente"></textarea>
-      <div class="acoes-chat">
-        <button type="submit" class="btn primario">Enviar</button>
-        ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao" data-acao="sugestao">💡 Usar resposta sugerida pela IA</button>` : ""}
+    <form id="form-chat" class="form-chat"${t.desfecho ? " hidden" : ""}>
+      ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao">💡 Usar resposta sugerida pela IA</button>` : ""}
+      <div class="compositor">
+        <textarea name="texto" rows="2" maxlength="2000" required placeholder="Responder pelo ${esc(CANAIS[chaveCanal(t.canal)].rotulo)}…" aria-label="Resposta ao cliente"></textarea>
+        <button type="submit" class="btn primario" aria-label="Enviar">Enviar</button>
       </div>
     </form>
-    <p class="nota">Modo demonstração: a resposta fica registrada nesta conversa e conta como 1ª resposta (SLA). O envio ao canal do cliente (WhatsApp, e-mail, chat) será integrado depois.</p>
     <details class="triagem" id="triagem" ${estado.triagemAberta ? "open" : ""}>
-      <summary>Triagem da IA e correções</summary>
+      <summary>Triagem da IA${classificado ? ` <span class="resumo-triagem">${esc(t.assunto || "")} · ${esc((t.equipe || "").replace("_", " "))}</span>` : ""}</summary>
       <div class="corpo">${classificado ? triagem(t) : `<p class="muted">⏳ A IA ainda está classificando este atendimento.</p>`}</div>
     </details>`;
   carregarConversa(t.ticket_id);
@@ -290,8 +379,8 @@ function triagem(t) {
 // ---------------------------------------------------------------- conversa (chat do atendimento)
 function bolha(m) {
   const lado = m.direcao === "saida" ? "saida" : "entrada";
-  return `<div class="bolha ${lado}"><div class="bolha-autor">${esc(m.autor || (lado === "saida" ? "Atendente" : "Cliente"))}
-    · ${esc(hora(m.created_at))}</div>${esc(m.texto)}</div>`;
+  const autor = lado === "saida" ? m.autor || "Atendente" : contato({ cliente: m.autor }).nome.replace("Cliente sem identificação", "Cliente");
+  return `<div class="bolha ${lado}">${esc(m.texto)}<div class="bolha-autor">${esc(autor)} · ${esc(horaCurta(m.created_at))}</div></div>`;
 }
 
 async function carregarConversa(id) {
@@ -356,6 +445,11 @@ async function acaoDetalhe(acao) {
   try {
     if (acao === "revisar") await api(`/tickets/${id}/revisao`, { method: "POST" });
     if (acao === "responder") await api(`/tickets/${id}/resposta`, { method: "POST", body: "{}" });
+    if (acao === "encerrar" || acao === "cancelar") {
+      const desfecho = acao === "encerrar" ? "encerrado" : "cancelado";
+      await api(`/tickets/${id}/encerrar`, { method: "POST", body: JSON.stringify({ desfecho }) });
+    }
+    if (acao === "reabrir") await api(`/tickets/${id}/reabrir`, { method: "POST" });
   } catch (e) {
     alertaStatus(e.message);
   }
@@ -380,19 +474,6 @@ function alertaStatus(msg) {
   $("#status").textContent = `⚠ ${msg}`;
 }
 
-async function enviarMensagem(form) {
-  const dados = Object.fromEntries(new FormData(form));
-  if (!dados.cliente) delete dados.cliente;
-  const st = $("#nova-status");
-  try {
-    const r = await api("/webhook/mensagens", { method: "POST", body: JSON.stringify(dados) });
-    st.textContent = `✅ Ticket #${r.ticket_id} recebido. Veja em Atendimento → Em espera em instantes.`;
-    form.texto.value = "";
-    setTimeout(carregar, 1500);
-  } catch (e) {
-    st.textContent = `⚠ ${e.message}`;
-  }
-}
 
 function irPara(pagina) {
   estado.pagina = pagina;
@@ -401,6 +482,7 @@ function irPara(pagina) {
   });
   document.querySelectorAll(".pagina").forEach((s) => { s.hidden = s.id !== `pagina-${pagina}`; });
   $("#titulo").textContent = TITULOS[pagina];
+  $("#titulo").hidden = pagina === "dashboard" || pagina === "atendimentos";
   gravarArmazenado(sessionStorage, "triagem.pagina", pagina);
   if (pagina === "correcoes") api("/correcoes").then(renderCorrecoes).catch((e) => alertaStatus(e.message));
 }
@@ -412,6 +494,196 @@ function abrirTicket(id) {
   renderDetalhe();
 }
 
+// ---------------------------------------------------------------- atendimentos: relatório de controle
+const ROTULO_SITUACAO = { espera: "Em Espera", atendimento: "Em Atendimento", encerrado: "Finalizado", cancelado: "Cancelado" };
+const ROTULO_PERIODO = { hoje: "Hoje", 7: "Últimos 7 dias", 30: "Últimos 30 dias", tudo: "Todo o período", personalizado: "Personalizado" };
+const rel = {
+  status: "",
+  busca: "",
+  filtros: { periodo: "hoje", de: "", ate: "", canal: "", equipe: "", urgencia: "" },
+  fixados: new Set((() => { try { return JSON.parse(lerArmazenado(localStorage, "triagem.fixados") || "[]"); } catch { return []; } })()),
+};
+const diaLocal = (iso) => {
+  if (!iso) return "";
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); // AAAA-MM-DD
+};
+const hojeLocal = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+const somarDias = (dia, n) => { const d = new Date(dia + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const protocolo = (t) => diaLocal(t.received_at).replaceAll("-", "") + String(t.ticket_id).padStart(6, "0");
+const EQUIPES = { financeiro: "Financeiro", suporte_tecnico: "Suporte técnico", engenharia: "Engenharia", retencao: "Retenção", atendimento: "Atendimento" };
+const nomeEquipe = (e) => (e ? EQUIPES[e] || e.replace("_", " ").replace(/^./, (c) => c.toUpperCase()) : "A definir");
+
+function intervalo() {
+  const f = rel.filtros;
+  const hoje = hojeLocal();
+  if (f.periodo === "hoje") return [hoje, hoje];
+  if (f.periodo === "7") return [somarDias(hoje, -6), hoje];
+  if (f.periodo === "30") return [somarDias(hoje, -29), hoje];
+  if (f.periodo === "personalizado") return [f.de || "0000-00-00", f.ate || "9999-99-99"];
+  return null;
+}
+
+function relFiltrados() {
+  const f = rel.filtros;
+  const faixa = intervalo();
+  const q = rel.busca.trim().toLowerCase();
+  const qDig = q.replace(/\D/g, "");
+  const base = estado.tickets.filter((t) => {
+    if (faixa) { const d = diaLocal(t.received_at); if (d < faixa[0] || d > faixa[1]) return false; }
+    if (f.canal && chaveCanal(t.canal) !== f.canal) return false;
+    if (f.equipe && t.equipe !== f.equipe) return false;
+    if (f.urgencia && t.urgencia !== f.urgencia) return false;
+    if (q) {
+      const c = contato(t);
+      const texto = [c.nome, c.detalhe, t.cliente, `#${t.ticket_id}`, protocolo(t)].join(" ").toLowerCase();
+      const digitos = [c.detalhe, t.cliente, protocolo(t), String(t.ticket_id)].join(" ").replace(/\D/g, "");
+      if (!texto.includes(q) && !(qDig.length >= 3 && digitos.includes(qDig))) return false;
+    }
+    return true;
+  });
+  return base;
+}
+
+function linhaRel(t) {
+  const c = contato(t);
+  const sit = situacao(t);
+  const fixado = rel.fixados.has(t.ticket_id);
+  const fim = t.desfecho ? ` • ${t.desfecho === "cancelado" ? "Cancelado" : "Encerrado"}: ${esc(hora(t.encerrado_em))}` : "";
+  return `<div class="rel-linha${fixado ? " fixado" : ""}" data-id="${t.ticket_id}" tabindex="0" role="button" aria-label="Abrir atendimento de ${esc(c.nome)}">
+    <div class="rel-info">
+      <span class="rel-nome${/[@.]/.test(c.nome) ? " sem-caixa" : ""}">${esc(c.nome)}</span>
+      ${c.detalhe ? `<span class="rel-contato">${esc(c.detalhe)}</span>` : ""}
+      ${tagCanal(t.canal)}
+      <span class="rel-dados">Protocolo: ${esc(protocolo(t))} • Status: <b class="st st-${sit}">${esc(ROTULO_SITUACAO[sit])}</b> • Time: ${esc(nomeEquipe(t.equipe))} • Início: ${esc(hora(t.received_at))}${fim}</span>
+    </div>
+    <button type="button" class="btn icone fixar" data-fixar="${t.ticket_id}" aria-pressed="${fixado}" title="${fixado ? "Desafixar" : "Fixar no topo"}" aria-label="${fixado ? "Desafixar" : "Fixar no topo"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3zM12 14v7"/></svg></button>
+  </div>`;
+}
+
+function renderRelatorio() {
+  if (!estado.resumo) return;
+  const base = relFiltrados();
+  const cont = { "": base.length, espera: 0, atendimento: 0, encerrado: 0, cancelado: 0 };
+  base.forEach((t) => { cont[situacao(t)] += 1; });
+  document.querySelectorAll(".rel-abas [data-status] .n").forEach((n) => { n.textContent = cont[n.parentElement.dataset.status]; });
+  const lista = (rel.status ? base.filter((t) => situacao(t) === rel.status) : base)
+    .sort((a, b) => (rel.fixados.has(b.ticket_id) - rel.fixados.has(a.ticket_id)) || b.ticket_id - a.ticket_id);
+  $("#rel-contagem").textContent = `Atendimentos: ${lista.length} de ${estado.tickets.length}.`;
+  $("#rel-linhas").innerHTML = lista.slice(0, 300).map(linhaRel).join("")
+    || `<div class="vazio">Nenhum atendimento com esses filtros.</div>`;
+  renderChips();
+}
+
+function renderChips() {
+  const f = rel.filtros;
+  const chips = [];
+  if (f.periodo !== "tudo") {
+    const txt = f.periodo === "personalizado" ? `${f.de || "início"} a ${f.ate || "hoje"}` : ROTULO_PERIODO[f.periodo];
+    chips.push(["periodo", `Período: ${txt}`]);
+  }
+  if (f.canal) chips.push(["canal", `Canal: ${CANAIS[f.canal].rotulo}`]);
+  if (f.equipe) chips.push(["equipe", `Time: ${nomeEquipe(f.equipe)}`]);
+  if (f.urgencia) chips.push(["urgencia", `Urgência: ${f.urgencia}`]);
+  if (rel.busca) chips.push(["busca", `Busca: ${rel.busca}`]);
+  $("#rel-chips").innerHTML = chips.map(([k, txt]) => `<span class="chip-filtro">${esc(txt)}<button type="button" data-tirar="${k}" aria-label="Remover filtro ${esc(txt)}">×</button></span>`).join("");
+  $("#rel-qtd-filtros").textContent = chips.filter(([k]) => k !== "busca").length;
+}
+
+function exportarCsv() {
+  const lista = (rel.status ? relFiltrados().filter((t) => situacao(t) === rel.status) : relFiltrados());
+  const cab = ["Protocolo", "Cliente", "Contato", "Canal", "Status", "Time", "Assunto", "Urgência", "Início", "1ª resposta", "Finalizado em", "Prazo"];
+  const q = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+  const linhas = lista.map((t) => {
+    const c = contato(t);
+    return [protocolo(t), c.nome, c.detalhe, CANAIS[chaveCanal(t.canal)].rotulo, ROTULO_SITUACAO[situacao(t)], nomeEquipe(t.equipe),
+      t.assunto || "", t.urgencia || "", hora(t.received_at), hora(t.first_response_at), hora(t.encerrado_em),
+      ROTULO_SLA_CURTO[t.sla.estado] || t.sla.estado].map(q).join(";");
+  });
+  const blob = new Blob(["﻿" + [cab.map(q).join(";"), ...linhas].join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `atendimentos-${hojeLocal()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function abrirNoAtendimento(id) {
+  const t = estado.tickets.find((x) => x.ticket_id === id);
+  if (!t) return;
+  const sit = situacao(t);
+  estado.lista = sit === "espera" ? "espera" : sit === "atendimento" ? "atendimento" : "finalizados";
+  estado.canal = "";
+  $("#busca").value = "";
+  document.querySelectorAll(".abas-lista button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.lista === estado.lista)));
+  document.querySelectorAll("#filtro-canal button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.canal === "")));
+  irPara("atendimento");
+  abrirTicket(id);
+}
+
+function ligarRelatorio() {
+  const modal = $("#rel-modal");
+  const form = $("#rel-modal-form");
+  const equipes = form.equipe;
+  const datas = () => { form.querySelector(".rel-datas").hidden = form.periodo.value !== "personalizado"; };
+  form.periodo.addEventListener("change", datas);
+  $("#rel-config").addEventListener("click", () => {
+    if (equipes.options.length === 1 && estado.dominio) {
+      estado.dominio.equipes.forEach((e) => equipes.add(new Option(nomeEquipe(e), e)));
+    }
+    Object.entries(rel.filtros).forEach(([k, v]) => { if (form[k]) form[k].value = v; });
+    datas();
+    modal.showModal();
+  });
+  $("#rel-modal-cancelar").addEventListener("click", () => modal.close());
+  form.addEventListener("submit", () => {
+    Object.keys(rel.filtros).forEach((k) => { if (form[k]) rel.filtros[k] = form[k].value; });
+    renderRelatorio();
+  });
+  $("#rel-busca-form").addEventListener("submit", (ev) => { ev.preventDefault(); rel.busca = $("#rel-busca").value.trim(); renderRelatorio(); });
+  $("#rel-busca").addEventListener("input", (ev) => { rel.busca = ev.target.value.trim(); renderRelatorio(); });
+  $(".rel-abas").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-status]");
+    if (!b) return;
+    rel.status = b.dataset.status;
+    document.querySelectorAll(".rel-abas [data-status]").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+    renderRelatorio();
+  });
+  $("#rel-limpar").addEventListener("click", () => {
+    rel.filtros = { periodo: "tudo", de: "", ate: "", canal: "", equipe: "", urgencia: "" };
+    rel.busca = "";
+    $("#rel-busca").value = "";
+    renderRelatorio();
+  });
+  $("#rel-chips").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-tirar]");
+    if (!b) return;
+    const k = b.dataset.tirar;
+    if (k === "busca") { rel.busca = ""; $("#rel-busca").value = ""; }
+    else if (k === "periodo") rel.filtros.periodo = "tudo";
+    else rel.filtros[k] = "";
+    renderRelatorio();
+  });
+  $("#rel-exportar").addEventListener("click", exportarCsv);
+  const linhas = $("#rel-linhas");
+  linhas.addEventListener("click", (ev) => {
+    const pin = ev.target.closest("[data-fixar]");
+    if (pin) {
+      const id = Number(pin.dataset.fixar);
+      if (rel.fixados.has(id)) rel.fixados.delete(id); else rel.fixados.add(id);
+      gravarArmazenado(localStorage, "triagem.fixados", JSON.stringify([...rel.fixados]));
+      return renderRelatorio();
+    }
+    const l = ev.target.closest(".rel-linha[data-id]");
+    if (l) abrirNoAtendimento(Number(l.dataset.id));
+  });
+  linhas.addEventListener("keydown", (ev) => {
+    const l = ev.target.closest(".rel-linha[data-id]");
+    if (l && ev.target === l && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); abrirNoAtendimento(Number(l.dataset.id)); }
+  });
+}
+
 // ---------------------------------------------------------------- acesso
 async function entrar() {
   try {
@@ -421,7 +693,8 @@ async function entrar() {
   }
   $("#login").hidden = true;
   $("#app").hidden = false;
-  irPara(lerArmazenado(sessionStorage, "triagem.pagina") || "dashboard");
+  const salva = lerArmazenado(sessionStorage, "triagem.pagina");
+  irPara(TITULOS[salva] ? salva : "dashboard");
   await carregar();
   agendar();
 }
@@ -456,6 +729,27 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   $("#busca").addEventListener("input", renderCartoes);
+  $("#filtro-canal").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-canal]");
+    if (!b) return;
+    estado.canal = b.dataset.canal;
+    document.querySelectorAll("#filtro-canal button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderCartoes();
+  });
+  const irLista = (lista) => {
+    estado.lista = lista;
+    document.querySelectorAll(".abas-lista button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.lista === lista)));
+    renderCartoes();
+    irPara("atendimento");
+  };
+  $("#cards-atendimento").addEventListener("click", (ev) => {
+    const c = ev.target.closest("[data-ir-lista]");
+    if (c) irLista(c.dataset.irLista);
+  });
+  $("#cards-atendimento").addEventListener("keydown", (ev) => {
+    const c = ev.target.closest("[data-ir-lista]");
+    if (c && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); irLista(c.dataset.irLista); }
+  });
   $(".abas-lista").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-lista]");
     if (!b) return;
@@ -492,10 +786,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  $("#form-nova").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    enviarMensagem(ev.target);
-  });
+  ligarRelatorio();
 
   if (estado.chave) entrar(); else sair();
 });

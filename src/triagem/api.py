@@ -9,7 +9,7 @@ import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -122,6 +122,10 @@ class ChatDemoIn(BaseModel):
 class MensagemChatIn(BaseModel):
     texto: str = Field(min_length=1, max_length=2000)
     autor: Optional[str] = Field(default=None, max_length=120)
+
+
+class DesfechoIn(BaseModel):
+    desfecho: Literal["encerrado", "cancelado"]
 
 
 class RespostaIn(BaseModel):
@@ -372,6 +376,21 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
         except tickets.RespostaAnteriorAoRecebimento:
             raise HTTPException(status_code=400, detail="respondido_em anterior ao recebimento do ticket")
+
+    @app.post("/tickets/{ticket_id}/encerrar", dependencies=[Depends(exigir_chave)])
+    def encerrar(ticket_id: int, corpo: DesfechoIn):
+        """Finaliza o atendimento: desfecho 'encerrado' (resolvido) ou 'cancelado'."""
+        try:
+            return tickets.encerrar(ticket_id, corpo.desfecho)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
+
+    @app.post("/tickets/{ticket_id}/reabrir", dependencies=[Depends(exigir_chave)])
+    def reabrir(ticket_id: int):
+        try:
+            return tickets.reabrir(ticket_id)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
 
     @app.get("/tickets/{ticket_id}/mensagens", dependencies=[Depends(exigir_chave)])
     def listar_mensagens(ticket_id: int, depois_de: int = Query(0, ge=0)):

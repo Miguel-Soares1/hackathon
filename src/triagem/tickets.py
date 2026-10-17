@@ -25,6 +25,13 @@ class RespostaAnteriorAoRecebimento(ValueError):
     pass
 
 
+class DesfechoInvalido(ValueError):
+    pass
+
+
+DESFECHOS = ("encerrado", "cancelado")
+
+
 JANELA_CONVERSA = timedelta(hours=24)
 
 
@@ -102,13 +109,13 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
             with get_engine().begin() as conn:
                 ultimo = conn.execute(
                     text(
-                        "SELECT t.id, t.first_response_at, "
+                        "SELECT t.id, t.first_response_at, t.desfecho, "
                         "(SELECT MAX(m.created_at) FROM messages m WHERE m.ticket_id = t.id AND m.direcao = 'saida') AS ultima_saida "
                         "FROM tickets t WHERE t.canal = :c AND t.conversa_id = :v ORDER BY t.id DESC LIMIT 1"
                     ),
                     {"c": canal, "v": conversa_id},
                 ).fetchone()
-                if ultimo is not None:
+                if ultimo is not None and ultimo.desfecho is None:  # conversa encerrada/cancelada: nasce ticket novo
                     ref = max([x for x in (ultimo.first_response_at, ultimo.ultima_saida) if x is not None], default=None)
                     if ref is None or agora - ref <= JANELA_CONVERSA:
                         _inserir_mensagem(conn, int(ultimo.id), "entrada", texto, cliente, quando, _chave_msg(canal, external_id))
@@ -132,7 +139,9 @@ def _linha_para_dict(row, prazos, risco_pct, agora) -> dict:
         "consumido_pct": est.consumido_pct,
         "cumpriu": est.cumpriu,
     }
-    if d["first_response_at"] is None:
+    if d.get("desfecho"):
+        d["aguardando"] = False  # encerrado ou cancelado: sai da fila
+    elif d["first_response_at"] is None:
         d["aguardando"] = True
     elif d.get("ultima_saida_id"):  # compara por id: o DATETIME só tem precisão de segundos
         d["aguardando"] = bool(d.get("ultima_entrada_id") and d["ultima_entrada_id"] > d["ultima_saida_id"])
@@ -244,3 +253,29 @@ def responder_chat(ticket_id: int, texto: str, autor: Optional[str] = None) -> d
     agora = utcnow()
     msg_id = _gravar_resposta_chat(ticket_id, texto[:2000], (autor or None) and autor[:120], agora)
     return {"id": msg_id, "ticket_id": ticket_id, "direcao": "saida", "autor": autor, "texto": texto[:2000], "created_at": agora}
+
+
+def encerrar(ticket_id: int, desfecho: str, quando: Optional[datetime] = None) -> dict:
+    """Finaliza o atendimento como 'encerrado' (resolvido) ou 'cancelado'. Repetir só troca o desfecho.
+
+    Se o cliente escrever de novo depois disso, nasce um ticket novo (ver receber_mensagem).
+    """
+    if desfecho not in DESFECHOS:
+        raise DesfechoInvalido(desfecho)
+    with get_engine().begin() as conn:
+        n = conn.execute(
+            text("UPDATE tickets SET desfecho = :d, encerrado_em = COALESCE(encerrado_em, :q) WHERE id = :id"),
+            {"d": desfecho, "q": quando or utcnow(), "id": ticket_id},
+        ).rowcount
+        if not n and conn.execute(text("SELECT 1 FROM tickets WHERE id = :id"), {"id": ticket_id}).scalar() is None:
+            raise TicketNaoEncontrado(ticket_id)
+    return obter(ticket_id)
+
+
+def reabrir(ticket_id: int) -> dict:
+    """Desfaz o encerramento/cancelamento (o atendimento volta para a fila)."""
+    with get_engine().begin() as conn:
+        if conn.execute(text("SELECT 1 FROM tickets WHERE id = :id"), {"id": ticket_id}).scalar() is None:
+            raise TicketNaoEncontrado(ticket_id)
+        conn.execute(text("UPDATE tickets SET desfecho = NULL, encerrado_em = NULL WHERE id = :id"), {"id": ticket_id})
+    return obter(ticket_id)
