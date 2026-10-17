@@ -31,7 +31,7 @@
       <nav class="menu" aria-label="Páginas">
         <button type="button" data-pagina="dashboard" aria-current="page"><span aria-hidden="true">📊</span> Dashboard</button>
         <button type="button" data-pagina="atendimento"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
-        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
+        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
         <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
         <button type="button" data-pagina="nova"><span aria-hidden="true">✉️</span> Simular mensagem</button>
       </nav>
@@ -53,21 +53,27 @@
     <main class="conteudo">
       <h1 id="titulo">Dashboard</h1>
 
-      <!-- Dashboard: indicadores, incidentes abertos e métricas -->
+      <!-- Dashboard: indicadores e métricas -->
       <section id="pagina-dashboard" class="pagina">
         <div id="kpis" class="kpis" aria-label="Indicadores"></div>
-        <div id="alertas" aria-label="Incidentes abertos"></div>
+        <div class="card">
+          <h2>Chamadas em espera</h2>
+          <div class="filtros" data-contexto="dashboard"></div>
+          <div id="tabela-chamadas" class="tabela-rolagem"></div>
+        </div>
         <div id="metricas" class="grade-2"></div>
       </section>
 
       <!-- Atendimento: fila estilo chat (em espera × respondidos) e conversa com a triagem -->
       <section id="pagina-atendimento" class="pagina" hidden>
         <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente, canal ou mensagem…" aria-label="Buscar atendimento">
+        <div class="filtros" data-contexto="atendimento"></div>
         <div class="atendimento">
           <div class="coluna-lista">
             <div class="abas-lista" role="tablist">
               <button type="button" role="tab" data-lista="espera" aria-selected="true">Em espera (<span id="qtd-espera">0</span>)</button>
               <button type="button" role="tab" data-lista="respondidos" aria-selected="false">Respondidos (<span id="qtd-respondidos">0</span>)</button>
+              <button type="button" role="tab" data-lista="encerrados" aria-selected="false">Encerrados (<span id="qtd-encerrados">0</span>)</button>
             </div>
             <div id="cartoes" class="cartoes"></div>
           </div>

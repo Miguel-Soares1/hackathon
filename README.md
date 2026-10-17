@@ -99,6 +99,15 @@ mantendo a classificação em português para a fila, o SLA e as métricas (ADR-
 recusa resposta em outro idioma; sem o LLM, o plano B responde em português, inglês ou espanhol. A fila mostra o idioma,
 e Métricas mostra a distribuição. Avaliação: `python scripts/avaliar_triagem.py --arquivo data/avaliacao_idiomas.json`.
 
+## Encerramento e relatório do atendimento
+
+No Atendimento, o botão **✔ Encerrar atendimento** pede o desfecho (resolvido, não resolvido, cliente sem retorno,
+encaminhado) e uma observação. Na hora sai o **relatório**: resumo da conversa escrito pela IA (ou automático, sem o
+LLM), próximos passos, duração, tempo da 1ª resposta, prazo (SLA), mensagens e triagem final. O ticket vai para a aba
+**Encerrados** e não aceita mais respostas; se o cliente escrever de novo, nasce outro atendimento. Encerrar sem
+responder conta como desfecho do prazo. **Banco criado antes desta versão:** rode `db/migrations/006_encerramento.sql`
+e depois `python scripts/criar_banco.py`.
+
 ## Scripts da demo
 
 ```bash
@@ -141,6 +150,8 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |
 | `POST /tickets/{id}/revisao` | confirma a triagem | 204, 404, 409 |
 | `POST /tickets/{id}/correcoes` | corrige assunto/urgência/sentimento/equipe/resposta | 201, 400, 404, 409 |
+| `POST /tickets/{id}/encerramento` | encerra o atendimento (desfecho + observação) e devolve o relatório final | 201, 400, 404, 409 |
+| `GET /tickets/{id}/relatorio` · `GET /relatorios` | relatório de um atendimento encerrado · todos os relatórios | 200, 404 · 200 |
 | `GET /correcoes` | histórico de correções | 200 |
 | `GET /incidentes` | incidentes e justificativa | 200 |
 | `GET /metricas` | motivos, idiomas, prazos em risco, SLI, precisão (por origem e por versão do prompt) | 200 |

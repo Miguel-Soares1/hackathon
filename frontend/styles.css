@@ -165,6 +165,26 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 .alerta summary { cursor: pointer; color: var(--muted-2); font-size: 13px; }
 .alerta ul { margin: 6px 0 0; padding-left: 18px; }
 
+/* ---------- filtro das chamadas (Dashboard e Atendimento) */
+.filtros { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.filtros-linha { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+.filtros-linha > label:not(.toggle) { flex: 0 1 260px; }
+.filtros-linha .toggle { margin-bottom: 8px; }
+.filtros .contagem { margin-left: auto; font-size: 13px; align-self: center; }
+.filtros-personalizado { display: flex; flex-direction: column; gap: 8px; }
+.chips { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chips legend { float: left; margin-right: 6px; font-size: 13px; font-weight: 600; color: var(--muted-2); }
+.chip {
+  flex-direction: row; align-items: center; gap: 6px; font-weight: 400; color: var(--texto); cursor: pointer;
+  border: 1px solid var(--borda); border-radius: 999px; padding: 3px 10px; background: var(--card-2);
+}
+.chip input { width: auto; margin: 0; }
+.chip:has(input:checked) { border-color: var(--destaque); }
+.legenda-filtro { margin: 0; font-size: 13px; }
+.tabela-rolagem { overflow-x: auto; }
+.tabela.chamadas tbody tr { cursor: pointer; }
+.tabela.chamadas tbody tr:hover, .tabela.chamadas tbody tr:focus { background: var(--card-2); outline: none; }
+
 /* ---------- atendimento */
 .busca { margin-bottom: 14px; }
 .atendimento { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 24px; align-items: start; }
@@ -207,6 +227,15 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 }
 .bolha.saida { align-self: flex-end; background: var(--saida); border-color: var(--saida-borda); border-top-left-radius: 14px; border-top-right-radius: 4px; }
 .bolha-autor { font-size: 11px; color: var(--muted-2); margin-bottom: 2px; }
+.cab-chat .encerrar { margin-left: auto; }
+.encerramento { display: flex; flex-direction: column; gap: 10px; border-color: var(--destaque); }
+.encerramento h3, .relatorio h3 { margin: 0; }
+.relatorio { background: var(--card); border: 1px solid var(--destaque); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.relatorio p { margin: 0; }
+.cab-relatorio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px 16px; margin: 0; }
+.numeros dt { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.numeros dd { margin: 2px 0 0; }
 .form-chat { display: flex; flex-direction: column; gap: 8px; }
 .form-chat textarea { resize: vertical; min-height: 90px; }
 .form-chat .acoes-chat { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

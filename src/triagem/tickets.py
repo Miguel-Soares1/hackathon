@@ -25,6 +25,10 @@ class RespostaAnteriorAoRecebimento(ValueError):
     pass
 
 
+class TicketEncerrado(Exception):
+    """O atendimento já foi encerrado: não aceita mais respostas do atendente."""
+
+
 JANELA_CONVERSA = timedelta(hours=24)
 
 
@@ -91,7 +95,8 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
     """Entrada de mensagem de um canal. Retorna (ticket_id, novo).
 
     Com `conversa_id`, a mensagem entra na conversa já existente do cliente (mesmo canal) enquanto ela está
-    aberta ou foi respondida há menos de 24 h; fora disso (ou sem `conversa_id`) nasce um ticket novo.
+    aberta ou foi respondida há menos de 24 h; fora disso, depois do encerramento pelo atendente
+    ou sem `conversa_id`, nasce um ticket novo.
     """
     if conversa_id:
         if external_id and _ticket_do_externo(canal, external_id) is not None:
@@ -102,13 +107,13 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
             with get_engine().begin() as conn:
                 ultimo = conn.execute(
                     text(
-                        "SELECT t.id, t.first_response_at, "
+                        "SELECT t.id, t.first_response_at, t.encerrado_em, "
                         "(SELECT MAX(m.created_at) FROM messages m WHERE m.ticket_id = t.id AND m.direcao = 'saida') AS ultima_saida "
                         "FROM tickets t WHERE t.canal = :c AND t.conversa_id = :v ORDER BY t.id DESC LIMIT 1"
                     ),
                     {"c": canal, "v": conversa_id},
                 ).fetchone()
-                if ultimo is not None:
+                if ultimo is not None and ultimo.encerrado_em is None:  # conversa encerrada: nasce outro ticket
                     ref = max([x for x in (ultimo.first_response_at, ultimo.ultima_saida) if x is not None], default=None)
                     if ref is None or agora - ref <= JANELA_CONVERSA:
                         _inserir_mensagem(conn, int(ultimo.id), "entrada", texto, cliente, quando, _chave_msg(canal, external_id))
@@ -132,7 +137,10 @@ def _linha_para_dict(row, prazos, risco_pct, agora) -> dict:
         "consumido_pct": est.consumido_pct,
         "cumpriu": est.cumpriu,
     }
-    if d["first_response_at"] is None:
+    d["encerrado"] = d.get("encerrado_em") is not None
+    if d["encerrado"]:
+        d["aguardando"] = False
+    elif d["first_response_at"] is None:
         d["aguardando"] = True
     elif d.get("ultima_saida_id"):  # compara por id: o DATETIME só tem precisão de segundos
         d["aguardando"] = bool(d.get("ultima_entrada_id") and d["ultima_entrada_id"] > d["ultima_saida_id"])
@@ -223,9 +231,11 @@ def mensagens(ticket_id: int, depois_de: int = 0) -> list[dict]:
 @com_retry_deadlock()
 def _gravar_resposta_chat(ticket_id: int, texto: str, autor: Optional[str], agora: datetime) -> int:
     with get_engine().begin() as conn:
-        existe = conn.execute(text("SELECT id FROM tickets WHERE id = :id"), {"id": ticket_id}).fetchone()
+        existe = conn.execute(text("SELECT id, encerrado_em FROM tickets WHERE id = :id"), {"id": ticket_id}).fetchone()
         if existe is None:
             raise TicketNaoEncontrado(ticket_id)
+        if existe.encerrado_em is not None:
+            raise TicketEncerrado(ticket_id)
         conn.execute(  # tickets primeiro, depois a mensagem filha (ordem que evita deadlock com o pipeline)
             text("UPDATE tickets SET first_response_at = :q WHERE id = :id AND first_response_at IS NULL"),
             {"q": agora, "id": ticket_id},

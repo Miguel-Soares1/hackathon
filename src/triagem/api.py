@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
-from . import canais, corrections, demo_chat, demo_email, incidents, metrics, pipeline, tickets
+from . import canais, corrections, demo_chat, demo_email, incidents, metrics, pipeline, relatorios, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -121,6 +121,12 @@ class ChatDemoIn(BaseModel):
 
 class MensagemChatIn(BaseModel):
     texto: str = Field(min_length=1, max_length=2000)
+    autor: Optional[str] = Field(default=None, max_length=120)
+
+
+class EncerramentoIn(BaseModel):
+    desfecho: str = Field(description="resolvido | nao_resolvido | sem_retorno | encaminhado")
+    observacao: Optional[str] = Field(default=None, max_length=2000)
     autor: Optional[str] = Field(default=None, max_length=120)
 
 
@@ -390,6 +396,31 @@ def create_app() -> FastAPI:
             return tickets.responder_chat(ticket_id, corpo.texto, corpo.autor)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
+        except tickets.TicketEncerrado:
+            raise HTTPException(status_code=409, detail="atendimento já encerrado")
+
+    @app.post("/tickets/{ticket_id}/encerramento", status_code=201, dependencies=[Depends(exigir_chave)])
+    def encerrar(ticket_id: int, corpo: EncerramentoIn):
+        """Encerra o atendimento e devolve o relatório final da conversa (resumo pela IA ou por regras)."""
+        try:
+            return relatorios.encerrar(ticket_id, corpo.desfecho, corpo.autor, corpo.observacao)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
+        except relatorios.TicketJaEncerrado:
+            raise HTTPException(status_code=409, detail="atendimento já encerrado")
+        except relatorios.DesfechoInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/tickets/{ticket_id}/relatorio", dependencies=[Depends(exigir_chave)])
+    def obter_relatorio(ticket_id: int):
+        try:
+            return relatorios.obter(ticket_id)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="relatório não encontrado (atendimento não encerrado)")
+
+    @app.get("/relatorios", dependencies=[Depends(exigir_chave)])
+    def listar_relatorios(limite: int = Query(100, ge=1, le=1000)):
+        return relatorios.listar(limite)
 
     @app.post("/tickets/{ticket_id}/revisao", status_code=204, dependencies=[Depends(exigir_chave)])
     def confirmar(ticket_id: int):
@@ -429,7 +460,7 @@ def create_app() -> FastAPI:
     def dominio():
         """Valores permitidos na triagem, para o painel montar os formulários de correção."""
         return {"assuntos": ASSUNTOS, "urgencias": URGENCIAS, "sentimentos": SENTIMENTOS, "equipes": EQUIPES,
-                "idiomas": IDIOMAS}
+                "idiomas": IDIOMAS, "desfechos": relatorios.DESFECHOS}
 
     # Painel (HTML/CSS/JS estáticos) servido pela própria API: um único serviço para subir.
     # Montado por último para não sombrear as rotas acima.

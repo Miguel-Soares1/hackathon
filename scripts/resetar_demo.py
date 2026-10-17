@@ -1,6 +1,6 @@
 """Limpa os dados da demo para repetir a apresentação do zero.
 
-Apaga tickets, classificações, correções, revisões, embeddings, grupos e incidentes.
+Apaga tickets, classificações, correções, revisões, relatórios, embeddings, grupos e incidentes.
 Mantém a configuração (sla_policy e app_config, incluindo o limiar calibrado).
 
 Uso:
@@ -19,7 +19,8 @@ from sqlalchemy import text  # noqa: E402
 from triagem.db import get_engine  # noqa: E402
 
 # Ordem: filhas antes das mães (FKs).
-TABELAS = ("group_members", "incident_groups", "ticket_embeddings", "corrections", "reviews", "classifications", "messages", "tickets")
+TABELAS = ("group_members", "incident_groups", "ticket_embeddings", "corrections", "reviews", "relatorios", "classifications",
+           "messages", "tickets")
 
 
 def main() -> int:
