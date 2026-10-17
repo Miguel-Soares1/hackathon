@@ -14,6 +14,8 @@ const POLITICA_TEXTO = {
   sem_dados: "Ainda não há tickets com desfecho para calcular o SLI.",
 };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
+const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
+const tagIdioma = (c) => (c ? `<span class="idioma" title="${esc(nomeIdioma(c))}">${esc(c.toUpperCase())}</span>` : "—");
 
 const estado = {
   chave: lerChave(),
@@ -135,15 +137,16 @@ function renderFila() {
       <td>${pill(t.urgencia)}</td>
       <td>${esc(t.assunto || "—")}</td>
       <td>${esc(t.sentimento || "—")}</td>
+      <td>${tagIdioma(t.idioma)}</td>
       <td>${esc(t.equipe || "—")}</td>
       <td>${esc(t.origem || "—")}${t.revisado ? " ✔" : ""}</td>
       <td class="texto"><b>${esc(t.cliente || "")}</b> ${esc(t.texto)}</td>
       <td>${esc(hora(t.received_at))}</td>
     </tr>`;
   });
-  $("#tabela-fila").innerHTML = `<thead><tr><th>#</th><th>Prazo</th><th>Urgência</th><th>Assunto</th><th>Sentimento</th>
+  $("#tabela-fila").innerHTML = `<thead><tr><th>#</th><th>Prazo</th><th>Urgência</th><th>Assunto</th><th>Sentimento</th><th>Idioma</th>
     <th>Equipe</th><th>Origem</th><th>Mensagem</th><th>Recebido</th></tr></thead>
-    <tbody>${linhas.join("") || `<tr><td colspan="9" class="muted">Nenhum ticket.</td></tr>`}</tbody>`;
+    <tbody>${linhas.join("") || `<tr><td colspan="10" class="muted">Nenhum ticket.</td></tr>`}</tbody>`;
 }
 
 function opcoes(valores, atual) {
@@ -168,7 +171,8 @@ function renderDetalhe() {
   const d = estado.dominio;
   painel.innerHTML = `${cabecalho}
     <p class="muted">Prazo: ${esc(ROTULO_ESTADO[s.estado])} — ${s.prazo_minutos} min · vence ${esc(hora(s.vence_em))} · triagem: ${esc(t.origem)}</p>
-    <div><h3>Resposta sugerida</h3><div class="resposta">${esc(t.resposta_sugerida)}</div></div>
+    <div><h3>Resposta sugerida</h3><div class="resposta" lang="${esc(t.idioma || "pt")}">${esc(t.resposta_sugerida)}</div></div>
+    <p class="muted">🌐 Cliente escreveu em ${esc(nomeIdioma(t.idioma))}${t.idioma && t.idioma !== "pt" ? " · resposta sugerida no mesmo idioma" : ""}</p>
     <p class="muted">Confiança: ${DIMS.map((k) => `${k} ${Math.round(Number(t["conf_" + k]) * 100)}%`).join(" · ")}</p>
     ${t.exemplos
       ? `<p class="aprendizado">🧠 Prompt ${esc(t.prompt_version)} · aprendeu com tickets já revisados parecidos: ${t.exemplos.split(",").map((i) => `#${esc(i)}`).join(", ")}</p>`
@@ -209,6 +213,12 @@ function renderMetricas() {
         <div class="barra" style="width:${(m.total / max) * 100}%"></div><span>${m.total}</span></div>`).join("")}</div>`
     : `<p class="muted">Sem dados.</p>`;
 
+  const totalIdiomas = r.idiomas.reduce((a, i) => a + i.total, 0);
+  const idiomas = r.idiomas.length
+    ? `<div class="barras">${r.idiomas.map((i) => `<div class="barra-linha"><span>${esc(nomeIdioma(i.idioma))}</span>
+        <div class="barra" style="width:${(i.total / totalIdiomas) * 100}%"></div><span>${i.total}</span></div>`).join("")}</div>`
+    : `<p class="muted">Sem dados.</p>`;
+
   const p = r.precisao;
   const dimsPrec = ["assunto", "urgencia", "sentimento", "equipe", "resposta_sugerida"];
   const precisao = p.revisados === 0
@@ -235,6 +245,7 @@ function renderMetricas() {
 
   $("#metricas").innerHTML = `
     <div class="card"><h2>Principais motivos de contato</h2>${motivos}</div>
+    <div class="card"><h2>Idiomas dos clientes</h2>${idiomas}</div>
     <div class="card largo"><div class="lado-a-lado">
       <div><h2>Precisão da triagem</h2>${precisao}</div>
       <div><h2>Evolução da IA por versão do prompt</h2>${evolucao}</div>

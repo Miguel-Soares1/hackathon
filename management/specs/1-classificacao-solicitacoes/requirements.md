@@ -12,8 +12,9 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 
 ## Escopo
 
-- **Entrada:** texto de uma solicitação (ticket, mensagem, chamado) recebida via webhook (ADR-001).
+- **Entrada:** texto de uma solicitação (ticket, mensagem, chamado) recebida via webhook (ADR-001) ou pelos canais reais (Spec 7).
 - **Processamento (ADR-003, ADR-009):** o webhook salva o ticket como `pendente` e responde `202`; uma tarefa em background faz uma única chamada a um LLM com saída JSON estruturada (provedor: API da DeepSeek), com timeout e uma nova tentativa se o JSON vier inválido.
+- **Exemplos:** quando há tickets revisados parecidos, eles vão no prompt como exemplos (few-shot, Spec 6 e ADR-014).
 - **Plano B:** se a API falhar, classificação por regras de palavras-chave, marcada com `origem = fallback` e confiança baixa.
 - **Segurança:** o texto do cliente é tratado como dado (nunca como instrução) e a saída é validada contra os valores permitidos (ver `docs/threat-model.md`).
 - **Saída (JSON):**
@@ -21,7 +22,8 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
   - `urgencia`: nível de prioridade (ex.: baixa, média, alta, crítica).
   - `sentimento`: polaridade (positivo, neutro, negativo).
   - `equipe`: time responsável pelo atendimento.
-  - `resposta_sugerida`: texto de resposta sugerida ao cliente.
+  - `resposta_sugerida`: texto de resposta sugerida ao cliente, no idioma do cliente (Spec 9).
+  - `idioma`: código ISO 639-1 do idioma em que o cliente escreveu (Spec 9).
   - `confianca`: score de confiança por dimensão.
 
 ## Critérios de Aceitação
@@ -38,8 +40,8 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 ## Fora de Escopo (V1)
 
 - Treinamento com dados reais de produção.
-- Suporte multilíngue automático (idiomas suportados a definir em design).
-- Retreino automático do modelo.
+- (Suporte multilíngue entregue na Spec 9.)
+- Retreino automático do modelo (as correções orientam o LLM por few-shot, Spec 6).
 
 ## Dependências
 

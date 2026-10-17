@@ -74,21 +74,28 @@ mysql -h127.0.0.1 -uhackathon -phackathon hackathon -e "UPDATE app_config SET va
 Não há fine-tuning: antes de classificar, o sistema busca os tickets **já revisados** pelo atendente mais parecidos
 com a mensagem nova e os envia ao DeepSeek como exemplos (ADR-014). Corrigiu uma triagem no painel? A próxima
 mensagem parecida já usa essa correção. O painel mostra os exemplos usados em cada ticket e, em Métricas, a taxa de
-acerto por versão do prompt (`v2`, `v2+fewshot`, `regras`). Ajuste com `FEWSHOT_K` (0 desliga) e `FEWSHOT_SIM_MIN`.
+acerto por versão do prompt (`v3`, `v3+fewshot`, `regras`). Ajuste com `FEWSHOT_K` (0 desliga) e `FEWSHOT_SIM_MIN`.
 
 **Medir antes de mudar o prompt:** `data/avaliacao.json` tem 60 mensagens rotuladas nas 4 dimensões, separadas das
 mensagens de demo (inclui ironia e prompt injection). Ao mudar o texto do prompt, incremente `PROMPT_VERSION` em
 `src/triagem/classifier.py` e compare:
 
 ```bash
-python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json   # regras × LLM × LLM+few-shot + injection
+python scripts/avaliar_triagem.py --saida data/avaliacoes/v3.json   # regras × LLM × LLM+few-shot + injection
 ```
 
 **Banco criado antes desta versão:** aplique as migrações em ordem e recrie a visão:
 ```powershell
-Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
+Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
 python scripts/criar_banco.py
 ```
+
+## Clientes em outros idiomas
+
+A IA identifica o idioma de cada mensagem (pt, en, es, fr, it, de...) e escreve a resposta sugerida **no mesmo idioma**,
+mantendo a classificação em português para a fila, o SLA e as métricas (ADR-015). Um detector local confere o idioma e
+recusa resposta em outro idioma; sem o LLM, o plano B responde em português, inglês ou espanhol. A fila mostra o idioma,
+e Métricas mostra a distribuição. Avaliação: `python scripts/avaliar_triagem.py --arquivo data/avaliacao_idiomas.json`.
 
 ## Scripts da demo
 
@@ -116,7 +123,8 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | Prazo "em risco" | ≥ 75% do prazo consumido sem resposta; "estourado" ≥ 100% |
 | Incidente | ≥ 3 mensagens no mesmo grupo em 30 min (cosseno com o centroide ≥ limiar) |
 | SLO | 95% das primeiras respostas dentro do prazo, janela de 7 dias |
-| Taxa de acerto | `1 − correções/revisados` por dimensão; agregado = 4 dimensões (assunto, urgência, sentimento, equipe). Separada por origem (`llm`/`fallback`) e por versão do prompt (`v2`, `v2+fewshot`, `regras`) |
+| Taxa de acerto | `1 − correções/revisados` por dimensão; agregado = 4 dimensões (assunto, urgência, sentimento, equipe). Separada por origem (`llm`/`fallback`) e por versão do prompt (`v3`, `v3+fewshot`, `regras`) |
+| Idioma | resposta sugerida no idioma do cliente; plano B com respostas em pt, en e es (outros idiomas → en) |
 | Few-shot | até `FEWSHOT_K` = 4 tickets revisados com similaridade ≥ `FEWSHOT_SIM_MIN` = 0,45 entram como exemplo |
 
 ### Endpoints (header `X-API-Key`, exceto `/health`)
@@ -132,18 +140,18 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | `POST /tickets/{id}/correcoes` | corrige assunto/urgência/sentimento/equipe/resposta | 201, 400, 404, 409 |
 | `GET /correcoes` | histórico de correções | 200 |
 | `GET /incidentes` | incidentes e justificativa | 200 |
-| `GET /metricas` | motivos, prazos em risco, SLI, precisão (por origem e por versão do prompt) | 200 |
-| `GET /dominio` | valores permitidos de assunto, urgência, sentimento e equipe | 200 |
+| `GET /metricas` | motivos, idiomas, prazos em risco, SLI, precisão (por origem e por versão do prompt) | 200 |
+| `GET /dominio` | valores permitidos de assunto, urgência, sentimento e equipe, e nomes dos idiomas | 200 |
 
 ## Estrutura
 
 ```
-src/triagem/   api, pipeline, classifier (LLM), exemplos (few-shot), fallback (regras), embeddings, incidents, sla,
+src/triagem/   api, pipeline, classifier (LLM), exemplos (few-shot), idioma, fallback (regras), embeddings, incidents, sla,
                corrections, metrics, canais (WhatsApp, Instagram), demo_chat/demo_email (telas /demo), email_imap, pagina_envio (formulário), ratelimit
 frontend/      painel em HTML, CSS e JavaScript puros (servido pela própria API, sem build)
 db/            schema.sql (DDL versionado), migrations/ (bancos existentes) e init do banco de testes
 scripts/       iniciar.ps1 (sobe tudo) · simular.py (canais) · calibrar_limiar.py · avaliar_triagem.py · resetar_demo.py · criar_banco.py · teste_carga.py · backup.sh
-data/          mensagens_demo.json (34 rotuladas) · rajada_demo.json · avaliacao.json (60 rotuladas, conjunto de avaliação)
+data/          mensagens_demo.json (34 rotuladas) · rajada_demo.json · avaliacao.json (60 rotuladas) · avaliacao_idiomas.json (24 em 6 idiomas)
 tests/         pytest (padrão AAA)
 docs/          risks.md · slo.md · threat-model.md · deploy.md · canais.md · calibracao_limiar.md · roteiro_demo.md · release_checklist_final.md
 management/    vision · arch · adr · roadmap · specs

@@ -27,6 +27,7 @@ Texto das solicitações dos clientes (pode conter dados pessoais), chave da API
 | T15 | Loop de resposta automática / spam por e-mail enche a fila | Denial of service | Descarta `Auto-Submitted`, `Precedence: bulk`, listas e remetentes no-reply; o sistema nunca envia e-mail, então não há loop | `test_email_automatico_e_ignorado` |
 | T16 | Senha do e-mail vaza | Information disclosure | Usar senha de app (revogável) só em variável de ambiente; nunca no Git | checklist de release |
 | T17 | Prompt injection armazenado: o texto de um ticket revisado vira exemplo no prompt de outras mensagens (few-shot) | Tampering | Exemplos delimitados por tags removidas do texto; só tickets revisados por um atendente viram exemplo; os rótulos do exemplo vêm do banco, não do texto; saída validada como em T2 | `test_texto_de_exemplo_nao_consegue_fechar_os_blocos`, `test_llm_nao_consegue_forjar_versao_origem_ou_exemplos` |
+| T18 | Mensagem pede para responder em outro idioma ou finge ser outro idioma para desviar a triagem | Tampering (prompt injection) | O prompt manda responder no idioma em que o cliente escreveu, ignorando pedidos na mensagem; os códigos da classificação seguem em português e validados; o detector local recusa resposta claramente em outro idioma | Casos de injection em `data/avaliacao_idiomas.json`; `test_resposta_em_outro_idioma_e_recusada_e_cai_no_plano_b_no_idioma_certo` |
 
 ## Checklist de release seguro
 

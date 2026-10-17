@@ -3,6 +3,8 @@ import unicodedata
 
 from pydantic import BaseModel, Field, field_validator
 
+from .idioma import normalizar_codigo
+
 ASSUNTOS = ("cobranca", "pagamento", "acesso", "instabilidade", "cancelamento", "reclamacao", "duvida", "elogio")
 URGENCIAS = ("baixa", "media", "alta", "critica")
 SENTIMENTOS = ("positivo", "neutro", "negativo")
@@ -33,6 +35,8 @@ class Classificacao(BaseModel):
     sentimento: str
     equipe: str
     resposta_sugerida: str = Field(min_length=1, max_length=MAX_RESPOSTA)
+    # Código ISO 639-1 do idioma do cliente; vazio = não informado (o classificador completa, ADR-015).
+    idioma: str = ""
     confianca: dict[str, float]
     origem: str = "llm"
     # Preenchidos pelo classificador, nunca pela resposta do LLM (ver classifier.chamar_llm).
@@ -46,6 +50,12 @@ class Classificacao(BaseModel):
         if valor not in VALORES_PERMITIDOS[info.field_name]:
             raise ValueError(f"{info.field_name} fora do conjunto permitido: {valor!r}")
         return valor
+
+    @field_validator("idioma", mode="before")
+    @classmethod
+    def _idioma(cls, v):
+        # Tolerante: um idioma ilegível não invalida a classificação inteira.
+        return normalizar_codigo(v)
 
     @field_validator("resposta_sugerida", mode="before")
     @classmethod

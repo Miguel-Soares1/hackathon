@@ -1,7 +1,7 @@
 ---
 name: Painel de Monitoramento e Métricas
 status: implemented
-references: [1, 2, 3, 5]
+references: [1, 2, 3, 5, 6, 9]
 ---
 
 # Painel de Monitoramento e Métricas
@@ -13,7 +13,8 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 ## Escopo
 
 - **Tecnologia:** painel em HTML, CSS e JavaScript puros (ADR-010), servido pela API e consumindo seus endpoints.
-- **Fontes de dados:** classificação (Spec 1), incidentes (Spec 2), correções/precisão (Spec 3) e prazos/SLA (Spec 5).
+- **Fontes de dados:** classificação (Spec 1), incidentes (Spec 2), correções/precisão (Spec 3), prazos/SLA (Spec 5) e versão do prompt/exemplos (Spec 6).
+- **Acesso:** o painel pede a `API_KEY` e consome só a API autenticada (sem acesso direto ao banco).
 - **Visualizações:**
   - Fila de atendimento (tickets pendentes).
   - Alertas de incidentes detectados.
@@ -29,6 +30,10 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 - [x] Tickets classificados por `fallback` são identificados e contados separadamente na precisão.
 - [x] O painel exibe a precisão de triagem.
 - [x] As métricas são atualizadas em um intervalo definido.
+- [x] O detalhe do ticket mostra a versão do prompt e os tickets revisados usados como exemplo (Spec 6).
+- [x] O painel exibe a taxa de acerto por versão do prompt (Spec 6).
+- [x] Sem a `API_KEY`, o painel não carrega dados.
+- [x] A fila e o detalhe mostram o idioma do cliente, e Métricas mostra a distribuição de idiomas (Spec 9).
 
 ## Fora de Escopo (V1)
 
@@ -37,4 +42,4 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 
 ## Dependências
 
-- Spec 1, Spec 2, Spec 3 e Spec 5.
+- Spec 1, Spec 2, Spec 3, Spec 5, Spec 6 e Spec 9.

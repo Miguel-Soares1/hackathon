@@ -20,7 +20,7 @@ Consequências: ...
 
 ## ADR-001: FastAPI como backend com webhook único e simulador de canais
 
-**Status:** accepted
+**Status:** accepted (canais reais acrescentados pelo ADR-013)
 
 **Contexto:** precisamos receber mensagens de múltiplos canais (tickets, mensagens, chamados), mas os canais reais não estão disponíveis no hackathon.
 
@@ -68,7 +68,7 @@ Consequências: ...
 
 **Contexto:** agrupar mensagens semelhantes para detectar possíveis incidentes.
 
-**Decisão:** gerar embeddings das mensagens (modelo local, ADR-008) e compará-las por similaridade de cosseno com o centroide dos grupos abertos. Um incidente é aberto quando um grupo atinge 3 ou mais mensagens dentro de uma janela de 30 minutos. O limiar inicial é 0,70 e deve ser calibrado com mensagens de demo rotuladas.
+**Decisão:** gerar embeddings das mensagens (modelo local, ADR-008) e compará-las por similaridade de cosseno com o centroide dos grupos abertos. Um incidente é aberto quando um grupo atinge 3 ou mais mensagens dentro de uma janela de 30 minutos. O limiar inicial era 0,70; calibrado com as mensagens de demo rotuladas, passou a 0,60 (`docs/calibracao_limiar.md`).
 
 **Consequências:**
 - Detecção semântica (não apenas por palavras-chave).
@@ -221,7 +221,7 @@ Consequências: ...
 
 **Contexto:** queremos que a IA melhore com as correções do atendente (Spec 3). A API do DeepSeek não oferece fine-tuning, e treinar um modelo próprio exige GPU, milhares de exemplos e mais tempo do que o hackathon permite.
 
-**Decisão:** antes de classificar, buscar entre os tickets **já revisados** (confirmados ou corrigidos) os `FEWSHOT_K` (padrão 4) mais parecidos com a mensagem nova, pelo cosseno dos embeddings locais já usados no agrupamento (ADR-008), com similaridade mínima `FEWSHOT_SIM_MIN` (padrão 0,45). Eles entram no prompt como exemplos, com os valores **efetivos** (a última correção, não a predição original). Cada classificação grava `prompt_version` (`v1` = prompt original, `v2` = prompt com critérios, `v2+fewshot`, `regras`) e os ids dos exemplos usados. A taxa de acerto é medida por versão (`/metricas` → `precisao_por_versao`), e um conjunto rotulado fixo (`data/avaliacao.json`) com `scripts/avaliar_triagem.py` compara regras, LLM e LLM + few-shot antes de cada mudança de prompt.
+**Decisão:** antes de classificar, buscar entre os tickets **já revisados** (confirmados ou corrigidos) os `FEWSHOT_K` (padrão 4) mais parecidos com a mensagem nova, pelo cosseno dos embeddings locais já usados no agrupamento (ADR-008), com similaridade mínima `FEWSHOT_SIM_MIN` (padrão 0,45). Eles entram no prompt como exemplos, com os valores **efetivos** (a última correção, não a predição original). Cada classificação grava `prompt_version` (`v1` = prompt original, `v2` = prompt com critérios, `v3` = idioma do cliente (ADR-015), cada um com ou sem `+fewshot`, e `regras`) e os ids dos exemplos usados. A taxa de acerto é medida por versão (`/metricas` → `precisao_por_versao`), e um conjunto rotulado fixo (`data/avaliacao.json`) com `scripts/avaliar_triagem.py` compara regras, LLM e LLM + few-shot antes de cada mudança de prompt.
 
 **Alternativas descartadas:** fine-tuning (indisponível na API, caro e lento); exemplos fixos escritos à mão (não aprendem com o uso); RAG em base vetorial externa (mais infraestrutura, desnecessário na escala atual: a busca é em memória sobre até 3.000 revisados).
 
@@ -231,3 +231,22 @@ Consequências: ...
 - Uma correção errada do atendente também se propaga; mitigação: a taxa de acerto por versão e o eval fixo expõem regressões.
 - O texto dos exemplos é conteúdo de cliente: vai delimitado por tags, que são removidas do texto (mesma defesa contra prompt injection da mensagem principal).
 - Falha na busca nunca impede a classificação (segue sem exemplos). Migração de bancos existentes: `db/migrations/003_prompt_version.sql`.
+
+---
+
+## ADR-015: Idioma do cliente identificado pelo LLM, conferido localmente e respeitado na resposta
+
+**Status:** accepted
+
+**Contexto:** clientes também escrevem em inglês, espanhol e outros idiomas. O prompt mandava responder sempre em português, e o plano B só tinha respostas e palavras-chave em português.
+
+**Decisão:** o LLM devolve o campo `idioma` (ISO 639-1) e escreve a `resposta_sugerida` no mesmo idioma do cliente; assunto, urgência, sentimento e equipe continuam com os códigos em português (prompt `v3`). Um detector local (`src/triagem/idioma.py`, palavras funcionais e acentos de pt, en, es, fr, it e de, sem rede e sem modelo) completa o idioma quando o LLM não o informa, corrige o idioma quando a detecção local é forte e diverge, e recusa uma resposta escrita claramente em outro idioma (nova tentativa e, se persistir, plano B). O plano B detecta o idioma e responde com textos prontos em pt, en ou es; os demais idiomas recebem a resposta em inglês. O idioma é gravado em `classifications.idioma` e aparece no painel e em `/metricas`.
+
+**Alternativas descartadas:** biblioteca de detecção de idioma (dependência e modelo a mais para um sinal que o LLM já dá); traduzir a mensagem para português antes de classificar (segunda chamada ao LLM e perda de nuances); confiar só no LLM (sem rede de segurança quando ele responde no idioma errado).
+
+**Consequências:**
+- O atendente recebe a resposta pronta no idioma do cliente; a fila e as métricas mostram de onde vem a demanda.
+- O detector local é conservador: em textos curtos ou mistos ele não contraria o LLM (só a detecção "forte", com ao menos 3 sinais e o dobro do segundo idioma, decide). Zero erros nas 94 mensagens em português dos conjuntos rotulados.
+- O prompt cresce ~140 tokens (~740 sem exemplos, ~1.130 com 4 exemplos).
+- As palavras-chave do plano B em outros idiomas são poucas: a classificação por regras fora do português é fraca (65% de acerto agregado em `data/avaliacao_idiomas.json`, contra o idioma detectado em 24/24).
+- Migração de bancos existentes: `db/migrations/004_idioma.sql`.

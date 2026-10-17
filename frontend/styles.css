@@ -165,6 +165,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-w
 .detalhe .mensagem { font-size: 16px; }
 .resposta { background: var(--bg); border-radius: 8px; padding: 10px; border-left: 3px solid var(--primaria); }
 .aprendizado { color: var(--ok); font-size: 0.9em; }
+.idioma { font: 600 0.75em/1 ui-monospace, monospace; padding: 2px 5px; border: 1px solid var(--borda); border-radius: 4px; }
 .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
 .grade-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 

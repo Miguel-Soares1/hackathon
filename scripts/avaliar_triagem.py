@@ -7,7 +7,8 @@ Modos:
            entram como "tickets já revisados", simulando o histórico de correções do atendente (leave-one-out).
 
 Mede, por modo:
-  - taxa de acerto por dimensão (assunto, urgência, sentimento e, se rotulada, equipe) e no agregado;
+  - taxa de acerto por dimensão (assunto, urgência, sentimento e, se rotuladas, equipe e idioma) e no agregado;
+  - se a resposta sugerida saiu no idioma do cliente (quando o arquivo rotula o idioma, ADR-015);
   - urgência subestimada (previsto abaixo do esperado): o erro que encurta o prazo de SLA de quem precisa;
   - taxa de JSON válido do LLM (uma chamada por mensagem, sem nova tentativa);
   - resistência a prompt injection: o rótulo não pode ceder e a resposta sugerida não pode carregar
@@ -17,12 +18,14 @@ Conjuntos (ver docs/avaliacao_triagem.md):
   data/avaliacao.json          60 mensagens, conjunto padrão de avaliação do prompt e do few-shot
   data/mensagens_holdout.json  30 mensagens nunca usadas para ajustar nada: é o número que vale
   data/mensagens_demo.json     usado para ajustar o prompt e o limiar (o resultado aqui é otimista)
+  data/avaliacao_idiomas.json  24 mensagens em pt, en, es, fr, it e de (inclui casos mistos e injection)
 
 Uso:
   python scripts/avaliar_triagem.py                          # regras + llm + fewshot + injection
   python scripts/avaliar_triagem.py --so-regras              # sem chamar a API
   python scripts/avaliar_triagem.py --modos llm fewshot --saida data/avaliacoes/v2.json
   python scripts/avaliar_triagem.py --arquivo data/mensagens_holdout.json --modos regras llm --rodadas 3
+  python scripts/avaliar_triagem.py --arquivo data/avaliacao_idiomas.json   # mensagens em en, es, fr, it, de e pt
 Rode sempre que mudar o prompt (e incremente PROMPT_VERSION em src/triagem/classifier.py). Não usa o banco.
 """
 import argparse
@@ -45,6 +48,7 @@ from triagem.config import get_settings  # noqa: E402
 from triagem.domain import DIMENSOES_CLASSIFICACAO, URGENCIAS, normalizar  # noqa: E402
 from triagem.exemplos import Exemplo, selecionar  # noqa: E402
 from triagem.fallback import classificar_por_regras  # noqa: E402
+from triagem.idioma import detectar  # noqa: E402
 
 MODOS = ("regras", "llm", "fewshot")
 
@@ -88,7 +92,7 @@ INJECOES = [
 
 
 def dimensoes_rotuladas(msgs: list) -> list[str]:
-    return [d for d in DIMENSOES_CLASSIFICACAO if msgs and all(d in m["esperado"] for m in msgs)]
+    return [d for d in DIMENSOES_CLASSIFICACAO + ("idioma",) if msgs and all(d in m["esperado"] for m in msgs)]
 
 
 def medir(msgs: list, preds: list) -> dict:
@@ -96,12 +100,16 @@ def medir(msgs: list, preds: list) -> dict:
     dims = dimensoes_rotuladas(msgs)
     validos = [(m, p) for m, p in zip(msgs, preds) if p is not None]
     r = {"total": len(msgs), "classificadas": len(validos), "dimensoes": dims, "acerto": {}, "agregado": None,
-         "urgencia_confusao": {}, "urgencia_subestimada": 0, "erros": []}
+         "resposta_no_idioma": None, "urgencia_confusao": {}, "urgencia_subestimada": 0, "erros": []}
     if not validos:
         return r
     for d in dims:
         r["acerto"][d] = sum(getattr(p, d) == m["esperado"][d] for m, p in validos) / len(validos)
     r["agregado"] = sum(r["acerto"].values()) / len(dims)
+    com_idioma = [(m, p) for m, p in validos if "idioma" in m["esperado"]]
+    if com_idioma:
+        r["resposta_no_idioma"] = sum(
+            detectar(p.resposta_sugerida).codigo == m["esperado"]["idioma"] for m, p in com_idioma) / len(com_idioma)
 
     conf = Counter((m["esperado"]["urgencia"], p.urgencia) for m, p in validos)
     r["urgencia_confusao"] = {esp: {prev: conf[(esp, prev)] for prev in URGENCIAS} for esp in URGENCIAS}
@@ -122,6 +130,8 @@ def imprimir(nome: str, r: dict, max_erros: int = 15) -> None:
     for d, taxa in r["acerto"].items():
         print(f"  {d:<11} {taxa:6.1%}")
     print(f"  {'agregado':<11} {r['agregado']:6.1%}")
+    if r.get("resposta_no_idioma") is not None:
+        print(f"  resposta no idioma do cliente: {r['resposta_no_idioma']:.1%}")
     if r.get("exemplos_por_mensagem"):
         print(f"  exemplos por mensagem: {r['exemplos_por_mensagem']:.1f}")
 
@@ -163,7 +173,8 @@ def classificar_modo(modo, msgs, settings, vetores, workers):
         return [(classificar_por_regras(m["texto"]), 0) for m in msgs]
 
     # O few-shot precisa das 4 dimensões rotuladas (assunto, urgência, sentimento e equipe).
-    candidatos = [Exemplo(i, m["texto"], **m["esperado"]) for i, m in enumerate(msgs)] if modo == "fewshot" else []
+    candidatos = [Exemplo(i, m["texto"], **{d: m["esperado"][d] for d in DIMENSOES_CLASSIFICACAO})
+                  for i, m in enumerate(msgs)] if modo == "fewshot" else []
 
     def um(i):
         refs = []
