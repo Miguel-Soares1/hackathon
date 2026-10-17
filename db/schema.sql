@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS classifications (
 CREATE TABLE IF NOT EXISTS ticket_midias (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ticket_id BIGINT UNSIGNED NOT NULL,
+  -- Mensagem do chat que levou a mídia (resposta do atendente); NULL = mídia do cliente, lida pela IA.
+  mensagem_id BIGINT UNSIGNED NULL,
   tipo VARCHAR(10) NOT NULL,
   mime VARCHAR(60) NOT NULL,
   tamanho INT UNSIGNED NOT NULL,
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS ticket_midias (
   conteudo TEXT NULL,
   processed_at DATETIME NULL,
   INDEX idx_midias_ticket (ticket_id),
+  INDEX idx_midias_mensagem (mensagem_id),
   CONSTRAINT fk_midia_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

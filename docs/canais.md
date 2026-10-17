@@ -58,6 +58,7 @@ O que o cliente escreve de novo aparece na conversa aberta no painel também em 
 própria conversa por `/demo/conversa/{ticket}?senha=…&depois_de=…` (senha HMAC devolvida no envio): recebe as mensagens
 do atendente, nunca a classificação.
 
+- **Imagem e áudio (WhatsApp e Instagram):** 📎 anexa imagens e 🎙 grava áudio pelo microfone (até 3 por mensagem; o texto vira opcional). A IA lê a mídia como no webhook (ADR-017), e as imagens e áudios que o atendente manda no chat aparecem na conversa do cliente (`/demo/conversa/{ticket}/midias/{id}?senha=…`).
 - **Cliente:** escolha na lista ou clique em **Outro cliente**. Mandar "Conta bloqueada" com 3 clientes diferentes gera um **incidente**.
 - Ligadas por padrão em desenvolvimento; **sempre desligadas** com `ENVIRONMENT=production`. Para desligar no dev: `DEMO=0`.
 

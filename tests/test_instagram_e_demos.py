@@ -173,3 +173,57 @@ def test_demos_desligadas_em_producao(db, monkeypatch):
              DATABASE_URL="mysql+pymysql://u:p@127.0.0.1:3306/hackathon_test")
     for canal in ("whatsapp", "instagram", "email"):
         assert c.get(f"/demo/{canal}").status_code == 404
+
+
+# ---------- imagem e áudio na tela do cliente (ADR-017) ----------
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+WEBM = b"\x1aE\xdf\xa3" + b"\x00" * 32
+
+
+def _b64(dados: bytes) -> str:
+    import base64
+    return base64.b64encode(dados).decode()
+
+
+def test_cliente_da_demo_envia_so_imagem_e_a_ia_le(client, monkeypatch):
+    from triagem import midias
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "Print com 'erro no Pix'.")
+    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "nome": "Mariana", "texto": "",
+                                            "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": _b64(PNG)}]})
+    assert r.status_code == 202 and r.json()["status"] == "pendente"
+    t = client.get(f"/tickets/{r.json()['ticket_id']}", headers=CHAVE).json()
+    assert t["canal"] == "whatsapp" and t["texto"] == "[Foto descrita pela IA]: Print com 'erro no Pix'."
+    assert t["midias"][0]["status"] == "lido"
+
+
+def test_audio_na_conversa_aberta_da_demo_e_lido_na_mensagem(client, monkeypatch):
+    from triagem import midias
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: "continua sem funcionar")
+    a = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "meu pix não caiu, preciso hoje"}).json()
+    b = client.post("/demo/whatsapp", json={"remetente": "5511987654321",
+                                            "midias": [{"tipo": "audio", "mime": "audio/webm", "dados_base64": _b64(WEBM)}]}).json()
+    assert b["status"] == "anexada" and b["ticket_id"] == a["ticket_id"]
+    msgs = client.get(f"/tickets/{a['ticket_id']}/mensagens", headers=CHAVE).json()
+    assert msgs[-1]["texto"] == "[Áudio transcrito pela IA]: continua sem funcionar"
+
+
+def test_demo_recusa_mensagem_vazia_e_midia_invalida(client):
+    assert client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": ""}).status_code == 400
+    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321",
+                                            "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": _b64(WEBM)}]})
+    assert r.status_code == 400
+
+
+def test_cliente_da_demo_ve_imagem_do_atendente_so_com_a_senha(client):
+    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "meu pix não caiu, preciso hoje"}).json()
+    client.post(f"/tickets/{r['ticket_id']}/mensagens", headers=CHAVE,
+                json={"midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": _b64(PNG)}]})
+    conversa = client.get(f"/demo/conversa/{r['ticket_id']}", params={"senha": r["senha"]}).json()
+    [msg] = conversa["atendente"]
+    [m] = msg["midias"]
+    assert msg["texto"] == "📷 Imagem" and m["tipo"] == "imagem"
+    url = f"/demo/conversa/{r['ticket_id']}/midias/{m['id']}"
+    arq = client.get(url, params={"senha": r["senha"]})
+    assert arq.status_code == 200 and arq.content == PNG and "sandbox" in arq.headers["content-security-policy"]
+    assert client.get(url).status_code == 404
+    assert client.get(url, params={"senha": "x" * 32}).status_code == 404

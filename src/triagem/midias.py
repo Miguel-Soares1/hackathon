@@ -1,8 +1,11 @@
-"""Áudio e foto enviados pelo cliente (ADR-017).
+"""Áudio e foto do cliente e do atendente (ADR-017).
 
 A mídia é validada e guardada junto do ticket. No processamento em background, a IA de mídia (Gemini)
 transcreve o áudio ou descreve a foto, e esse texto é anexado ao texto do ticket. Daí em diante a triagem
 (DeepSeek ou regras), o agrupamento de incidentes e o few-shot seguem iguais, só que lendo o texto completo.
+
+O atendente também pode mandar imagem e áudio no chat: essas mídias ficam ligadas à mensagem (`mensagem_id`),
+com status `enviado`, e não passam pela IA.
 """
 import base64
 import binascii
@@ -102,12 +105,15 @@ def validar(tipo: str, mime: str, dados_base64: str) -> Midia:
     return Midia(tipo, mime, dados)
 
 
-def salvar(conn, ticket_id: int, midias: list[Midia]) -> None:
-    """Grava as mídias do ticket na mesma transação que cria o ticket."""
+def salvar(conn, ticket_id: int, midias: list[Midia], mensagem_id: Optional[int] = None,
+           status: str = "pendente") -> None:
+    """Grava as mídias na mesma transação da mensagem. `pendente` = a IA ainda vai ler; `enviado` = do atendente."""
     for m in midias:
         conn.execute(
-            text("INSERT INTO ticket_midias (ticket_id, tipo, mime, tamanho, dados) VALUES (:t, :tipo, :mime, :n, :d)"),
-            {"t": ticket_id, "tipo": m.tipo, "mime": m.mime, "n": len(m.dados), "d": m.dados},
+            text("INSERT INTO ticket_midias (ticket_id, mensagem_id, tipo, mime, tamanho, dados, status) "
+                 "VALUES (:t, :msg, :tipo, :mime, :n, :d, :s)"),
+            {"t": ticket_id, "msg": mensagem_id, "tipo": m.tipo, "mime": m.mime, "n": len(m.dados), "d": m.dados,
+             "s": status},
         )
 
 
@@ -194,19 +200,36 @@ def processar(ticket_id: int, texto_cliente: str, mensagem_id: Optional[int] = N
 
 
 def por_ticket(conn, ticket_ids: list[int]) -> dict[int, list[dict]]:
-    """Metadados das mídias (sem os bytes) agrupados por ticket, para a fila e o detalhe."""
+    """Metadados das mídias do cliente (sem os bytes) agrupados por ticket, para a fila e o detalhe."""
     if not ticket_ids:
         return {}
     marcadores = ", ".join(f":i{n}" for n in range(len(ticket_ids)))
     rows = conn.execute(
         text(f"SELECT id, ticket_id, tipo, mime, tamanho, status, conteudo FROM ticket_midias "
-             f"WHERE ticket_id IN ({marcadores}) ORDER BY id"),
+             f"WHERE ticket_id IN ({marcadores}) AND mensagem_id IS NULL ORDER BY id"),
         {f"i{n}": i for n, i in enumerate(ticket_ids)},
     ).fetchall()
     saida: dict[int, list[dict]] = {}
     for r in rows:
         d = dict(r._mapping)
         saida.setdefault(d.pop("ticket_id"), []).append(d)
+    return saida
+
+
+def por_mensagem(conn, mensagem_ids: list[int]) -> dict[int, list[dict]]:
+    """Metadados das mídias enviadas no chat (sem os bytes) agrupados por mensagem, para os balões da conversa."""
+    if not mensagem_ids:
+        return {}
+    marcadores = ", ".join(f":i{n}" for n in range(len(mensagem_ids)))
+    rows = conn.execute(
+        text(f"SELECT id, mensagem_id, tipo, mime, tamanho FROM ticket_midias "
+             f"WHERE mensagem_id IN ({marcadores}) ORDER BY id"),
+        {f"i{n}": i for n, i in enumerate(mensagem_ids)},
+    ).fetchall()
+    saida: dict[int, list[dict]] = {}
+    for r in rows:
+        d = dict(r._mapping)
+        saida.setdefault(d.pop("mensagem_id"), []).append(d)
     return saida
 
 

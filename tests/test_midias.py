@@ -217,3 +217,55 @@ def test_foto_na_continuacao_da_conversa_fica_no_ticket_e_na_mensagem(client, mo
     assert t["texto"] == "meu cartão foi recusado" and t["assunto"] == triagem_antes["assunto"]
     conversa = client.get(f"/tickets/{a['ticket_id']}/mensagens", headers=CHAVE).json()
     assert conversa[-1]["texto"] == "olha o erro\n\n[Foto descrita pela IA]: Print com 'cartão recusado'."
+
+
+# ---------- imagem e áudio na resposta do atendente (chat) ----------
+def _ticket_do_chat(client):
+    return client.post("/webhook/mensagens", headers=CHAVE, json={
+        "canal": "chat", "texto": "Meu Pix não caiu", "conversa_id": "cli-resp"}).json()["ticket_id"]
+
+
+def test_atendente_envia_imagem_e_audio_no_chat(client, monkeypatch):
+    chamou_ia = []
+    monkeypatch.setattr(midias, "ler_com_ia", lambda m, s=None, c=None: chamou_ia.append(m) or "x")
+    tid = _ticket_do_chat(client)
+    r = client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={
+        "texto": "Veja o passo a passo", "autor": "Bia",
+        "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(PNG)},
+                   {"tipo": "audio", "mime": "audio/webm", "dados_base64": b64(WEBM)}],
+    })
+    assert r.status_code == 201
+    assert [m["tipo"] for m in r.json()["midias"]] == ["imagem", "audio"]
+
+    msgs = client.get(f"/tickets/{tid}/mensagens", headers=CHAVE).json()
+    saida = msgs[-1]
+    assert saida["direcao"] == "saida" and saida["texto"] == "Veja o passo a passo"
+    img, aud = saida["midias"]
+    arq = client.get(f"/tickets/{tid}/midias/{img['id']}", headers=CHAVE)
+    assert arq.status_code == 200 and arq.content == PNG
+    assert msgs[0]["midias"] == []  # a mensagem do cliente não tem mídia
+
+    t = client.get(f"/tickets/{tid}", headers=CHAVE).json()
+    assert t["midias"] == []  # mídia do atendente não aparece como mídia do cliente nem vai para a IA
+    assert t["first_response_at"] is not None  # conta como 1ª resposta (SLA)
+    assert not chamou_ia
+
+
+def test_atendente_envia_so_imagem_e_a_mensagem_ganha_rotulo(client):
+    tid = _ticket_do_chat(client)
+    r = client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={
+        "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(PNG)}]})
+    assert r.status_code == 201 and r.json()["texto"] == "📷 Imagem"
+
+
+def test_resposta_sem_texto_e_sem_midia_retorna_400(client):
+    tid = _ticket_do_chat(client)
+    assert client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={"texto": "  "}).status_code == 400
+
+
+def test_resposta_com_midia_invalida_retorna_400_e_nao_grava(client):
+    tid = _ticket_do_chat(client)
+    r = client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={
+        "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(OGG)}]})
+    assert r.status_code == 400
+    assert len(client.get(f"/tickets/{tid}/mensagens", headers=CHAVE).json()) == 1

@@ -88,7 +88,7 @@ python scripts/avaliar_triagem.py --saida data/avaliacoes/v3.json   # regras × 
 
 **Banco criado antes desta versão:** aplique as migrações em ordem e recrie a visão:
 ```powershell
-Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql, db/migrations/005_chat.sql, db/migrations/006_midias.sql, db/migrations/007_desfecho.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
+Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql, db/migrations/005_chat.sql, db/migrations/006_midias.sql, db/migrations/007_desfecho.sql, db/migrations/008_midias_chat.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
 python scripts/criar_banco.py
 ```
 
@@ -104,8 +104,11 @@ e Métricas mostra a distribuição. Avaliação: `python scripts/avaliar_triage
 O webhook aceita até 3 mídias por mensagem (áudio ou foto, até 8 MB cada) em `midias`, e o texto passa a ser
 opcional quando há mídia (ADR-017). No background, o **Gemini** transcreve o áudio e descreve a foto (inclusive o
 texto que aparece nela). O resultado é anexado ao texto do ticket (`[Áudio transcrito pela IA]: …`) e a triagem,
-o few-shot e os incidentes seguem iguais. No painel, a aba **Nova mensagem** anexa arquivos ou grava áudio pelo
-microfone, e o detalhe do ticket toca o áudio e mostra a foto original.
+o few-shot e os incidentes seguem iguais. No painel, o atendimento toca o áudio e mostra a foto original do cliente.
+
+O atendente também responde com mídia: no chat do **Atendimento**, **📎 Anexar imagem** e **🎙 Gravar áudio** (microfone)
+mandam até 3 anexos junto com a resposta (`POST /tickets/{id}/mensagens` com `midias`). Essas mídias aparecem no
+balão da conversa e não passam pela IA.
 
 ```json
 {"canal": "whatsapp", "cliente": "Loja Aurora", "texto": "",
@@ -152,7 +155,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | Método e rota | Função | Respostas |
 |---|---|---|
 | `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações); `conversa_id` agrupa na mesma conversa; áudio e foto opcionais (`midias`) | 202, 400, 401 |
-| `GET/POST /tickets/{id}/mensagens` | lê a conversa / registra resposta do atendente | 200, 201, 400, 401, 404 |
+| `GET/POST /tickets/{id}/mensagens` | lê a conversa / registra resposta do atendente (texto, imagem e áudio) | 200, 201, 400, 401, 404 |
 | `GET/POST /webhooks/whatsapp` · `/webhooks/instagram` | webhooks da Meta (assinatura `X-Hub-Signature-256`) | 200, 403, 503 |
 | `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
 | `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA), versão do prompt, exemplos usados e mídias | 200, 404 |

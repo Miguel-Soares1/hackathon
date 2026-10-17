@@ -15,6 +15,9 @@ A integração com o chat do cliente usa a API abaixo (todas as rotas exigem o h
 1. **Cliente → sistema:** `POST /webhook/mensagens` com `{"canal": "chat", "cliente": "Nome", "conversa_id": "<id da sessão>", "texto": "...", "external_id": "<id da mensagem>"}`.
 2. **Sistema → cliente (resposta do atendente):** o chat do cliente consulta `GET /tickets/{ticket_id}/mensagens?depois_de=<último id visto>` a cada poucos segundos e exibe as mensagens com `direcao = "saida"`. O `ticket_id` vem da resposta do passo 1.
 3. **Atendente por API (opcional):** `POST /tickets/{ticket_id}/mensagens` com `{"texto": "...", "autor": "Nome"}`.
+   Para mandar imagem ou áudio, inclua `"midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": "..."}]`
+   (até 3, 8 MB cada; o texto vira opcional). Cada mensagem da conversa traz `midias` com `id`, `tipo` e `mime`;
+   o arquivo sai em `GET /tickets/{ticket_id}/midias/{id}`. Sem texto, a mensagem leva o rótulo "📷 Imagem" ou "🎙 Áudio".
 
 A primeira resposta do atendente (pelo chat do painel ou pela API) registra o prazo de resposta (SLA). Respostas seguintes não o alteram.
 

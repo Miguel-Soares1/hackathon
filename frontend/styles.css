@@ -384,6 +384,11 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 .midia { border: 1px solid var(--borda); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .midia .estado-midia { font-size: 0.85em; }
 .midia .estado-midia.erro { color: var(--critica); }
+.ferramentas-chat { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.form-chat .anexos { width: 100%; }
+.bolha-midia { margin-bottom: 6px; }
+.bolha-midia img { max-width: 100%; max-height: 220px; border-radius: 8px; display: block; }
+.bolha-midia audio { max-width: 100%; }
 
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }

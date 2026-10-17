@@ -283,4 +283,5 @@ Consequências: ...
 - Sem chave ou com falha do Gemini, o ticket não trava: segue com o texto que houver, a mídia fica com status `erro` e o painel avisa o atendente, que pode ouvir ou ver o original.
 - A transcrição é texto controlado pelo cliente: entra na triagem pelo mesmo caminho delimitado da mensagem (defesa contra prompt injection), e o prompt do Gemini manda ignorar instruções contidas na mídia.
 - O arquivo original é servido só com a chave, com o tipo conferido e `Content-Security-Policy: sandbox`.
-- Migração de bancos existentes: `db/migrations/006_midias.sql`.
+- O atendente também envia imagem e áudio na resposta do chat: a mídia fica ligada à mensagem (`ticket_midias.mensagem_id`), com status `enviado`, aparece no balão da conversa e não passa pela IA. Sem texto, a mensagem leva um rótulo ("📷 Imagem") para quem só lê texto.
+- Migração de bancos existentes: `db/migrations/006_midias.sql` e `db/migrations/008_midias_chat.sql`.

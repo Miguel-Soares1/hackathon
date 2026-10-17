@@ -34,7 +34,6 @@
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
         <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
         <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
-        <button type="button" data-pagina="nova"><span aria-hidden="true">✉️</span> Simular mensagem</button>
       </nav>
       <hr>
       <label>Seu nome no chat <input id="atendente" maxlength="60" value="Atendente"></label>
@@ -159,30 +158,6 @@
             <div class="acoes-modal"><button type="button" class="btn" id="rel-modal-cancelar">Cancelar</button><button type="submit" class="btn primario" value="aplicar">Aplicar filtros</button></div>
           </form>
         </dialog>
-      </section>
-      <section id="pagina-nova" class="pagina" hidden>
-        <form id="form-nova" class="card form-nova">
-          <h2>Simular mensagem de cliente</h2>
-          <p class="muted">Envia para o webhook, como faria um canal real. A IA classifica em segundos e o atendimento aparece em <b>Atendimento → Em espera</b>.</p>
-          <div class="linha">
-            <label>Canal
-              <select name="canal">
-                <option>WhatsApp</option><option>E-mail</option><option>Chat</option><option>Instagram</option>
-              </select>
-            </label>
-            <label>Cliente <input name="cliente" maxlength="120" placeholder="Ex.: Loja Aurora"></label>
-          </div>
-          <label>Mensagem <textarea name="texto" rows="4" maxlength="4000" placeholder="Opcional se houver foto ou áudio"></textarea></label>
-          <div class="acoes">
-            <button type="button" id="anexar" class="btn">📎 Anexar imagem</button>
-            <button type="button" id="gravar" class="btn" aria-pressed="false">🎙 Gravar áudio</button>
-            <input type="file" id="arquivo" accept="image/jpeg,image/png,image/webp" multiple hidden>
-          </div>
-          <ul id="lista-anexos" class="anexos"></ul>
-          <button type="submit" class="btn primario">Enviar</button>
-          <p id="nova-status" class="muted" aria-live="polite"></p>
-          <p class="muted">Quer conversar com um cliente simulado pela IA? Abra o <a href="/demo" target="_blank" rel="noopener">simulador de canais ↗</a>.</p>
-        </form>
       </section>
     </main>
   </div>

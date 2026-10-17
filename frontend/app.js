@@ -17,7 +17,7 @@ const POLITICA_TEXTO = {
   congelar_funcionalidades: "Error budget esgotado: congelar funcionalidades novas e corrigir as causas dos atrasos.",
   sem_dados: "Ainda não há tickets com desfecho para calcular o SLI.",
 };
-const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", atendimentos: "Atendimentos", nova: "Simular mensagem" };
+const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", atendimentos: "Atendimentos" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
 
@@ -33,9 +33,9 @@ const estado = {
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
   triagemAberta: false,
   timer: null,
-  anexos: [], // mídias a enviar em "Simular mensagem": { tipo, mime, dados_base64, nome, url }
-  gravador: null,
   midiaUrls: {}, // id da mídia -> URL local (blob) já baixada, para não baixar a cada atualização
+  anexos: [], // imagem/áudio a enviar na resposta do chat: { tipo, mime, dados_base64, nome, url }
+  gravador: null,
 };
 
 // ---------------------------------------------------------------- utilidades
@@ -140,7 +140,7 @@ async function carregar() {
     renderMetricas();
     renderCartoes();
     renderRelatorio();
-    if (!estado.editando && !tocandoAudio()) renderDetalhe();
+    if (!estado.editando && !tocandoAudio() && !estado.anexos.length && !estado.gravador) renderDetalhe();
     else if (estado.selecionado) carregarConversa(estado.selecionado); // a conversa continua atualizando
     renderIncidentes(incidentes);
     if (estado.pagina === "correcoes") renderCorrecoes(await api("/correcoes"));
@@ -339,9 +339,16 @@ function renderDetalhe() {
     ${renderMidias(t)}
     <form id="form-chat" class="form-chat"${t.desfecho ? " hidden" : ""}>
       ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao">💡 Usar resposta sugerida pela IA</button>` : ""}
+      <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
-        <textarea name="texto" rows="2" maxlength="2000" required placeholder="Responder pelo ${esc(CANAIS[chaveCanal(t.canal)].rotulo)}…" aria-label="Resposta ao cliente"></textarea>
+        <textarea name="texto" rows="2" maxlength="2000" placeholder="Responder pelo ${esc(CANAIS[chaveCanal(t.canal)].rotulo)}…" aria-label="Resposta ao cliente"></textarea>
         <button type="submit" class="btn primario" aria-label="Enviar">Enviar</button>
+      </div>
+      <div class="ferramentas-chat">
+        <button type="button" id="anexar" class="btn pequeno">📎 Anexar imagem</button>
+        <button type="button" id="gravar" class="btn pequeno" aria-pressed="${estado.gravador ? "true" : "false"}">${estado.gravador ? "⏹ Parar gravação" : "🎙 Gravar áudio"}</button>
+        <input type="file" id="arquivo" accept="image/jpeg,image/png,image/webp" multiple hidden>
+        <span id="chat-status" class="muted" aria-live="polite"></span>
       </div>
     </form>
     <details class="triagem" id="triagem" ${estado.triagemAberta ? "open" : ""}>
@@ -350,6 +357,7 @@ function renderDetalhe() {
     </details>`;
   carregarConversa(t.ticket_id);
   carregarMidias(t);
+  renderAnexos();
 }
 
 function triagem(t) {
@@ -385,7 +393,8 @@ function triagem(t) {
 function bolha(m) {
   const lado = m.direcao === "saida" ? "saida" : "entrada";
   const autor = lado === "saida" ? m.autor || "Atendente" : contato({ cliente: m.autor }).nome.replace("Cliente sem identificação", "Cliente");
-  return `<div class="bolha ${lado}">${esc(m.texto)}<div class="bolha-autor">${esc(autor)} · ${esc(horaCurta(m.created_at))}</div></div>`;
+  const anexos = (m.midias || []).map((x) => `<div class="bolha-midia" data-midia="${x.id}">${x.tipo === "audio" ? "🎙 Áudio" : "📷 Imagem"} <span class="muted">carregando…</span></div>`).join("");
+  return `<div class="bolha ${lado}">${anexos}${esc(m.texto)}<div class="bolha-autor">${esc(autor)} · ${esc(horaCurta(m.created_at))}</div></div>`;
 }
 
 async function carregarConversa(id) {
@@ -398,6 +407,7 @@ async function carregarConversa(id) {
     caixa.dataset.html = html;
     caixa.innerHTML = html;
     caixa.scrollTop = caixa.scrollHeight;
+    mostrarMidias(id, msgs.flatMap((m) => m.midias || []));
   } catch (e) {
     if (e instanceof NaoAutorizado) return sair("Chave inválida ou expirada.");
     alertaStatus(e.message);
@@ -407,10 +417,13 @@ async function carregarConversa(id) {
 async function enviarChat(form) {
   const id = estado.selecionado;
   const texto = form.texto.value.trim();
-  if (!texto) return;
+  if (estado.gravador) return void ($("#chat-status").textContent = "⚠ Pare a gravação antes de enviar.");
+  if (!texto && !estado.anexos.length) return;
+  const midias = estado.anexos.map(({ tipo, mime, dados_base64 }) => ({ tipo, mime, dados_base64 }));
   try {
-    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, autor: $("#atendente").value.trim() || "Atendente" }) });
+    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, midias, autor: $("#atendente").value.trim() || "Atendente" }) });
     form.texto.value = "";
+    limparAnexos();
     estado.editando = false;
     await carregar(); // a 1ª resposta muda o prazo (SLA) e o ticket sai de "Em espera"
   } catch (e) {
@@ -439,12 +452,16 @@ function renderMidias(t) {
     </div>`).join("")}</div>`;
 }
 
+function carregarMidias(t) {
+  return mostrarMidias(t.ticket_id, t.midias || []);
+}
+
 // <img>/<audio> não mandam o header X-API-Key: baixa com a chave e mostra a partir de uma URL local (blob).
-async function carregarMidias(t) {
-  for (const m of t.midias || []) {
+async function mostrarMidias(ticketId, lista) {
+  for (const m of lista) {
     try {
       if (!estado.midiaUrls[m.id]) {
-        const resp = await fetch(`/tickets/${t.ticket_id}/midias/${m.id}`, { headers: { "X-API-Key": estado.chave } });
+        const resp = await fetch(`/tickets/${ticketId}/midias/${m.id}`, { headers: { "X-API-Key": estado.chave } });
         if (!resp.ok) throw new Error(`erro ${resp.status}`);
         estado.midiaUrls[m.id] = URL.createObjectURL(await resp.blob());
       }
@@ -452,7 +469,7 @@ async function carregarMidias(t) {
       if (!alvo) continue; // o atendente trocou de ticket enquanto baixava
       const url = estado.midiaUrls[m.id];
       alvo.innerHTML = m.tipo === "audio" ? `<audio controls preload="metadata" src="${url}"></audio>`
-        : `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Foto enviada pelo cliente"></a>`;
+        : `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Imagem da conversa"></a>`;
     } catch (e) {
       const alvo = document.querySelector(`[data-midia="${m.id}"] .muted`);
       if (alvo) alvo.textContent = `não foi possível carregar (${e.message})`;
@@ -460,7 +477,7 @@ async function carregarMidias(t) {
   }
 }
 
-// ---------------------------------------------------------------- anexos de "Simular mensagem"
+// ---------------------------------------------------------------- imagem e áudio na resposta do chat (ADR-017)
 const MAX_ANEXOS = 3;
 const MAX_MB = 8;
 
@@ -474,10 +491,10 @@ function lerBase64(blob) {
 }
 
 async function adicionarAnexo(blob, nome) {
-  const st = $("#nova-status");
+  const st = $("#chat-status");
   const mime = blob.type || "";
   const tipo = mime.startsWith("image/") ? "imagem" : mime.startsWith("audio/") ? "audio" : null;
-  if (!tipo) return void (st.textContent = `⚠ ${nome}: envie uma foto (JPG, PNG, WebP) ou um áudio.`);
+  if (!tipo) return void (st.textContent = `⚠ ${nome}: envie uma imagem (JPG, PNG, WebP) ou um áudio.`);
   if (estado.anexos.length >= MAX_ANEXOS) return void (st.textContent = `⚠ No máximo ${MAX_ANEXOS} anexos por mensagem.`);
   if (blob.size > MAX_MB * 1024 * 1024) return void (st.textContent = `⚠ ${nome}: maior que ${MAX_MB} MB.`);
   estado.anexos.push({ tipo, mime, nome, dados_base64: await lerBase64(blob), url: URL.createObjectURL(blob) });
@@ -486,10 +503,12 @@ async function adicionarAnexo(blob, nome) {
 }
 
 function renderAnexos() {
-  $("#lista-anexos").innerHTML = estado.anexos.map((a, i) => `<li class="anexo">
+  const lista = $("#lista-anexos");
+  if (!lista) return;
+  lista.innerHTML = estado.anexos.map((a, i) => `<li class="anexo">
     ${a.tipo === "audio" ? `<audio controls src="${a.url}"></audio>` : `<img src="${a.url}" alt="">`}
     <span class="muted">${esc(a.nome)}</span>
-    <button type="button" class="btn" data-remover="${i}" aria-label="Remover ${esc(a.nome)}">Remover</button>
+    <button type="button" class="btn pequeno" data-remover="${i}" aria-label="Remover ${esc(a.nome)}">Remover</button>
   </li>`).join("");
 }
 
@@ -500,8 +519,7 @@ function limparAnexos() {
 }
 
 async function alternarGravacao() {
-  const botao = $("#gravar");
-  const st = $("#nova-status");
+  const st = $("#chat-status");
   if (estado.gravador) return estado.gravador.stop();
   let fluxo;
   try {
@@ -515,13 +533,19 @@ async function alternarGravacao() {
   gravador.onstop = () => {
     fluxo.getTracks().forEach((faixa) => faixa.stop());
     estado.gravador = null;
-    botao.setAttribute("aria-pressed", "false");
-    botao.textContent = "🎙 Gravar áudio";
+    const botao = $("#gravar");
+    if (botao) {
+      botao.setAttribute("aria-pressed", "false");
+      botao.textContent = "🎙 Gravar áudio";
+    }
+    if ($("#chat-status")) $("#chat-status").textContent = "";
+    if (gravador.descartar) return; // o atendente trocou de atendimento no meio da gravação
     const blob = new Blob(pedacos, { type: gravador.mimeType || "audio/webm" });
     adicionarAnexo(blob, `gravação ${new Date().toLocaleTimeString("pt-BR")}`);
   };
   gravador.start();
   estado.gravador = gravador;
+  const botao = $("#gravar");
   botao.setAttribute("aria-pressed", "true");
   botao.textContent = "⏹ Parar gravação";
   st.textContent = "🔴 Gravando… clique em “Parar gravação” quando terminar.";
@@ -588,27 +612,6 @@ function alertaStatus(msg) {
   $("#status").textContent = `⚠ ${msg}`;
 }
 
-async function enviarMensagem(form) {
-  const dados = Object.fromEntries(new FormData(form));
-  if (!dados.cliente) delete dados.cliente;
-  const st = $("#nova-status");
-  if (estado.gravador) return void (st.textContent = "⚠ Pare a gravação antes de enviar.");
-  if (dados.texto.trim().length < 3 && !estado.anexos.length) {
-    return void (st.textContent = "⚠ Escreva uma mensagem (3+ caracteres) ou anexe uma foto ou áudio.");
-  }
-  dados.midias = estado.anexos.map(({ tipo, mime, dados_base64 }) => ({ tipo, mime, dados_base64 }));
-  st.textContent = "Enviando…";
-  try {
-    const r = await api("/webhook/mensagens", { method: "POST", body: JSON.stringify(dados) });
-    st.textContent = `✅ Ticket #${r.ticket_id} recebido. Veja em Atendimento → Em espera em instantes.`;
-    form.texto.value = "";
-    limparAnexos();
-    setTimeout(carregar, 1500);
-  } catch (e) {
-    st.textContent = `⚠ ${e.message}`;
-  }
-}
-
 function irPara(pagina) {
   estado.pagina = pagina;
   document.querySelectorAll(".menu button").forEach((b) => {
@@ -622,6 +625,13 @@ function irPara(pagina) {
 }
 
 function abrirTicket(id) {
+  if (id !== estado.selecionado) { // anexos e gravação pertencem ao atendimento que estava aberto
+    if (estado.gravador) {
+      estado.gravador.descartar = true;
+      estado.gravador.stop();
+    }
+    limparAnexos();
+  }
   estado.selecionado = id;
   estado.editando = false;
   renderCartoes();
@@ -900,6 +910,26 @@ document.addEventListener("DOMContentLoaded", () => {
   detalhe.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-acao]");
     if (b) acaoDetalhe(b.dataset.acao);
+    if (ev.target.closest("#anexar")) $("#arquivo").click();
+    if (ev.target.closest("#gravar")) alternarGravacao();
+    const r = ev.target.closest("button[data-remover]");
+    if (r) {
+      const [a] = estado.anexos.splice(Number(r.dataset.remover), 1);
+      URL.revokeObjectURL(a.url);
+      renderAnexos();
+    }
+  });
+  detalhe.addEventListener("change", async (ev) => {
+    if (ev.target.id !== "arquivo") return;
+    for (const f of ev.target.files) {
+      // Este botão é só para imagens; áudio entra pelo botão de gravar.
+      if (!(f.type || "").startsWith("image/")) {
+        $("#chat-status").textContent = `⚠ ${f.name}: anexe apenas imagens (JPG, PNG, WebP).`;
+        continue;
+      }
+      await adicionarAnexo(f, f.name);
+    }
+    ev.target.value = ""; // permite escolher o mesmo arquivo de novo
   });
   detalhe.addEventListener("toggle", (ev) => { if (ev.target.id === "triagem") estado.triagemAberta = ev.target.open; }, true);
   detalhe.addEventListener("input", () => { estado.editando = true; });
@@ -920,30 +950,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  $("#form-nova").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    enviarMensagem(ev.target);
-  });
-  $("#anexar").addEventListener("click", () => $("#arquivo").click());
-  $("#arquivo").addEventListener("change", async (ev) => {
-    for (const f of ev.target.files) {
-      // Este botão é só para imagens; áudio entra pelo botão de gravar.
-      if (!(f.type || "").startsWith("image/")) {
-        $("#nova-status").textContent = `⚠ ${f.name}: anexe apenas imagens (JPG, PNG, WebP).`;
-        continue;
-      }
-      await adicionarAnexo(f, f.name);
-    }
-    ev.target.value = ""; // permite escolher o mesmo arquivo de novo
-  });
-  $("#gravar").addEventListener("click", alternarGravacao);
-  $("#lista-anexos").addEventListener("click", (ev) => {
-    const b = ev.target.closest("button[data-remover]");
-    if (!b) return;
-    const [a] = estado.anexos.splice(Number(b.dataset.remover), 1);
-    URL.revokeObjectURL(a.url);
-    renderAnexos();
-  });
   ligarRelatorio();
 
   if (estado.chave) entrar(); else sair();

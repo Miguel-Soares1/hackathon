@@ -38,15 +38,24 @@ def payload_instagram(usuario: str, texto: str, agora: Optional[float] = None) -
     }
 
 
-def mensagem_demo(canal: str, remetente: str, nome: Optional[str], texto: str) -> Optional[dict]:
-    """Mesmo caminho do webhook real: payload da Meta -> mensagem do pipeline (ou None se seria ignorada)."""
+def mensagem_demo(canal: str, remetente: str, nome: Optional[str], texto: str,
+                  com_midia: bool = False) -> Optional[dict]:
+    """Mesmo caminho do webhook real: payload da Meta -> mensagem do pipeline (ou None se seria ignorada).
+
+    Com mídia (imagem/áudio, ADR-017) o texto é opcional: o conversor recebe um texto provisório só para montar
+    remetente, horário e ids, e a mensagem segue com o texto que o cliente escreveu (pode ser vazio).
+    """
+    texto = (texto or "").strip()
+    base = texto if not com_midia or len(texto) >= 3 else "mídia enviada pelo cliente"
     if canal == "whatsapp":
-        msgs = canais.mensagens_whatsapp(payload_whatsapp(remetente, nome, texto))
+        msgs = canais.mensagens_whatsapp(payload_whatsapp(remetente, nome, base))
     elif canal == "instagram":
-        msgs = canais.mensagens_instagram(payload_instagram(remetente, texto))
+        msgs = canais.mensagens_instagram(payload_instagram(remetente, base))
     else:
         raise ValueError(canal)
-    return msgs[0] if msgs else None
+    if not msgs:
+        return None
+    return {**msgs[0], "texto": texto} if com_midia else msgs[0]
 
 
 _PAGINA = r"""<!doctype html>
@@ -104,6 +113,18 @@ _PAGINA = r"""<!doctype html>
   .env { width:44px; height:44px; border-radius:50%; border:0; background:var(--acento); color:#fff; display:grid; place-items:center; cursor:pointer; flex:none; }
   .env:disabled { opacity:.5; }
   #aviso { font-size:12px; color:var(--er); padding:0 14px 6px; background:var(--fundo); min-height:4px; }
+  /* Anexos do cliente: imagem e áudio (ADR-017) */
+  .ic { width:40px; height:44px; border:0; background:transparent; color:var(--mu); font-size:20px; cursor:pointer; flex:none; border-radius:50%; }
+  .ic:hover { color:var(--acento); }
+  .ic[aria-pressed=true] { color:var(--er); }
+  .previa { display:flex; gap:8px; overflow-x:auto; padding:8px 10px 0; background:var(--fundo); }
+  .previa:empty { display:none; }
+  .previa div { position:relative; flex:none; background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:4px; }
+  .previa img { height:64px; border-radius:6px; display:block; }
+  .previa audio { height:36px; width:200px; display:block; }
+  .previa button { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:0; background:var(--er); color:#fff; cursor:pointer; font-size:12px; line-height:22px; padding:0; }
+  .b img { max-width:100%; max-height:240px; border-radius:8px; display:block; margin-bottom:4px; }
+  .b audio { width:230px; max-width:100%; display:block; margin-bottom:4px; }
 
   .app > * { min-width:0; }
   @media (max-width: 820px) { .app { padding:0 16px 16px; } .topo { padding:12px 16px; } .celular { border-width:8px; } .celular { height:600px; } }
@@ -126,7 +147,11 @@ _PAGINA = r"""<!doctype html>
         <button type="button" data-m="2">Cobrança duplicada</button><button type="button" data-m="3">App caindo</button>
         <button type="button" data-m="4">Cancelar</button><button type="button" data-m="5">Elogio</button>
       </div>
-      <form id="f"><textarea id="texto" rows="1" maxlength="1000" placeholder="Mensagem"></textarea>
+      <div class="previa" id="previa" aria-label="Anexos a enviar"></div>
+      <form id="f"><button type="button" class="ic" id="anexar" aria-label="Anexar imagem" title="Anexar imagem">📎</button>
+        <input type="file" id="arquivo" accept="image/jpeg,image/png,image/webp" multiple hidden>
+        <textarea id="texto" rows="1" maxlength="1000" placeholder="Mensagem"></textarea>
+        <button type="button" class="ic" id="gravar" aria-label="Gravar áudio" aria-pressed="false" title="Gravar áudio">🎙</button>
         <button class="env" id="b" type="submit" aria-label="Enviar"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5l.01 6.6L15 12 3.01 13.9z" fill="currentColor"/></svg></button></form>
       <div id="aviso" role="status"></div>
     </div>
@@ -171,12 +196,19 @@ const hora = () => new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minu
 const rolar = () => { const c = $('chat'); c.scrollTop = c.scrollHeight; };
 
 function desenharBolha(m) {
-  const b = el('div', 'b ' + m.de, m.texto); const h = el('span', 'h', m.hora + ' ');
+  const b = el('div', 'b ' + m.de);
+  (m.midias || []).forEach((x) => {
+    const e = el(x.tipo === 'audio' ? 'audio' : 'img');
+    if (x.tipo === 'audio') { e.controls = true; e.preload = 'metadata'; } else e.alt = 'Imagem';
+    e.src = x.url; b.append(e);
+  });
+  if (m.texto) b.append(document.createTextNode(m.texto));
+  const h = el('span', 'h', m.hora + ' ');
   if (m.de === 'eu') { m.tick = el('span', 't' + (m.lido ? ' lido' : ''), m.estado); h.append(m.tick); }
   b.append(h); $('chat').append(b); return m;
 }
-function bolha(texto) {
-  const m = { de: 'eu', texto, hora: hora(), estado: '✓' };
+function bolha(texto, midias) {
+  const m = { de: 'eu', texto, midias, hora: hora(), estado: '✓' };
   conversa().msgs.push(m); desenharBolha(m); rolar();
   return { set textContent(v) { m.estado = v; if (m.tick) m.tick.textContent = v; } };
 }
@@ -201,7 +233,11 @@ async function buscarRespostas() {
         if (r.ultimo_id != null) c.ultimo = r.ultimo_id;
         if (!r.atendente || !r.atendente.length) continue;
         c.msgs.forEach((m) => { if (m.de === 'eu') { m.lido = true; m.estado = '✓✓'; } });
-        r.atendente.forEach((x) => c.msgs.push({ de: 'ele', texto: x.texto, hora: hora() }));
+        r.atendente.forEach((x) => c.msgs.push({ de: 'ele', hora: hora(),
+          // Só mídia: o rótulo ("📷 Imagem") não precisa aparecer junto da própria imagem.
+          texto: x.midias && x.midias.length && SO_ROTULO.test(x.texto) ? '' : x.texto,
+          midias: (x.midias || []).map((a) => ({ tipo: a.tipo,
+            url: '/demo/conversa/' + c.ticket + '/midias/' + a.id + '?senha=' + encodeURIComponent(c.senha) })) }));
         if (contato === PESSOAS[+$('pessoa').value][1]) trocar($('pessoa').value);
       } catch (_) {}
     }
@@ -209,15 +245,67 @@ async function buscarRespostas() {
 }
 setInterval(buscarRespostas, 3000);
 
+// ---------- anexos do cliente: imagem (📎) e áudio gravado no microfone (🎙)
+const MAX_ANEXOS = 3, MAX_MB = 8;
+const SO_ROTULO = /^(📷 Imagem|🎙 Áudio)( · (📷 Imagem|🎙 Áudio))*$/;
+let anexos = [], gravador = null;
+const lerBase64 = (blob) => new Promise((ok, falha) => {
+  const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => falha(r.error); r.readAsDataURL(blob);
+});
+function desenharPrevia() {
+  const p = $('previa'); p.textContent = '';
+  anexos.forEach((a, i) => {
+    const d = el('div'); const m = el(a.tipo === 'audio' ? 'audio' : 'img');
+    if (a.tipo === 'audio') m.controls = true; else m.alt = '';
+    m.src = a.url; const x = el('button', null, '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Remover anexo');
+    x.addEventListener('click', () => { anexos.splice(i, 1); desenharPrevia(); });
+    d.append(m, x); p.append(d);
+  });
+}
+async function adicionar(blob, nome) {
+  const mime = blob.type || ''; const tipo = mime.startsWith('image/') ? 'imagem' : mime.startsWith('audio/') ? 'audio' : null;
+  if (!tipo) return void ($('aviso').textContent = nome + ': envie uma imagem (JPG, PNG, WebP) ou um áudio.');
+  if (anexos.length >= MAX_ANEXOS) return void ($('aviso').textContent = 'No máximo ' + MAX_ANEXOS + ' anexos por mensagem.');
+  if (blob.size > MAX_MB * 1024 * 1024) return void ($('aviso').textContent = nome + ': maior que ' + MAX_MB + ' MB.');
+  anexos.push({ tipo, mime, dados_base64: await lerBase64(blob), url: URL.createObjectURL(blob) });
+  $('aviso').textContent = ''; desenharPrevia();
+}
+$('anexar').addEventListener('click', () => $('arquivo').click());
+$('arquivo').addEventListener('change', async (e) => {
+  for (const f of e.target.files) {
+    if (!(f.type || '').startsWith('image/')) { $('aviso').textContent = f.name + ': anexe apenas imagens (JPG, PNG, WebP).'; continue; }
+    await adicionar(f, f.name);
+  }
+  e.target.value = '';
+});
+$('gravar').addEventListener('click', async () => {
+  if (gravador) return gravador.stop();
+  let fluxo;
+  try { fluxo = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (_) { return void ($('aviso').textContent = 'Sem acesso ao microfone. Permita o uso no navegador.'); }
+  const g = new MediaRecorder(fluxo); const pedacos = [];
+  g.ondataavailable = (ev) => { if (ev.data.size) pedacos.push(ev.data); };
+  g.onstop = () => {
+    fluxo.getTracks().forEach((t) => t.stop()); gravador = null;
+    $('gravar').setAttribute('aria-pressed', 'false'); $('gravar').textContent = '🎙'; $('aviso').textContent = '';
+    adicionar(new Blob(pedacos, { type: g.mimeType || 'audio/webm' }), 'áudio');
+  };
+  g.start(); gravador = g;
+  $('gravar').setAttribute('aria-pressed', 'true'); $('gravar').textContent = '⏹'; $('aviso').textContent = '🔴 Gravando… toque em ⏹ para parar.';
+});
+
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
   const texto = $('texto').value.trim(); $('aviso').textContent = '';
-  if (texto.length < 3) return;
+  if (gravador) return void ($('aviso').textContent = 'Pare a gravação antes de enviar.');
+  if (texto.length < 3 && !anexos.length) return;
   const p = PESSOAS[+$('pessoa').value];
-  const tick = bolha(texto); $('texto').value = ''; $('b').disabled = true;
+  const enviados = anexos; anexos = []; desenharPrevia();
+  const tick = bolha(texto, enviados.map((a) => ({ tipo: a.tipo, url: a.url }))); $('texto').value = ''; $('b').disabled = true;
   try {
     const resp = await fetch('/demo/' + CANAL, { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ remetente: p[1], nome: CANAL === 'whatsapp' ? p[0] : null, texto }) });
+      body: JSON.stringify({ remetente: p[1], nome: CANAL === 'whatsapp' ? p[0] : null, texto,
+        midias: enviados.map(({ tipo, mime, dados_base64 }) => ({ tipo, mime, dados_base64 })) }) });
     const d = await resp.json().catch(() => ({}));
     if (resp.status === 202) {
       tick.textContent = '✓✓';  // entregue

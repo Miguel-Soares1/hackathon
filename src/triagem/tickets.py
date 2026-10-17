@@ -236,13 +236,16 @@ def mensagens(ticket_id: int, depois_de: int = 0) -> list[dict]:
             ),
             {"t": ticket_id, "d": depois_de},
         ).fetchall()
+        anexos = midias_mod.por_mensagem(conn, [r.id for r in rows])
     if not rows and depois_de == 0:  # ticket anterior ao chat: usa o texto original
-        return [{"id": 0, "direcao": "entrada", "autor": t.cliente, "texto": t.texto, "created_at": t.received_at}]
-    return [dict(r._mapping) for r in rows]
+        return [{"id": 0, "direcao": "entrada", "autor": t.cliente, "texto": t.texto, "created_at": t.received_at,
+                 "midias": []}]
+    return [{**r._mapping, "midias": anexos.get(r.id, [])} for r in rows]
 
 
 @com_retry_deadlock()
-def _gravar_resposta_chat(ticket_id: int, texto: str, autor: Optional[str], agora: datetime) -> int:
+def _gravar_resposta_chat(ticket_id: int, texto: str, autor: Optional[str], agora: datetime,
+                          midias: Sequence[midias_mod.Midia] = ()) -> int:
     with get_engine().begin() as conn:
         existe = conn.execute(text("SELECT id FROM tickets WHERE id = :id"), {"id": ticket_id}).fetchone()
         if existe is None:
@@ -251,20 +254,32 @@ def _gravar_resposta_chat(ticket_id: int, texto: str, autor: Optional[str], agor
             text("UPDATE tickets SET first_response_at = :q WHERE id = :id AND first_response_at IS NULL"),
             {"q": agora, "id": ticket_id},
         )
-        return _inserir_mensagem(conn, ticket_id, "saida", texto, autor, agora)
+        msg_id = _inserir_mensagem(conn, ticket_id, "saida", texto, autor, agora)
+        midias_mod.salvar(conn, ticket_id, list(midias), mensagem_id=msg_id, status="enviado")
+        return msg_id
 
 
-def responder_chat(ticket_id: int, texto: str, autor: Optional[str] = None) -> dict:
-    """Resposta do atendente no chat. Grava a mensagem e registra a 1ª resposta (SLA) se ainda não havia.
+ROTULO_ENVIO = {"imagem": "📷 Imagem", "audio": "🎙 Áudio"}
 
+
+def responder_chat(ticket_id: int, texto: str, autor: Optional[str] = None,
+                   midias: Sequence[midias_mod.Midia] = ()) -> dict:
+    """Resposta do atendente no chat. Grava a mensagem (com imagem/áudio opcionais) e registra a 1ª resposta (SLA).
+
+    Sem texto, a mensagem leva um rótulo ("📷 Imagem") para quem só lê texto, como as telas /demo.
     Não envia nada ao cliente: o canal de entrega é integrado depois (ver docs/chat.md).
     """
-    texto = (texto or "").strip()
+    texto = (texto or "").strip()[:2000]
+    if not texto and midias:
+        texto = " · ".join(ROTULO_ENVIO[m.tipo] for m in midias)
     if not texto:
         raise ValueError("mensagem vazia")
     agora = utcnow()
-    msg_id = _gravar_resposta_chat(ticket_id, texto[:2000], (autor or None) and autor[:120], agora)
-    return {"id": msg_id, "ticket_id": ticket_id, "direcao": "saida", "autor": autor, "texto": texto[:2000], "created_at": agora}
+    msg_id = _gravar_resposta_chat(ticket_id, texto, (autor or None) and autor[:120], agora, midias)
+    with get_engine().connect() as conn:
+        anexos = midias_mod.por_mensagem(conn, [msg_id]).get(msg_id, [])
+    return {"id": msg_id, "ticket_id": ticket_id, "direcao": "saida", "autor": autor, "texto": texto, "created_at": agora,
+            "midias": anexos}
 
 
 def encerrar(ticket_id: int, desfecho: str, quando: Optional[datetime] = None) -> dict:

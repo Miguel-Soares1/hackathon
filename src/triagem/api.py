@@ -133,12 +133,18 @@ class EmailDemoIn(BaseModel):
 class ChatDemoIn(BaseModel):
     remetente: str = Field(min_length=1, max_length=30, description="WhatsApp: telefone só com dígitos; Instagram: usuário")
     nome: Optional[str] = Field(default=None, max_length=80)
-    texto: str = Field(min_length=1, max_length=1000)
+    texto: str = Field(default="", max_length=1000, description="Obrigatório se não houver mídia.")
+    midias: list[MidiaIn] = Field(default_factory=list, max_length=midias.MAX_MIDIAS,
+                                  description="Imagem ou áudio do cliente simulado (ADR-017).")
 
 
 class MensagemChatIn(BaseModel):
-    texto: str = Field(min_length=1, max_length=2000)
+    texto: str = Field(default="", max_length=2000, description="Obrigatório se não houver mídia.")
     autor: Optional[str] = Field(default=None, max_length=120)
+    midias: list[MidiaIn] = Field(
+        default_factory=list, max_length=midias.MAX_MIDIAS,
+        description="Opcional (ADR-017): imagem ou áudio enviados pelo atendente na conversa.",
+    )
 
 
 class DesfechoIn(BaseModel):
@@ -307,7 +313,7 @@ def create_app() -> FastAPI:
     # ---- Telas de demonstração dos canais (só fora de produção; DEMO=0 desliga) ----
     if settings.demo_enabled:
         csp_demo = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
-                    "connect-src 'self'; base-uri 'none'; form-action 'none'")
+                    "connect-src 'self'; img-src 'self' blob:; media-src 'self' blob:; base-uri 'none'; form-action 'none'")
         # A tela do cliente acompanha a própria conversa: a resposta sugerida pela IA (resposta automática da demo) e as
         # respostas que o atendente enviar pelo painel. Só quem enviou a mensagem tem a senha do ticket (HMAC com um
         # segredo que muda a cada subida da API); a classificação nunca sai por aqui.
@@ -329,9 +335,21 @@ def create_app() -> FastAPI:
             except tickets.TicketNaoEncontrado:
                 raise HTTPException(status_code=404, detail="conversa não encontrada")
             resposta = t.get("resposta_sugerida") if t.get("status") != "pendente" else None
-            atendente = [{"id": m["id"], "texto": m["texto"], "autor": m["autor"]} for m in msgs if m["direcao"] == "saida"]
+            atendente = [{"id": m["id"], "texto": m["texto"], "autor": m["autor"],
+                          "midias": [{"id": x["id"], "tipo": x["tipo"]} for x in m.get("midias", [])]}
+                         for m in msgs if m["direcao"] == "saida"]
             return {"respondida": bool(resposta), "resposta": resposta, "equipe": t.get("equipe") if resposta else None,
                     "atendente": atendente, "ultimo_id": max([m["id"] for m in msgs], default=depois_de)}
+
+        @app.get("/demo/conversa/{ticket_id}/midias/{midia_id}", include_in_schema=False)
+        def demo_midia(ticket_id: int, midia_id: int, senha: str = Query("", max_length=64)):
+            """Imagem/áudio da conversa para a tela do cliente (mesma senha da conversa, sem a API_KEY)."""
+            arquivo = midias.obter_arquivo(ticket_id, midia_id)                 if hmac.compare_digest(senha, _senha_conversa(ticket_id)) else None
+            if arquivo is None:
+                raise HTTPException(status_code=404, detail="mídia não encontrada")
+            mime, dados = arquivo
+            return Response(content=dados, media_type=mime, headers={
+                "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})
 
         @app.get("/demo", include_in_schema=False)
         def demo_inicio():
@@ -368,12 +386,18 @@ def create_app() -> FastAPI:
                 else bool(re.fullmatch(r"[a-z0-9._]{1,30}", msg.remetente))
             if not ok:
                 return JSONResponse(status_code=400, content={"detail": "remetente inválido para o canal"})
-            m = demo_chat.mensagem_demo(canal, msg.remetente, msg.nome, msg.texto)
+            try:
+                anexos = [midias.validar(x.tipo, x.mime, x.dados_base64) for x in msg.midias]
+            except midias.MidiaInvalida as exc:
+                return JSONResponse(status_code=400, content={"detail": str(exc)})
+            m = demo_chat.mensagem_demo(canal, msg.remetente, msg.nome, msg.texto, com_midia=bool(anexos))
             if m is None:
                 return JSONResponse(status_code=400, content={"detail": "mensagem ignorada pelo canal (texto curto demais)"})
-            ticket_id, novo, _ = tickets.receber_mensagem(canal, m["texto"], m["cliente"], m["received_at"],
-                                                       m["external_id"], m.get("conversa_id"))
+            ticket_id, novo, msg_id = tickets.receber_mensagem(canal, m["texto"], m["cliente"], m["received_at"],
+                                                            m["external_id"], m.get("conversa_id"), anexos)
             if not novo:
+                if anexos:  # mesmo caminho do webhook: a IA lê a mídia e o texto entra na mensagem
+                    background.add_task(midias.processar, ticket_id, m["texto"], msg_id)
                 return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
             return _enviado(ticket_id, "pendente")
@@ -437,11 +461,15 @@ def create_app() -> FastAPI:
 
     @app.post("/tickets/{ticket_id}/mensagens", status_code=201, dependencies=[Depends(exigir_chave)])
     def enviar_mensagem(ticket_id: int, corpo: MensagemChatIn):
-        """Resposta do atendente na conversa (chat). Registra a 1ª resposta para o SLA."""
-        if not corpo.texto.strip():
+        """Resposta do atendente na conversa (chat), com imagem/áudio opcionais. Registra a 1ª resposta para o SLA."""
+        if not corpo.texto.strip() and not corpo.midias:
             raise HTTPException(status_code=400, detail="mensagem vazia")
         try:
-            return tickets.responder_chat(ticket_id, corpo.texto, corpo.autor)
+            anexos = [midias.validar(m.tipo, m.mime, m.dados_base64) for m in corpo.midias]
+        except midias.MidiaInvalida as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        try:
+            return tickets.responder_chat(ticket_id, corpo.texto, corpo.autor, anexos)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
 
