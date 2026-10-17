@@ -1,0 +1,122 @@
+[
+  {
+    "texto": "Desde as 9h nenhuma maquininha da loja aprova cartão, os clientes estão indo embora sem comprar.",
+    "esperado": {"assunto": "pagamento", "urgencia": "critica", "sentimento": "negativo", "equipe": "financeiro"}
+  },
+  {
+    "texto": "Tentei pagar a mensalidade com cartão de crédito e a tela fica girando sem concluir.",
+    "esperado": {"assunto": "pagamento", "urgencia": "alta", "sentimento": "negativo", "equipe": "financeiro"}
+  },
+  {
+    "texto": "O link de pagamento que mandei para o meu cliente expirou, consigo gerar outro?",
+    "esperado": {"assunto": "pagamento", "urgencia": "media", "sentimento": "neutro", "equipe": "financeiro"}
+  },
+  {
+    "texto": "As transferências recebidas ontem ainda não caíram no meu saldo e preciso pagar fornecedores hoje.",
+    "esperado": {"assunto": "pagamento", "urgencia": "alta", "sentimento": "negativo", "equipe": "financeiro"}
+  },
+  {
+    "texto": "O valor da mensalidade subiu sem nenhum aviso, quero entender o motivo.",
+    "esperado": {"assunto": "cobranca", "urgencia": "media", "sentimento": "negativo", "equipe": "financeiro"}
+  },
+  {
+    "texto": "Podem me mandar o comprovante de pagamento da fatura de agosto?",
+    "esperado": {"assunto": "cobranca", "urgencia": "baixa", "sentimento": "neutro", "equipe": "financeiro"}
+  },
+  {
+    "texto": "Cancelei em julho e continuo sendo cobrado todo mês. Já são três cobranças sem uso!",
+    "esperado": {"assunto": "cobranca", "urgencia": "alta", "sentimento": "negativo", "equipe": "financeiro"}
+  },
+  {
+    "texto": "O desconto prometido pelo vendedor não apareceu no boleto deste mês.",
+    "esperado": {"assunto": "cobranca", "urgencia": "media", "sentimento": "negativo", "equipe": "financeiro"}
+  },
+  {
+    "texto": "Esqueci meu e-mail de cadastro e não lembro com qual entrei, como recupero?",
+    "esperado": {"assunto": "acesso", "urgencia": "media", "sentimento": "neutro", "equipe": "suporte_tecnico"}
+  },
+  {
+    "texto": "Nenhum dos 12 funcionários consegue logar desde a manhã e a clínica está sem agenda.",
+    "esperado": {"assunto": "acesso", "urgencia": "critica", "sentimento": "negativo", "equipe": "suporte_tecnico"}
+  },
+  {
+    "texto": "Troquei de celular e o autenticador de dois fatores não reconhece mais meu aparelho.",
+    "esperado": {"assunto": "acesso", "urgencia": "alta", "sentimento": "negativo", "equipe": "suporte_tecnico"}
+  },
+  {
+    "texto": "Como faço para dar acesso de administrador a um novo colaborador?",
+    "esperado": {"assunto": "duvida", "urgencia": "baixa", "sentimento": "neutro", "equipe": "atendimento"}
+  },
+  {
+    "texto": "A loja virtual está fora do ar e é dia de promoção, estamos perdendo pedidos a cada minuto.",
+    "esperado": {"assunto": "instabilidade", "urgencia": "critica", "sentimento": "negativo", "equipe": "engenharia"}
+  },
+  {
+    "texto": "Quando clico em salvar o pedido aparece 'erro 500' e nada é gravado.",
+    "esperado": {"assunto": "instabilidade", "urgencia": "alta", "sentimento": "negativo", "equipe": "engenharia"}
+  },
+  {
+    "texto": "Os gráficos do painel estão demorando uns 30 segundos para aparecer.",
+    "esperado": {"assunto": "instabilidade", "urgencia": "media", "sentimento": "negativo", "equipe": "engenharia"}
+  },
+  {
+    "texto": "A notificação de novo pedido parou de tocar no aplicativo do celular.",
+    "esperado": {"assunto": "instabilidade", "urgencia": "media", "sentimento": "negativo", "equipe": "engenharia"}
+  },
+  {
+    "texto": "Vamos fechar a filial do centro, quero tirar ela do contrato a partir do mês que vem.",
+    "esperado": {"assunto": "cancelamento", "urgencia": "media", "sentimento": "neutro", "equipe": "retencao"}
+  },
+  {
+    "texto": "Chega, encontrei uma ferramenta melhor e mais barata. Encerrem meu plano.",
+    "esperado": {"assunto": "cancelamento", "urgencia": "media", "sentimento": "negativo", "equipe": "retencao"}
+  },
+  {
+    "texto": "Se eu cancelar agora, perco os dados que já cadastrei?",
+    "esperado": {"assunto": "cancelamento", "urgencia": "baixa", "sentimento": "neutro", "equipe": "retencao"}
+  },
+  {
+    "texto": "O atendente desligou na minha cara quando pedi para falar com o supervisor.",
+    "esperado": {"assunto": "reclamacao", "urgencia": "media", "sentimento": "negativo", "equipe": "atendimento"}
+  },
+  {
+    "texto": "Abri três chamados sobre o mesmo problema e cada um foi fechado sem solução.",
+    "esperado": {"assunto": "reclamacao", "urgencia": "alta", "sentimento": "negativo", "equipe": "atendimento"}
+  },
+  {
+    "texto": "A resposta automática de vocês não ajuda em nada, parece que ninguém lê o que escrevo.",
+    "esperado": {"assunto": "reclamacao", "urgencia": "media", "sentimento": "negativo", "equipe": "atendimento"}
+  },
+  {
+    "texto": "A Beatriz do suporte resolveu meu problema em cinco minutos, atendimento nota dez.",
+    "esperado": {"assunto": "elogio", "urgencia": "baixa", "sentimento": "positivo", "equipe": "atendimento"}
+  },
+  {
+    "texto": "Adorei o novo relatório de vendas, era exatamente o que eu precisava.",
+    "esperado": {"assunto": "elogio", "urgencia": "baixa", "sentimento": "positivo", "equipe": "atendimento"}
+  },
+  {
+    "texto": "Qual é o limite de produtos que posso cadastrar no plano básico?",
+    "esperado": {"assunto": "duvida", "urgencia": "baixa", "sentimento": "neutro", "equipe": "atendimento"}
+  },
+  {
+    "texto": "Dá para importar meus clientes de outro sistema por arquivo CSV?",
+    "esperado": {"assunto": "duvida", "urgencia": "baixa", "sentimento": "neutro", "equipe": "atendimento"}
+  },
+  {
+    "texto": "Vocês emitem a nota fiscal automaticamente ou eu preciso solicitar?",
+    "esperado": {"assunto": "duvida", "urgencia": "baixa", "sentimento": "neutro", "equipe": "atendimento"}
+  },
+  {
+    "texto": "MEU DEUS QUE SISTEMA RUIM!!! Só queria saber onde muda a foto do perfil.",
+    "esperado": {"assunto": "duvida", "urgencia": "baixa", "sentimento": "negativo", "equipe": "atendimento"}
+  },
+  {
+    "texto": "Bom dia! Tudo tranquilo por aqui, só confirmando se o pagamento do mês foi identificado.",
+    "esperado": {"assunto": "cobranca", "urgencia": "baixa", "sentimento": "neutro", "equipe": "financeiro"}
+  },
+  {
+    "texto": "O sistema está lento, mas o pior é que os pedidos duplicam e estou entregando produto em dobro.",
+    "esperado": {"assunto": "instabilidade", "urgencia": "critica", "sentimento": "negativo", "equipe": "engenharia"}
+  }
+]
