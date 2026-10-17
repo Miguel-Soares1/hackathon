@@ -6,6 +6,9 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import hmac  # noqa: E402
+import os  # noqa: E402
+
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
@@ -26,6 +29,31 @@ POLITICA_TEXTO = {
 }
 
 st.set_page_config(page_title="Triagem IA", page_icon="🎯", layout="wide")
+
+
+def exigir_senha() -> None:
+    """Portão de senha (DASHBOARD_PASSWORD). Em produção a senha é obrigatória (ver docs/deploy.md)."""
+    senha = os.getenv("DASHBOARD_PASSWORD", "")
+    if not senha:
+        if os.getenv("ENVIRONMENT", "development").lower() == "production":
+            st.error("DASHBOARD_PASSWORD não configurada: painel bloqueado em produção.")
+            st.stop()
+        return  # desenvolvimento local sem senha
+    if st.session_state.get("autenticado"):
+        return
+    st.title("🎯 Triagem IA")
+    with st.form("login"):
+        digitada = st.text_input("Senha do painel", type="password")
+        if st.form_submit_button("Entrar"):
+            if hmac.compare_digest(digitada.encode(), senha.encode()):
+                st.session_state["autenticado"] = True
+                st.rerun()
+            else:
+                st.error("Senha incorreta.")
+    st.stop()
+
+
+exigir_senha()
 
 
 def local(dt):
@@ -84,7 +112,7 @@ def tabela_fila(lista):
         })
     df = pd.DataFrame(linhas)
     st.dataframe(
-        df, hide_index=True, use_container_width=True,
+        df, hide_index=True, width="stretch",
         column_config={"Consumido": st.column_config.ProgressColumn("Prazo consumido", format="%.0f%%", min_value=0, max_value=100)},
     )
 
@@ -155,7 +183,7 @@ def aba_metricas(resumo):
                 "IA (LLM)": resumo["precisao_llm"]["por_dimensao"] or {},
                 "Plano B": resumo["precisao_fallback"]["por_dimensao"] or {},
             })
-            st.dataframe(df.style.format("{:.1f}%", na_rep="—"), use_container_width=True)
+            st.dataframe(df.style.format("{:.1f}%", na_rep="—"), width="stretch")
             st.caption(f"Agregado (4 dimensões): {pct(p['agregado'])} em {p['revisados']} tickets revisados · "
                        f"LLM: {pct(resumo['precisao_llm']['agregado'])} · plano B: {pct(resumo['precisao_fallback']['agregado'])}")
 
@@ -172,7 +200,7 @@ def aba_metricas(resumo):
     risco = resumo["prazos_em_risco"]
     if risco:
         st.dataframe(pd.DataFrame(risco).rename(columns={"ticket_id": "#", "urgencia": "Urgência", "estado": "Estado", "consumido_pct": "Consumido %"}),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
     else:
         st.success("Nenhum ticket com prazo em risco.")
 
@@ -202,13 +230,13 @@ def corpo():
         for g in incs:
             with st.expander(f"Grupo #{g['id']} · {g['status']} · {g['size']} mensagens · {g['assunto_predominante'] or '—'}"):
                 st.caption(g["justificativa"] or "Ainda abaixo do volume mínimo de incidente.")
-                st.dataframe(pd.DataFrame(g["tickets"])[["id", "cliente", "canal", "texto"]], hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(g["tickets"])[["id", "cliente", "canal", "texto"]], hide_index=True, width="stretch")
     with aba_met:
         aba_metricas(resumo)
     with aba_corr:
         hist = corrections.historico()
         if hist:
-            st.dataframe(pd.DataFrame(hist), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(hist), hide_index=True, width="stretch")
         else:
             st.caption("Nenhuma correção registrada ainda.")
 

@@ -15,7 +15,7 @@ cd Hackathon
 cp .env.example .env                 # edite API_KEY (e DEEPSEEK_API_KEY, se tiver)
 docker compose up -d                 # sobe o MySQL 8 e aplica db/schema.sql
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # inclui o PyTorch (download grande na 1ª vez)
+pip install -r requirements-dev.txt      # inclui o PyTorch (download grande na 1ª vez) e o pytest
 python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"   # baixa o modelo de embeddings (1ª vez)
 ```
 
@@ -42,6 +42,11 @@ python -m pytest
 
 Os testes usam o embedder leve (`EMBEDDING_BACKEND=hash`) e nunca chamam a API do LLM nem tocam o banco real.
 Se o MySQL não estiver no ar, os testes **falham** com uma mensagem clara (não são ignorados).
+
+## Colocar no ar (produção)
+
+Guia completo em **[`docs/deploy.md`](docs/deploy.md)**: Docker Compose com MySQL, API, painel e HTTPS automático (Caddy),
+formulário público de entrada (`/enviar`), webhook com chave, backup e teste de carga (`scripts/teste_carga.py`).
 
 ## Calibrar o limiar de incidentes (faça antes da demo)
 
@@ -74,7 +79,8 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 
 | Método e rota | Função | Respostas |
 |---|---|---|
-| `POST /webhook/mensagens` | recebe uma solicitação | 202, 400, 401 |
+| `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações) | 202, 400, 401 |
+| `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
 | `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA) | 200, 404 |
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |
 | `POST /tickets/{id}/revisao` | confirma a triagem | 204, 404, 409 |
@@ -89,10 +95,10 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 src/triagem/   api, pipeline, classifier (LLM), fallback (regras), embeddings, incidents, sla, corrections, metrics
 dashboard/     painel Streamlit
 db/            schema.sql (DDL versionado) e init do banco de testes
-scripts/       simular.py (canais) · calibrar_limiar.py
+scripts/       simular.py · calibrar_limiar.py · teste_carga.py · backup.sh
 data/          mensagens_demo.json (34 mensagens rotuladas)
 tests/         pytest (padrão AAA)
-docs/          risks.md · slo.md · threat-model.md · release_checklist_final.md
+docs/          risks.md · slo.md · threat-model.md · deploy.md · release_checklist_final.md
 management/    vision · arch · adr · roadmap · specs
 ```
 
@@ -102,10 +108,12 @@ management/    vision · arch · adr · roadmap · specs
 - Webhook e API exigem `X-API-Key`; segredos só em `.env` (ignorado pelo Git).
 - O texto do cliente é enviado ao LLM como dado delimitado e a saída é validada contra valores permitidos (prompt injection).
 - O texto da mensagem é enviado ao provedor do LLM (DeepSeek); não use dados pessoais reais na demo.
-- Painel sem autenticação (risco aceito na V1; ver `docs/threat-model.md`).
+- Painel com senha (`DASHBOARD_PASSWORD`); em produção a API recusa subir com segredos fracos.
+- Formulário público com limite de taxa por IP e global, honeypot e sem revelar a classificação.
 
 ## Limitações conhecidas
 
 - O limiar de incidentes depende do modelo de embeddings e precisa ser calibrado (acima).
 - Prazos contam 24x7 (sem horário comercial) e não há notificação push.
-- Sem autenticação por atendente: correções não registram autoria.
+- Sem autenticação por atendente (senha única do painel): correções não registram autoria.
+- Limitador de taxa em memória: rodar a API com 1 worker. Sem alta disponibilidade (servidor único).

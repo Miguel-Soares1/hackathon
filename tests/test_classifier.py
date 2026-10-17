@@ -4,13 +4,18 @@ import httpx
 import pytest
 
 from triagem import classifier
-from triagem.config import Settings
+from dataclasses import replace
+
+from triagem.config import get_settings
 from triagem.domain import Classificacao
 from triagem.fallback import classificar_por_regras
 
 
 def settings(chave="k"):
-    return Settings("x", "x", chave, "https://api.exemplo.test", "modelo", 5.0, "hash", "m")
+    return replace(
+        get_settings(), deepseek_api_key=chave, deepseek_base_url="https://api.exemplo.test",
+        deepseek_model="modelo", llm_timeout=5.0,
+    )
 
 
 VALIDO = {
