@@ -1,8 +1,8 @@
 """Tela de demonstração do canal e-mail (só em desenvolvimento).
 
-Simula um webmail: o apresentador escreve um e-mail fictício como cliente e clica em Enviar. O servidor monta um e-mail
-de verdade (RFC 5322) e passa pelo MESMO conversor do leitor IMAP (`canais.email_para_mensagem`), então a mensagem
-entra na conversa do cliente exatamente como entraria um e-mail real: canal `email`, cliente = remetente.
+Simula um webmail: o apresentador escreve um e-mail fictício e clica em Enviar. O servidor monta um e-mail
+de verdade (RFC 5322) e passa pelo MESMO conversor do leitor IMAP (`canais.email_para_mensagem`), então o
+ticket nasce exatamente como nasceria de um e-mail real: canal `email`, cliente = remetente, texto = assunto + corpo.
 """
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
@@ -76,16 +76,6 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
   .item .l1 { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--mu); }
   .item .as { font-weight:600; margin:2px 0 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .prev { font-size:13px; color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .auto { display:flex; gap:8px; align-items:flex-start; padding:14px 16px 0; font-size:13px; color:var(--mu); cursor:pointer; }
-  .dica { padding:6px 16px; margin:0; font-size:12px; color:var(--mu); }
-  .item.novo { background:var(--prs); }
-  .item.novo .as { font-weight:700; }
-  .item { cursor:pointer; }
-  .item.aberto .prev { white-space:pre-wrap; overflow:visible; color:var(--tx); font-size:14px; margin-top:6px; }
-  .item .acoes { display:none; margin-top:10px; }
-  .item.aberto .acoes { display:block; }
-  .item .acoes button { font:inherit; font-size:13px; border:1px solid var(--bd); background:var(--card); color:var(--tx); border-radius:16px; padding:5px 14px; cursor:pointer; }
-  .chegando { color:var(--mu); font-size:13px; padding:10px 16px; border-bottom:1px solid var(--bd); }
   @media (max-width: 980px) { .app { grid-template-columns:1fr; height:auto; } nav, .busca { display:none; } .painel { min-height:340px; } }
 </style>
 </head>
@@ -99,12 +89,9 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
 <div class="app">
   <nav>
     <button class="escrever" id="novo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>Escrever</button>
-    <a href="#" data-pasta="entrada">Caixa de entrada <span id="qtd-entrada"></span></a>
-    <a href="#" data-pasta="enviados" class="on">Enviados <span id="qtd">0</span></a>
+    <a href="#">Caixa de entrada <span></span></a>
+    <a href="#" class="on">Enviados <span id="qtd">0</span></a>
     <a href="#">Rascunhos <span></span></a>
-    <label class="auto" title="Ligada: a IA responde sozinha o primeiro e-mail. Desligada: só o atendente responde, pelo painel.">
-      <input type="checkbox" id="auto"> Resposta automática da IA no 1º e-mail</label>
-    <p class="dica">As respostas do atendente (painel → Atendimento) chegam na Caixa de entrada.</p>
   </nav>
 
   <section class="painel" aria-label="Nova mensagem">
@@ -127,9 +114,9 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
     </form>
   </section>
 
-  <section class="painel" aria-label="Pasta">
-    <h2 id="titulo-pasta">Enviados</h2>
-    <div class="lista" id="lista"></div>
+  <section class="painel" aria-label="Enviados">
+    <h2>Enviados</h2>
+    <div class="lista" id="lista"><div class="vazio" id="vazio">Nenhum e-mail enviado ainda.</div></div>
   </section>
 </div>
 <script>
@@ -152,109 +139,14 @@ $('novo').addEventListener('click', limpar);
 novaPessoa();
 
 function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
-const hora = () => new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
-const EQUIPES = { financeiro:'Financeiro', suporte_tecnico:'Suporte Técnico', engenharia:'Engenharia', retencao:'Retenção', atendimento:'Atendimento' };
-const REMETENTE = 'Atendimento Sua Empresa';
 
-// O webmail é a caixa do cliente: o que ele envia vai para "Enviados" e as respostas da empresa chegam na "Caixa de entrada".
-const caixa = { entrada: [], enviados: [] };
-let pasta = 'enviados'; let chegando = 0;
-
-function abrirPasta(nome) {
-  pasta = nome;
-  document.querySelectorAll('nav a[data-pasta]').forEach((a) => a.classList.toggle('on', a.dataset.pasta === nome));
-  $('titulo-pasta').textContent = nome === 'entrada' ? 'Caixa de entrada' : 'Enviados';
-  desenhar();
+function adicionar(para, assunto, corpo) {
+  $('vazio')?.remove();
+  const it = el('div', 'item');
+  const l1 = el('div', 'l1'); l1.append(el('span', null, 'Para: ' + para), el('span', null, new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })));
+  it.append(l1, el('div', 'as', assunto || '(sem assunto)'), el('div', 'prev', corpo.replace(/\s+/g, ' ')));
+  $('lista').prepend(it); $('qtd').textContent = $('lista').querySelectorAll('.item').length;
 }
-document.querySelectorAll('nav a[data-pasta]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); abrirPasta(a.dataset.pasta); }));
-
-function desenhar() {
-  const l = $('lista'); l.textContent = '';
-  if (pasta === 'entrada' && chegando > 0) l.append(el('div', 'chegando', 'Sincronizando… novas mensagens a caminho'));
-  const itens = caixa[pasta];
-  if (!itens.length) l.append(el('div', 'vazio', pasta === 'entrada' ? 'Nenhuma mensagem recebida ainda.' : 'Nenhum e-mail enviado ainda.'));
-  itens.forEach((m) => {
-    const it = el('div', 'item' + (m.novo ? ' novo' : '') + (m.aberto ? ' aberto' : ''));
-    const l1 = el('div', 'l1'); l1.append(el('span', null, pasta === 'entrada' ? m.de : 'Para: ' + m.para), el('span', null, m.hora));
-    it.append(l1, el('div', 'as', m.assunto || '(sem assunto)'), el('div', 'prev', m.corpo));
-    if (pasta === 'entrada' && m.responder) {
-      const ac = el('div', 'acoes'); const b = el('button', null, '↩ Responder'); b.type = 'button';
-      b.addEventListener('click', (e) => { e.stopPropagation(); responderEmail(m); }); ac.append(b); it.append(ac);
-    }
-    it.addEventListener('click', () => { m.aberto = !m.aberto; m.novo = false; desenhar(); });
-    l.append(it);
-  });
-  const naoLidas = caixa.entrada.filter((m) => m.novo).length;
-  $('qtd-entrada').textContent = naoLidas || ''; $('qtd').textContent = caixa.enviados.length;
-}
-
-try { $('auto').checked = localStorage.getItem('demo-auto') !== '0'; } catch (_) { $('auto').checked = true; }
-$('auto').addEventListener('change', () => { try { localStorage.setItem('demo-auto', $('auto').checked ? '1' : '0'); } catch (_) {} });
-
-// Conversas desta aba (uma por remetente, como no servidor, ADR-016): ticket, senha e última mensagem vista.
-const fios = {};
-
-function receber(m) {
-  caixa.entrada.unshift({ ...m, de: REMETENTE, hora: hora(), novo: true });
-  const a = $('aviso'); a.className = 'okt'; a.textContent = 'Nova mensagem na Caixa de entrada: ' + m.assunto;
-  desenhar();
-}
-
-// A conversa continua no mesmo fio: "Re:" no assunto e o mesmo cliente como remetente.
-function responderEmail(m) {
-  $('nome').value = m.responder.nome || ''; $('de').value = m.responder.email;
-  $('assunto').value = /^re:/i.test(m.responder.assunto) ? m.responder.assunto : 'Re: ' + m.responder.assunto;
-  $('corpo').value = ''; $('aviso').textContent = ''; $('corpo').focus();
-}
-
-// A empresa responde como na vida real: confirmação automática com protocolo e, em seguida,
-// a resposta do atendimento, escrita a partir do que o cliente escreveu.
-async function acompanhar(d, dados, comIA, confirmar) {
-  const fio = { nome: dados.de_nome, email: dados.de_email, assunto: dados.assunto || '(sem assunto)' };
-  const base = fio.assunto.replace(/^(re:\s*)+/i, '');
-  const nome = (dados.de_nome || '').split(' ')[0];
-  chegando += 1; desenhar();
-  const inicio = Date.now();
-  try {
-    if (confirmar) {
-      await pausa(1500);
-      receber({ assunto: '[Protocolo #' + d.ticket_id + '] Recebemos sua solicitação', responder: fio,
-        corpo: 'Olá' + (nome ? ', ' + nome : '') + '!\n\nRecebemos sua mensagem sobre "' + base + '" e abrimos o protocolo #' + d.ticket_id +
-               '. Um atendente vai responder por este e-mail.\n\nEsta é uma resposta automática.\n' + REMETENTE });
-    }
-    if (!comIA) return;  // sem resposta automática: quem responde é o atendente, pelo painel
-    let r = null;
-    for (let n = 0; n < 60 && !(r && r.respondida); n++) {
-      try { r = await (await fetch('/demo/conversa/' + d.ticket_id + '?senha=' + encodeURIComponent(d.senha))).json(); } catch (_) {}
-      if (!(r && r.respondida)) await pausa(1000);
-    }
-    await pausa(Math.max(0, 3000 - (Date.now() - inicio)));
-    if (r && r.respondida) {
-      const time = EQUIPES[r.equipe] ? '\n\nAtenciosamente,\nTime ' + EQUIPES[r.equipe] + ' · ' + REMETENTE : '\n\n' + REMETENTE;
-      receber({ assunto: 'Re: ' + base + ' [Protocolo #' + d.ticket_id + ']', corpo: r.resposta + time, responder: fio });
-    }
-  } finally { chegando -= 1; desenhar(); }
-}
-
-const urlConversa = (m) => '/demo/conversa/' + m.ticket + '?senha=' + encodeURIComponent(m.senha) + '&depois_de=' + m.ultimo;
-let buscando = false;
-async function buscarAtendente() {
-  if (buscando) return;
-  buscando = true;
-  try {
-    for (const m of Object.values(fios)) {
-      try {
-        const r = await (await fetch(urlConversa(m))).json();
-        const base = m.fio.assunto.replace(/^(re:\s*)+/i, '');
-        (r.atendente || []).forEach((x) => receber({ assunto: 'Re: ' + base + ' [Protocolo #' + m.ticket + ']', responder: m.fio,
-          corpo: x.texto + '\n\n' + (x.autor ? x.autor + ' · ' : '') + REMETENTE }));
-        if (r.ultimo_id != null) m.ultimo = r.ultimo_id;
-      } catch (_) {}
-    }
-  } finally { buscando = false; }
-}
-setInterval(buscarAtendente, 4000);
 
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -267,28 +159,12 @@ $('f').addEventListener('submit', async (e) => {
   try {
     const resp = await fetch('/demo/email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(dados) });
     const d = await resp.json().catch(() => ({}));
-    if (resp.status === 202) {
-      a.className = 'okt'; a.textContent = 'Mensagem enviada.';
-      caixa.enviados.unshift({ para: dados.para, assunto: dados.assunto, corpo: dados.corpo, hora: hora() });
-      desenhar();
-      const fioAnterior = fios[dados.de_email.toLowerCase()];
-      const conhecido = fioAnterior && fioAnterior.ticket === d.ticket_id;
-      if (!conhecido) {
-        // Conversa nova nesta aba. Se o servidor anexou a um ticket antigo do remetente, não repete respostas já lidas.
-        let ultimo = 0;
-        if (d.status === 'anexada') { try { ultimo = (await (await fetch(urlConversa({ ticket:d.ticket_id, senha:d.senha, ultimo:0 }))).json()).ultimo_id || 0; } catch (_) {} }
-        fios[dados.de_email.toLowerCase()] = { ticket:d.ticket_id, senha:d.senha, ultimo,
-          fio: { nome: dados.de_nome, email: dados.de_email, assunto: dados.assunto || '(sem assunto)' } };
-      }
-      const novo = d.status === 'pendente';
-      if (novo || !conhecido) acompanhar(d, dados, novo && $('auto').checked, true);
-      $('assunto').value = ''; $('corpo').value = '';  // mesmo cliente: a conversa continua com ele ("Escrever" troca)
-    }
+    if (resp.status === 202) { a.className = 'okt'; a.textContent = 'Mensagem enviada.'; adicionar(dados.para, dados.assunto, dados.corpo);
+      $('assunto').value = ''; $('corpo').value = ''; novaPessoa(); }
     else { a.className = 'er'; a.textContent = d.detail || 'Não foi possível enviar.'; }
   } catch (_) { a.className = 'er'; a.textContent = 'API fora do ar? Confira o terminal do uvicorn.'; }
   finally { $('b').disabled = false; }
 });
-desenhar();
 </script>
 </body>
 </html>

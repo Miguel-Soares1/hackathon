@@ -47,19 +47,13 @@ Com a API rodando, abra **http://localhost:8000/demo** (abas WhatsApp · Instagr
 | `/demo/email` | webmail | e-mail RFC 5322 → `canais.email_para_mensagem` (o mesmo do IMAP) |
 
 Ou seja: do conversor em diante (ticket, triagem, incidentes, prazos, painel) é exatamente o caminho real.
-Nas telas, **o apresentador é o cliente**: escolhe um cliente fictício e escreve no WhatsApp, no Instagram ou no
-e-mail. A tela do cliente nunca mostra a classificação; a triagem aparece só no **painel** (http://localhost:8000).
-- **Primeira mensagem** (abre o ticket): chega a confirmação automática com o protocolo e, com a opção
-  **Resposta automática da IA** ligada, a resposta sugerida pela IA (com o aviso de encaminhamento para o time).
-- **Mensagens seguintes** do mesmo cliente entram **na mesma conversa** (ADR-016) e esperam o atendente.
-- **O atendente responde pelo painel** (Atendimento → abrir o cartão → Enviar) e a resposta aparece no celular do
-  cliente em até 3 s (tiques azuis / "Visto") ou como `Re: assunto` na Caixa de entrada do e-mail. No painel, o cartão
-  volta para **Em espera** com o selo "cliente respondeu" quando o cliente escreve de novo.
+As telas são **só a visão do cliente** (código das telas da pasta `hackathon-com-canais-demo`): ele manda a
+mensagem e vê só a entrega (✓✓ no WhatsApp; a pasta "Enviados" no e-mail), sem nenhuma classificação. A triagem aparece
+apenas no **painel do atendimento** (http://localhost:8000 → **Atendimento**): deixe as duas janelas lado a lado.
+As mensagens seguintes do mesmo cliente entram **na mesma conversa** (ADR-016), e o atendente responde pelo painel.
 
-A tela lê a própria conversa por `/demo/conversa/{ticket}?senha=…&depois_de=…`: a senha volta no envio (HMAC com um
-segredo que muda a cada subida da API), então ninguém lê a conversa de outro ticket, e a rota só devolve a resposta
-sugerida e as mensagens do atendente, nunca a classificação. A resposta automática da IA é só da demonstração: não
-fica gravada na conversa nem conta como 1ª resposta (SLA); quem conta é o atendente.
+A API ainda oferece `/demo/conversa/{ticket}?senha=…` (senha HMAC devolvida no envio) para uma tela de cliente que
+queira mostrar as respostas do atendente; as telas atuais não a usam.
 
 - **Cliente:** escolha na lista ou clique em **Outro cliente**. Mandar "Conta bloqueada" com 3 clientes diferentes gera um **incidente**.
 - Ligadas por padrão em desenvolvimento; **sempre desligadas** com `ENVIRONMENT=production`. Para desligar no dev: `DEMO=0`.
