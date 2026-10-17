@@ -156,7 +156,7 @@ Consequências: ...
 
 **Status:** accepted
 
-**Contexto:** o projeto precisa ser publicado em hospedagem gratuita. O Streamlit é um segundo serviço Python, com servidor próprio, dependências pesadas (pandas, pyarrow) e acesso direto ao banco. Em planos gratuitos, isso dobra o consumo de memória e o número de serviços.
+**Contexto:** o projeto precisaria ser publicado em hospedagem gratuita (depois, a equipe decidiu rodar tudo localmente; a decisão continua valendo porque reduz o consumo do notebook da demo). O Streamlit é um segundo serviço Python, com servidor próprio, dependências pesadas (pandas, pyarrow) e acesso direto ao banco. Em planos gratuitos, isso dobra o consumo de memória e o número de serviços.
 
 **Decisão:** reescrever o painel como arquivos estáticos (`frontend/`: HTML, CSS e JavaScript, sem framework, sem build e sem dependências externas). A própria API FastAPI serve esses arquivos na raiz (`/`) e o painel consome os mesmos endpoints públicos da API, com a chave no header `X-API-Key` (guardada só na aba, em `sessionStorage`). O endpoint `GET /dominio` expõe os valores permitidos para os formulários.
 
@@ -172,7 +172,7 @@ Consequências: ...
 
 **Status:** accepted
 
-**Contexto:** a hospedagem gratuita disponível (Render free) oferece 512 MB de RAM. O Hugging Face Spaces passou a exigir plano pago para Docker. Com `sentence-transformers` + PyTorch, o modelo do ADR-008 ocupa ~800 MB e o processo é morto por falta de memória. Mesmo em ONNX, o `tokenizer.json` do modelo (vocabulário de 250 mil tokens) consome ~320 MB ao carregar.
+**Contexto:** a hospedagem gratuita avaliada (Render free) oferecia 512 MB de RAM. A equipe depois decidiu rodar tudo localmente, mas a decisão se mantém: o notebook da demo tem 8 GB, e o processo antigo chegou a ser encerrado por falta de memória. O Hugging Face Spaces passou a exigir plano pago para Docker. Com `sentence-transformers` + PyTorch, o modelo do ADR-008 ocupa ~800 MB e o processo é morto por falta de memória. Mesmo em ONNX, o `tokenizer.json` do modelo (vocabulário de 250 mil tokens) consome ~320 MB ao carregar.
 
 **Decisão:** manter o mesmo modelo (`paraphrase-multilingual-MiniLM-L12-v2`), mas executá-lo pela versão ONNX quantizada em int8 (`Xenova/paraphrase-multilingual-MiniLM-L12-v2`, `onnx/model_quantized.onnx`) com `onnxruntime`. A tokenização usa o `sentencepiece.bpe.model` original, com a convenção de ids do XLM-RoBERTa. Cada texto é codificado sozinho, porque na quantização dinâmica a escala depende do lote. O backend `sbert` continua disponível como opção (instalando `sentence-transformers`).
 
@@ -180,5 +180,5 @@ Consequências: ...
 - Pico de memória do serviço completo: 365 MB, medido num container de 512 MB processando 38 mensagens com o LLM real. A instalação deixa de baixar o PyTorch (~550 MB).
 - Fidelidade: similaridade média de 0,995 (mínima 0,988) entre os vetores ONNX e os do modelo original. Os tokens são idênticos em 41 de 42 textos de teste, inclusive acentos, emoji e prompt injection.
 - O limiar calibrado (0,60) se manteve: 2/2 incidentes, zero falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).
-- O modelo é baixado na construção da imagem Docker; a API sobe sem acessar o Hugging Face.
+- O modelo (~120 MB) é baixado do Hugging Face no primeiro uso e fica em cache; depois a API funciona sem acessar o Hugging Face.
 

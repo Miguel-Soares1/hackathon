@@ -1,6 +1,6 @@
 """Cria as tabelas, a view e a configuração inicial aplicando db/schema.sql no banco do DATABASE_URL.
 
-Útil para bancos na nuvem (Aiven, TiDB), onde não há o docker compose para rodar o schema.
+Útil para um MySQL instalado sem o docker compose, que não roda o schema sozinho.
 O schema é idempotente: rodar de novo não apaga dados.
 
 Uso:

@@ -32,9 +32,16 @@ Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. Documentação int
 > **Sem Docker:** crie o banco `hackathon` num MySQL 8 local, rode `db/schema.sql` nele e ajuste `DATABASE_URL`.
 > **Sem chave do LLM:** funciona mesmo assim; a triagem usa o plano B por regras (`origem = fallback`).
 
-## Publicar de graça
+## Dia da apresentação (Windows, tudo local)
 
-Render (API + painel) + Aiven (MySQL): passo a passo em [`docs/deploy.md`](docs/deploy.md). A imagem cabe nos 512 MB do plano grátis.
+Com o Docker Desktop aberto, um comando sobe o banco, a API e abre o painel:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\iniciar.ps1
+```
+
+Para repetir a demo do zero: `python scripts/resetar_demo.py --sim` e depois `python scripts/simular.py`.
+O sistema roda só no notebook; a única chamada externa é ao LLM (DeepSeek). Sem internet, a triagem usa o plano B por regras.
 
 ## Testes
 
@@ -101,7 +108,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 src/triagem/   api, pipeline, classifier (LLM), fallback (regras), embeddings, incidents, sla, corrections, metrics
 frontend/      painel em HTML, CSS e JavaScript puros (servido pela própria API, sem build)
 db/            schema.sql (DDL versionado) e init do banco de testes
-scripts/       simular.py (canais) · calibrar_limiar.py
+scripts/       iniciar.ps1 (sobe tudo) · simular.py (canais) · calibrar_limiar.py · avaliar_triagem.py · resetar_demo.py · criar_banco.py
 data/          mensagens_demo.json (34 mensagens rotuladas)
 tests/         pytest (padrão AAA)
 docs/          risks.md · slo.md · threat-model.md · release_checklist_final.md

@@ -59,7 +59,7 @@ class SbertEmbedder:
 class OnnxEmbedder:
     """Mesmo modelo multilíngue exportado para ONNX e quantizado em int8 (ADR-011).
 
-    Roda com onnxruntime, sem PyTorch: cabe em hospedagem gratuita de 512 MB.
+    Roda com onnxruntime, sem PyTorch: a API inteira usa menos de 400 MB de RAM.
     Reproduz o mean pooling do sentence-transformers (similaridade ~0,995 com o original).
     Tokeniza com o SentencePiece original (~5 MB de vocabulário) em vez do tokenizer.json,
     que ocupa ~320 MB de RAM ao carregar.

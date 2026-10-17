@@ -17,7 +17,6 @@ class Settings:
     llm_timeout: float
     embedding_backend: str
     embedding_model: str
-    mysql_ssl_ca: str = ""
 
 
 def get_settings() -> Settings:
@@ -26,7 +25,6 @@ def get_settings() -> Settings:
         database_url=os.getenv(
             "DATABASE_URL", "mysql+pymysql://hackathon:hackathon@127.0.0.1:3306/hackathon"
         ),
-        mysql_ssl_ca=os.getenv("MYSQL_SSL_CA", "").strip(),
         api_key=os.getenv("API_KEY", ""),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
