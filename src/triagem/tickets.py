@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from . import sla
 from .db import com_retry_deadlock, get_engine, utcnow
@@ -12,22 +13,48 @@ class TicketNaoEncontrado(Exception):
     pass
 
 
+class TicketDuplicado(Exception):
+    """Mensagem de canal já recebida (mesmo canal + external_id); reenvios do provedor são idempotentes."""
+
+    def __init__(self, ticket_id: int):
+        super().__init__(f"mensagem já recebida (ticket {ticket_id})")
+        self.ticket_id = ticket_id
+
+
 class RespostaAnteriorAoRecebimento(ValueError):
     pass
 
 
-def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received_at: Optional[datetime] = None) -> int:
-    """Persiste o ticket como 'pendente' (ADR-009). A classificação acontece em background."""
+def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received_at: Optional[datetime] = None,
+                 external_id: Optional[str] = None) -> int:
+    """Persiste o ticket como 'pendente' (ADR-009). A classificação acontece em background.
+
+    Com `external_id` (id da mensagem no WhatsApp, Message-ID do e-mail) a criação é idempotente:
+    repetir (canal, external_id) levanta TicketDuplicado com o ticket já existente.
+    """
     agora = utcnow()
-    with get_engine().begin() as conn:
-        res = conn.execute(
-            text(
-                "INSERT INTO tickets (canal, cliente, texto, status, received_at) "
-                "VALUES (:canal, :cliente, :texto, 'pendente', :received_at)"
-            ),
-            {"canal": canal, "cliente": cliente, "texto": texto, "received_at": received_at or agora},
-        )
-        return int(res.lastrowid)
+    try:
+        with get_engine().begin() as conn:
+            res = conn.execute(
+                text(
+                    "INSERT INTO tickets (canal, cliente, texto, external_id, status, received_at) "
+                    "VALUES (:canal, :cliente, :texto, :external_id, 'pendente', :received_at)"
+                ),
+                {"canal": canal, "cliente": cliente, "texto": texto, "external_id": external_id,
+                 "received_at": received_at or agora},
+            )
+            return int(res.lastrowid)
+    except IntegrityError:
+        if external_id is None:
+            raise
+        with get_engine().connect() as conn:
+            existente = conn.execute(
+                text("SELECT id FROM tickets WHERE canal = :canal AND external_id = :e"),
+                {"canal": canal, "e": external_id},
+            ).scalar()
+        if existente is None:
+            raise
+        raise TicketDuplicado(int(existente)) from None
 
 
 def _linha_para_dict(row, prazos, risco_pct, agora) -> dict:

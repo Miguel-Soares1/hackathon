@@ -17,6 +17,21 @@ class Settings:
     llm_timeout: float
     embedding_backend: str
     embedding_model: str
+    environment: str
+    docs_enabled: bool
+    trust_proxy: bool
+    public_rate_per_ip_min: int
+    public_rate_global_min: int
+    dashboard_password: str
+    whatsapp_verify_token: str
+    whatsapp_app_secret: str
+    instagram_verify_token: str
+    instagram_app_secret: str
+    demo_enabled: bool
+
+
+def _bool(nome: str, padrao: bool) -> bool:
+    return os.getenv(nome, "1" if padrao else "0").strip().lower() in ("1", "true", "sim", "yes")
 
 
 def get_settings() -> Settings:
@@ -34,4 +49,35 @@ def get_settings() -> Settings:
         embedding_model=os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         ),
+        environment=os.getenv("ENVIRONMENT", "development").lower(),
+        docs_enabled=_bool("DOCS_ENABLED", True),
+        trust_proxy=_bool("TRUST_PROXY", False),
+        public_rate_per_ip_min=int(os.getenv("PUBLIC_RATE_PER_IP_MIN", "5")),
+        public_rate_global_min=int(os.getenv("PUBLIC_RATE_GLOBAL_MIN", "60")),
+        dashboard_password=os.getenv("DASHBOARD_PASSWORD", ""),
+        whatsapp_verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", ""),
+        whatsapp_app_secret=os.getenv("WHATSAPP_APP_SECRET", ""),
+        instagram_verify_token=os.getenv("INSTAGRAM_VERIFY_TOKEN", ""),
+        # O Instagram costuma estar no mesmo app da Meta que o WhatsApp: sem segredo próprio, usa o do app.
+        instagram_app_secret=os.getenv("INSTAGRAM_APP_SECRET", "") or os.getenv("WHATSAPP_APP_SECRET", ""),
+        # Telas /demo/*: ligadas por padrão em desenvolvimento, sempre desligadas em produção.
+        demo_enabled=_bool("DEMO", _bool("DEMO_EMAIL", True)) and os.getenv("ENVIRONMENT", "development").lower() != "production",
     )
+
+
+CHAVES_FRACAS = {"", "troque-esta-chave", "changeme", "admin", "password", "chave-de-teste"}
+
+
+def validar_producao(s: Settings) -> None:
+    """Em produção, recusa subir com segredos fracos ou ausentes (falha rápida)."""
+    if s.environment != "production":
+        return
+    problemas = []
+    if s.api_key in CHAVES_FRACAS or len(s.api_key) < 24:
+        problemas.append("API_KEY deve ter pelo menos 24 caracteres e não pode ser um valor de exemplo")
+    if len(s.dashboard_password) < 12:
+        problemas.append("DASHBOARD_PASSWORD deve ter pelo menos 12 caracteres")
+    if "hackathon:hackathon@" in s.database_url:
+        problemas.append("DATABASE_URL usa a senha padrão do ambiente de desenvolvimento")
+    if problemas:
+        raise RuntimeError("Configuração insegura para produção: " + "; ".join(problemas))
