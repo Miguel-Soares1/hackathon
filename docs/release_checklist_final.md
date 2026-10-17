@@ -12,3 +12,7 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [ ] **Limiar de similaridade calibrado com o modelo de embeddings real** (`scripts/calibrar_limiar.py`).
 - [ ] **Auditoria cruzada:** outra pessoa rodar o projeto só pelo README, cronometrado (meta: menos de 10 min).
 - [ ] **Teste com a chave real do LLM** (DeepSeek) em pelo menos 20 mensagens, medindo a taxa de acerto.
+- [ ] **Deploy em produção:** seguir `docs/deploy.md`; conferir HTTPS, 401 sem chave, formulário público e login do painel.
+- [ ] **Teste de carga no ambiente real:** `scripts/teste_carga.py` com a chave do LLM (medir tempo até classificar e proporção de `fallback`).
+- [ ] **Backup agendado** (`scripts/backup.sh` no cron) e testado com uma restauração.
+

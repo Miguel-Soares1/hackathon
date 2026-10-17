@@ -1,0 +1,91 @@
+# Produção: MySQL (sem porta exposta) + API + painel + Caddy (HTTPS).
+# Uso: cp .env.production.example .env.production  (preencha)  e depois
+#      docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+x-app: &app
+  build: .
+  image: triagem-ia:latest
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+  environment: &app-env
+    ENVIRONMENT: production
+    DATABASE_URL: mysql+pymysql://app:${MYSQL_PASSWORD:?defina MYSQL_PASSWORD}@db:3306/hackathon
+    API_KEY: ${API_KEY:?defina API_KEY}
+    DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD}
+    DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+    EMBEDDING_BACKEND: sbert
+    HF_HUB_OFFLINE: "1"
+    DOCS_ENABLED: "0"
+    TRUST_PROXY: "1"
+    PUBLIC_RATE_PER_IP_MIN: ${PUBLIC_RATE_PER_IP_MIN:-5}
+    PUBLIC_RATE_GLOBAL_MIN: ${PUBLIC_RATE_GLOBAL_MIN:-60}
+    WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+    WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: hackathon
+      MYSQL_USER: app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  api:
+    <<: *app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  dashboard:
+    <<: *app
+    command: ["python", "-m", "streamlit", "run", "dashboard/app.py", "--server.port", "8501", "--server.address", "0.0.0.0",
+              "--server.headless", "true", "--browser.gatherUsageStats", "false"]
+
+  # Leitor de e-mail (opcional): docker compose -f docker-compose.prod.yml --env-file .env.production --profile email up -d
+  email:
+    <<: *app
+    profiles: ["email"]
+    depends_on: [api]
+    command: ["python", "-m", "triagem.email_imap"]
+    environment:
+      <<: *app-env
+      API_URL: http://api:8000
+      IMAP_HOST: ${IMAP_HOST:-}
+      IMAP_USER: ${IMAP_USER:-}
+      IMAP_PASSWORD: ${IMAP_PASSWORD:-}
+      IMAP_POLL_SECONDS: ${IMAP_POLL_SECONDS:-30}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api, dashboard]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN, por exemplo triagem.seudominio.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:

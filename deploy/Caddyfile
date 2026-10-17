@@ -1,0 +1,34 @@
+# HTTPS automático (Let's Encrypt) para o domínio em $DOMAIN.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Entrada pública (formulário web): sem chave, com limite de taxa na aplicação.
+	handle /enviar {
+		reverse_proxy api:8000
+	}
+	handle /public/* {
+		reverse_proxy api:8000
+	}
+
+	# WhatsApp Cloud API (Meta): autenticado por token de verificação e assinatura HMAC na aplicação.
+	handle /webhooks/whatsapp {
+		reverse_proxy api:8000
+	}
+
+	# API autenticada por X-API-Key (webhook dos canais, /tickets, /metricas...): /api/webhook/mensagens -> /webhook/mensagens
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Todo o resto é o painel (protegido por senha). Websockets funcionam automaticamente.
+	handle {
+		reverse_proxy dashboard:8501
+	}
+}

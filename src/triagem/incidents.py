@@ -46,10 +46,24 @@ def janela_atingida(instantes: Sequence[datetime], minimo: int, janela_min: floa
     return False
 
 
+_NOME_TRAVA = "triagem_agrupamento"
+
+
 def registrar(ticket_id: int) -> dict:
-    """Gera o embedding do ticket, o encaixa em um grupo e abre incidente se a regra for atingida."""
+    """Gera o embedding do ticket, o encaixa em um grupo e abre incidente se a regra for atingida.
+
+    Duas travas: uma por processo (threading) e um GET_LOCK do MySQL, que vale entre processos/instâncias
+    (necessário se a API rodar com mais de um worker).
+    """
     with _lock:
-        return _registrar(ticket_id)
+        with get_engine().connect() as trava:
+            obtida = trava.execute(text("SELECT GET_LOCK(:n, 30)"), {"n": _NOME_TRAVA}).scalar()
+            if obtida != 1:
+                raise RuntimeError("não foi possível obter a trava de agrupamento em 30 s")
+            try:
+                return _registrar(ticket_id)
+            finally:
+                trava.execute(text("SELECT RELEASE_LOCK(:n)"), {"n": _NOME_TRAVA})
 
 
 def _registrar(ticket_id: int) -> dict:

@@ -100,3 +100,38 @@ def test_resposta_com_data_retroativa_e_validada(client):
 
     futuro = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     assert client.post(f"/tickets/{outro}/resposta", json={"respondido_em": futuro}, headers=CHAVE).status_code == 400
+
+
+def test_docs_podem_ser_desligados(db, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from triagem.api import create_app
+
+    monkeypatch.setenv("DOCS_ENABLED", "0")
+    c = TestClient(create_app())
+    assert c.get("/docs").status_code == 404 and c.get("/openapi.json").status_code == 404
+
+
+def test_cabecalhos_de_seguranca_presentes(client):
+    h = client.get("/health").headers
+    assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
+
+
+def test_producao_recusa_segredos_fracos(db, monkeypatch):
+    import pytest
+
+    from triagem.api import create_app
+
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="insegura"):
+        create_app()  # API_KEY de teste é curta e DASHBOARD_PASSWORD está vazia
+
+
+def test_producao_aceita_segredos_fortes(db, monkeypatch):
+    from triagem.api import create_app
+
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("API_KEY", "k" * 32)
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "senha-forte-de-12+")
+    monkeypatch.setenv("DATABASE_URL", "mysql+pymysql://app:Segredo-Forte@127.0.0.1:3306/hackathon_test")
+    assert create_app() is not None

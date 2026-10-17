@@ -149,3 +149,35 @@ Consequências: ...
 - Nenhuma mensagem se perde se a API externa cair.
 - A fila pode mostrar tickets `pendente` por alguns segundos.
 - Mais um estado no ciclo de vida do ticket.
+
+---
+
+## ADR-010: Deploy em produção com Docker Compose, HTTPS automático e entrada pública limitada
+
+**Status:** accepted
+
+**Contexto:** o sistema será exposto na web e precisa receber demanda real, mas os canais reais (WhatsApp, e-mail) ainda não estão integrados. O painel mostra texto de clientes e o LLM tem custo por chamada.
+
+**Decisão:** empacotar em uma imagem Docker (API e painel) e subir com `docker-compose.prod.yml` (MySQL, API, painel e Caddy). O Caddy faz HTTPS automático e é o único serviço com portas publicadas. A entrada de demanda se dá por (1) um formulário web público em `/enviar`, protegido por limite de taxa por IP e global, honeypot e limite de tamanho, e (2) o webhook autenticado por `X-API-Key` para integrações. O painel exige senha. Em produção, a API recusa subir com segredos fracos.
+
+**Consequências:**
+- Um único servidor com 2 vCPU/4 GB roda tudo; simples de operar e de reproduzir.
+- O formulário público abre uma superfície de abuso, mitigada por limites (ver `docs/threat-model.md`, T9 e T10).
+- O limitador de taxa é em memória: a API deve rodar com um único worker.
+- Não há alta disponibilidade; backup diário do MySQL via `scripts/backup.sh`.
+
+## ADR-011: Canais reais — WhatsApp Cloud API (webhook) e e-mail por IMAP (leitor separado)
+
+**Status:** accepted
+
+**Contexto:** o hackathon pede testar com mensagens reais de WhatsApp e e-mail, com custo zero e prazo de 26 horas. O sistema só tinha o webhook genérico.
+
+**Decisão:** WhatsApp: endpoint `/webhooks/whatsapp` na API, para a Cloud API oficial da Meta (número de teste gratuito), com verificação por token e assinatura HMAC. E-mail: processo `triagem.email_imap` que lê mensagens não lidas por IMAP (senha de app) e chama o webhook genérico. Ambos usam `external_id` (id da mensagem) com unicidade `(canal, external_id)` para idempotência. O sistema só recebe: a resposta ao cliente continua sendo feita pelo atendente fora dele.
+
+**Alternativas descartadas:** bibliotecas não oficiais de WhatsApp Web (risco de banimento do número, frágeis); webhook de provedor de e-mail transacional (exige domínio e DNS, tempo demais para 26 h); Twilio (pago após o teste).
+
+**Consequências:**
+- Sem custo e sem domínio próprio de e-mail; o número de teste da Meta limita destinatários (R15) e o token temporário expira (R14).
+- IMAP é por varredura (30 s): latência de até 30 s para e-mail, aceitável frente ao menor prazo de SLA (15 min).
+- Migração de bancos existentes: `db/migrations/002_external_id.sql`.
+

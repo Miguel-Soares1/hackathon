@@ -6,12 +6,14 @@ CREATE TABLE IF NOT EXISTS tickets (
   canal VARCHAR(30) NOT NULL,
   cliente VARCHAR(120) NULL,
   texto TEXT NOT NULL,
+  external_id VARCHAR(190) NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pendente',
   received_at DATETIME NOT NULL,
   first_response_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
-  INDEX idx_tickets_status (status)
+  INDEX idx_tickets_status (status),
+  UNIQUE KEY uq_tickets_canal_externo (canal, external_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS classifications (

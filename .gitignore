@@ -6,3 +6,6 @@ __pycache__/
 venv/
 .streamlit/secrets.toml
 *.egg-info/
+backups/*
+!backups/.gitkeep
+.env.production
