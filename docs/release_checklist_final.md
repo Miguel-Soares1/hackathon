@@ -9,6 +9,7 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [x] **Evidência de requisitos:** specs 1 a 5 com critérios de aceitação mapeados para rotas e testes.
 - [x] **Governança:** matriz de riscos (`risks.md`), SLO e política de error budget (`slo.md`).
 - [x] **Segurança:** sem segredos no código; schema versionado em `db/`; threat modeling (`threat-model.md`).
-- [ ] **Limiar de similaridade calibrado com o modelo de embeddings real** (`scripts/calibrar_limiar.py`).
+- [x] **Limiar de similaridade calibrado com o modelo de embeddings real:** 0,60, com 2/2 incidentes e 0 falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).
 - [ ] **Auditoria cruzada:** outra pessoa rodar o projeto só pelo README, cronometrado (meta: menos de 10 min).
-- [ ] **Teste com a chave real do LLM** (DeepSeek) em pelo menos 20 mensagens, medindo a taxa de acerto.
+- [x] **Teste com a chave real do LLM** (DeepSeek), 34 mensagens: 89,2% de acerto agregado (assunto 94,1%, urgência 82,4%, sentimento 91,2%), JSON válido 34/34, prompt injection resistido 3/3; plano B por regras: 80,4% (`scripts/avaliar_triagem.py`).
+- [x] **Ensaio com falha:** API do LLM inacessível → 2 tentativas → plano B (`origem = fallback`) em ~5 s.

@@ -1,0 +1,6 @@
+[
+  {"texto": "Atualizei o aplicativo hoje e agora ele fecha sozinho assim que abro.", "canal": "Chat", "cliente": "Ana P.", "grupo": "app_fecha"},
+  {"texto": "Depois da atualização o app trava e fecha na tela inicial, não consigo usar.", "canal": "WhatsApp", "cliente": "Distribuidora Norte", "grupo": "app_fecha"},
+  {"texto": "O aplicativo está fechando sozinho desde a nova versão, alguém mais?", "canal": "Instagram", "cliente": "Bruno S.", "grupo": "app_fecha"},
+  {"texto": "App crashando toda vez que abro, começou depois de atualizar.", "canal": "E-mail", "cliente": "Clínica Vida", "grupo": "app_fecha"}
+]

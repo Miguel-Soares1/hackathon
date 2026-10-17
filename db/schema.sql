@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS app_config (
 
 INSERT IGNORE INTO app_config (chave, valor) VALUES
   ('sla_risco_pct', '75'),
-  ('similarity_threshold', '0.70'),
+  ('similarity_threshold', '0.60'),
   ('window_minutes', '30'),
   ('min_group_size', '3'),
   ('slo_alvo_pct', '95'),

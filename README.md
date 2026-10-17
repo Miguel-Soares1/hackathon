@@ -45,12 +45,21 @@ Se o MySQL não estiver no ar, os testes **falham** com uma mensagem clara (não
 
 ## Calibrar o limiar de incidentes (faça antes da demo)
 
-O limiar de similaridade (`0,70`) é um valor inicial. Calibre com o modelo real:
+O limiar de similaridade já vem calibrado em `0,60` (ver [`docs/calibracao_limiar.md`](docs/calibracao_limiar.md)). Se trocar o modelo ou as mensagens de demo, recalibre:
 
 ```bash
 python scripts/calibrar_limiar.py        # mostra precisão/revocação por limiar e sugere o melhor
 mysql -h127.0.0.1 -uhackathon -phackathon hackathon -e "UPDATE app_config SET valor='0.xx' WHERE chave='similarity_threshold';"
 ```
+
+## Scripts da demo
+
+```bash
+python scripts/avaliar_triagem.py      # taxa de acerto do LLM e das regras contra os rótulos + teste de prompt injection
+python scripts/resetar_demo.py         # apaga tickets e incidentes para repetir a demo (mantém a configuração)
+```
+
+Roteiro da apresentação: [`docs/roteiro_demo.md`](docs/roteiro_demo.md).
 
 ## Como funciona
 

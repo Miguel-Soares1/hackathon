@@ -8,7 +8,7 @@ from sqlalchemy.engine import Connection
 
 CONFIG_PADRAO = {
     "sla_risco_pct": 75.0,
-    "similarity_threshold": 0.70,
+    "similarity_threshold": 0.60,
     "window_minutes": 30.0,
     "min_group_size": 3.0,
     "slo_alvo_pct": 95.0,
