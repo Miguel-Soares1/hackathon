@@ -2,7 +2,7 @@
 
 Compara todos os pares: positivos = mesmo `grupo` (mesmo problema), negativos = o resto.
 Rode com o modelo real para obter o valor a ser usado:
-  EMBEDDING_BACKEND=sbert python scripts/calibrar_limiar.py
+  python scripts/calibrar_limiar.py   (usa EMBEDDING_BACKEND do .env; padrão onnx)
 Depois grave o resultado: UPDATE app_config SET valor='0.xx' WHERE chave='similarity_threshold';
 """
 import argparse
@@ -21,7 +21,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--arquivo", default=str(RAIZ / "data" / "mensagens_demo.json"))
-    p.add_argument("--backend", default=os.getenv("EMBEDDING_BACKEND", "sbert"))
+    p.add_argument("--backend", default=os.getenv("EMBEDDING_BACKEND", "onnx"))
     args = p.parse_args()
     os.environ["EMBEDDING_BACKEND"] = args.backend
 

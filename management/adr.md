@@ -124,7 +124,7 @@ Consequências: ...
 
 ## ADR-008: Embeddings locais com modelo multilíngue
 
-**Status:** accepted
+**Status:** accepted (execução alterada pelo ADR-011)
 
 **Contexto:** o ADR-004 não definia o provedor de embeddings, e a API do LLM escolhida (DeepSeek) é usada para chat/classificação.
 
@@ -165,4 +165,20 @@ Consequências: ...
 - O painel deixa de acessar o banco direto: tudo passa pela API autenticada (reduz T7 do threat model).
 - Os arquivos estáticos podem ir para qualquer CDN gratuita se um dia o backend ficar separado.
 - Sem gráficos de biblioteca: as barras são feitas em CSS.
+
+---
+
+## ADR-011: Embeddings em ONNX int8 com SentencePiece, sem PyTorch
+
+**Status:** accepted
+
+**Contexto:** a hospedagem gratuita disponível (Render free) oferece 512 MB de RAM. O Hugging Face Spaces passou a exigir plano pago para Docker. Com `sentence-transformers` + PyTorch, o modelo do ADR-008 ocupa ~800 MB e o processo é morto por falta de memória. Mesmo em ONNX, o `tokenizer.json` do modelo (vocabulário de 250 mil tokens) consome ~320 MB ao carregar.
+
+**Decisão:** manter o mesmo modelo (`paraphrase-multilingual-MiniLM-L12-v2`), mas executá-lo pela versão ONNX quantizada em int8 (`Xenova/paraphrase-multilingual-MiniLM-L12-v2`, `onnx/model_quantized.onnx`) com `onnxruntime`. A tokenização usa o `sentencepiece.bpe.model` original, com a convenção de ids do XLM-RoBERTa. Cada texto é codificado sozinho, porque na quantização dinâmica a escala depende do lote. O backend `sbert` continua disponível como opção (instalando `sentence-transformers`).
+
+**Consequências:**
+- Pico de memória do serviço completo: 365 MB, medido num container de 512 MB processando 38 mensagens com o LLM real. A instalação deixa de baixar o PyTorch (~550 MB).
+- Fidelidade: similaridade média de 0,995 (mínima 0,988) entre os vetores ONNX e os do modelo original. Os tokens são idênticos em 41 de 42 textos de teste, inclusive acentos, emoji e prompt injection.
+- O limiar calibrado (0,60) se manteve: 2/2 incidentes, zero falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).
+- O modelo é baixado na construção da imagem Docker; a API sobe sem acessar o Hugging Face.
 

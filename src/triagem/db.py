@@ -1,6 +1,7 @@
 """Acesso ao MySQL via SQLAlchemy Core. Todas as consultas usam parâmetros nomeados (:param)."""
 import functools
 import random
+import ssl
 import time
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -12,13 +13,25 @@ from sqlalchemy.exc import OperationalError
 from .config import get_settings
 
 
+def _contexto_ssl(ca: str) -> ssl.SSLContext:
+    """MYSQL_SSL_CA: 'sistema' (CAs do sistema), o conteúdo PEM do certificado ou o caminho do arquivo."""
+    if ca == "sistema":
+        return ssl.create_default_context()
+    if ca.lstrip().startswith("-----BEGIN"):
+        return ssl.create_default_context(cadata=ca.replace("\\n", "\n"))
+    return ssl.create_default_context(cafile=ca)
+
+
 @lru_cache(maxsize=4)
-def _engine(url: str) -> Engine:
-    return create_engine(url, pool_pre_ping=True, pool_recycle=1800)
+def _engine(url: str, ssl_ca: str) -> Engine:
+    # Bancos gerenciados (Aiven, TiDB Cloud) exigem TLS; o MySQL local do docker compose não.
+    args = {"ssl": _contexto_ssl(ssl_ca)} if ssl_ca else {}
+    return create_engine(url, pool_pre_ping=True, pool_recycle=1800, connect_args=args)
 
 
 def get_engine() -> Engine:
-    return _engine(get_settings().database_url)
+    s = get_settings()
+    return _engine(s.database_url, s.mysql_ssl_ca)
 
 
 def utcnow() -> datetime:

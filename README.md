@@ -15,8 +15,8 @@ git clone https://github.com/Miguel-Soares1/hackathon.git && cd hackathon
 cp .env.example .env                 # edite API_KEY (e DEEPSEEK_API_KEY, se tiver)
 docker compose up -d                 # sobe o MySQL 8 e aplica db/schema.sql
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # inclui o PyTorch (download grande na 1ª vez)
-python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"   # baixa o modelo de embeddings (1ª vez)
+pip install -r requirements.txt          # leve: sem PyTorch (embeddings em ONNX, ADR-011)
+python -c "import sys; sys.path.insert(0,'src'); from triagem.embeddings import OnnxEmbedder; OnnxEmbedder('m')"   # baixa o modelo de embeddings (~120 MB, 1ª vez)
 ```
 
 Em dois terminais (na raiz do repositório, com o venv ativo):
@@ -31,6 +31,10 @@ Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. Documentação int
 > **Windows:** troque `source .venv/bin/activate` por `.venv\Scripts\activate`.
 > **Sem Docker:** crie o banco `hackathon` num MySQL 8 local, rode `db/schema.sql` nele e ajuste `DATABASE_URL`.
 > **Sem chave do LLM:** funciona mesmo assim; a triagem usa o plano B por regras (`origem = fallback`).
+
+## Publicar de graça
+
+Render (API + painel) + Aiven (MySQL): passo a passo em [`docs/deploy.md`](docs/deploy.md). A imagem cabe nos 512 MB do plano grátis.
 
 ## Testes
 

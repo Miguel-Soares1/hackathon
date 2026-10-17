@@ -2,7 +2,7 @@
 
 Critério de aceitação da Spec 2: o limiar padrão foi calibrado com o conjunto de demo rotulado (`data/mensagens_demo.json`, 34 mensagens).
 
-- **Modelo:** `paraphrase-multilingual-MiniLM-L12-v2` (ADR-008)
+- **Modelo:** `paraphrase-multilingual-MiniLM-L12-v2` (ADR-008). Calibrado com a versão PyTorch e **recalibrado com a versão ONNX int8 usada em produção (ADR-011): mesma tabela, mesmo limiar.**
 - **Regra de incidente:** 3 ou mais mensagens no mesmo grupo em 30 minutos
 - **Incidentes esperados no conjunto:** `pix_fora` (5 mensagens) e `login_bloqueado` (5 mensagens). `cobranca_dupla` tem só 2 mensagens e **não** deve virar incidente.
 - **Como reproduzir:** `python scripts/calibrar_limiar.py`

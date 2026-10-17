@@ -1,4 +1,4 @@
-"""Embeddings locais (ADR-008). 'sbert' = modelo multilíngue; 'hash' = leve, determinístico, para testes/offline."""
+"""Embeddings locais (ADR-008, ADR-011). 'onnx' = modelo multilíngue int8 sem PyTorch (padrão); 'sbert' = o mesmo modelo via PyTorch (opcional); 'hash' = leve, determinístico, para testes/offline."""
 import re
 import zlib
 from functools import lru_cache
@@ -43,6 +43,8 @@ class HashEmbedder:
 
 
 class SbertEmbedder:
+    """Modelo original via sentence-transformers (exige PyTorch, ~800 MB de RAM). Opcional."""
+
     def __init__(self, modelo: str):
         from sentence_transformers import SentenceTransformer  # import tardio: pesado
 
@@ -54,13 +56,74 @@ class SbertEmbedder:
         return _normalizar_linhas(np.asarray(v, dtype=np.float32))
 
 
+class OnnxEmbedder:
+    """Mesmo modelo multilíngue exportado para ONNX e quantizado em int8 (ADR-011).
+
+    Roda com onnxruntime, sem PyTorch: cabe em hospedagem gratuita de 512 MB.
+    Reproduz o mean pooling do sentence-transformers (similaridade ~0,995 com o original).
+    Tokeniza com o SentencePiece original (~5 MB de vocabulário) em vez do tokenizer.json,
+    que ocupa ~320 MB de RAM ao carregar.
+    """
+
+    REPO_ONNX = "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
+    ARQUIVO = "onnx/model_quantized.onnx"
+    REPO_TOKENIZADOR = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    MAX_TOKENS = 128
+    # Um texto por vez: na quantização dinâmica a escala depende do lote inteiro, e assim o vetor de
+    # uma mensagem é o mesmo na API (que agrupa uma por vez) e na calibração.
+    LOTE = 1
+    # Convenção do XLM-RoBERTa (fairseq): ids do SentencePiece deslocados em 1; <s>=0, <pad>=1, </s>=2, <unk>=3.
+    BOS, PAD, EOS, UNK = 0, 1, 2, 3
+
+    def __init__(self, modelo: str):
+        import onnxruntime as ort  # import tardio
+        import sentencepiece as spm
+        from huggingface_hub import hf_hub_download
+
+        self.nome = modelo.split("/")[-1] + "-onnx-int8"
+        self._sp = spm.SentencePieceProcessor(
+            model_file=hf_hub_download(self.REPO_TOKENIZADOR, "sentencepiece.bpe.model")
+        )
+        opcoes = ort.SessionOptions()
+        opcoes.intra_op_num_threads = 1
+        opcoes.enable_cpu_mem_arena = False  # devolve memória entre chamadas
+        self._sessao = ort.InferenceSession(
+            hf_hub_download(self.REPO_ONNX, self.ARQUIVO), opcoes, providers=["CPUExecutionProvider"]
+        )
+        self._entradas = {i.name for i in self._sessao.get_inputs()}
+
+    def _ids(self, texto: str) -> list[int]:
+        corpo = [i + 1 if i else self.UNK for i in self._sp.encode(texto)][: self.MAX_TOKENS - 2]
+        return [self.BOS, *corpo, self.EOS]
+
+    def encode(self, textos: Sequence[str]) -> np.ndarray:
+        lotes = []
+        for i in range(0, len(textos), self.LOTE):
+            seqs = [self._ids(t) for t in textos[i:i + self.LOTE]]
+            largura = max(len(s) for s in seqs)
+            ids = np.full((len(seqs), largura), self.PAD, dtype=np.int64)
+            mascara = np.zeros((len(seqs), largura), dtype=np.int64)
+            for k, s in enumerate(seqs):
+                ids[k, : len(s)] = s
+                mascara[k, : len(s)] = 1
+            feeds = {"input_ids": ids, "attention_mask": mascara}
+            if "token_type_ids" in self._entradas:
+                feeds["token_type_ids"] = np.zeros_like(ids)
+            tokens = self._sessao.run(None, feeds)[0]
+            m = mascara[..., None].astype(np.float32)
+            lotes.append((tokens * m).sum(axis=1) / np.clip(m.sum(axis=1), 1e-9, None))
+        return _normalizar_linhas(np.vstack(lotes))
+
+
 @lru_cache(maxsize=2)
 def _criar(backend: str, modelo: str) -> Embedder:
     if backend == "hash":
         return HashEmbedder()
+    if backend == "onnx":
+        return OnnxEmbedder(modelo)
     if backend == "sbert":
         return SbertEmbedder(modelo)
-    raise ValueError(f"EMBEDDING_BACKEND inválido: {backend!r} (use 'sbert' ou 'hash')")
+    raise ValueError(f"EMBEDDING_BACKEND inválido: {backend!r} (use 'onnx', 'sbert' ou 'hash')")
 
 
 def get_embedder() -> Embedder:

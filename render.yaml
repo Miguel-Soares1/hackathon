@@ -1,0 +1,17 @@
+# Blueprint do Render (plano gratuito). Passo a passo em docs/deploy.md.
+services:
+  - type: web
+    name: triagem-ia
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        generateValue: true      # o Render gera; copie no painel para entrar no sistema
+      - key: DATABASE_URL
+        sync: false              # mysql+pymysql://USUARIO:SENHA@HOST:PORTA/BANCO (Aiven)
+      - key: MYSQL_SSL_CA
+        sync: false              # certificado CA do Aiven (PEM)
+      - key: DEEPSEEK_API_KEY
+        sync: false
