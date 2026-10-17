@@ -10,6 +10,6 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [x] **Governança:** matriz de riscos (`risks.md`), SLO e política de error budget (`slo.md`).
 - [x] **Segurança:** sem segredos no código; schema versionado em `db/`; threat modeling (`threat-model.md`).
 - [x] **Limiar de similaridade calibrado com o modelo de embeddings real:** 0,60, com 2/2 incidentes e 0 falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).
-- [ ] **Auditoria cruzada:** outra pessoa rodar o projeto só pelo README, cronometrado (meta: menos de 10 min).
+- [x] **Auditoria cruzada (ensaio):** clone limpo seguindo só o README, no Windows: ~3 min até a API rodar com 34 mensagens e 2 incidentes, com PyTorch e o modelo já em cache (numa máquina nova, some o download, de ~5 a 8 min). Achado corrigido: o README mandava `cd Hackathon`, uma pasta que não existe. **Pendente:** repetir com outra pessoa do grupo.
 - [x] **Teste com a chave real do LLM** (DeepSeek), 34 mensagens: 89,2% de acerto agregado (assunto 94,1%, urgência 82,4%, sentimento 91,2%), JSON válido 34/34, prompt injection resistido 3/3; plano B por regras: 80,4% (`scripts/avaliar_triagem.py`).
 - [x] **Ensaio com falha:** API do LLM inacessível → 2 tentativas → plano B (`origem = fallback`) em ~5 s.

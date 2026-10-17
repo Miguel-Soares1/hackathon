@@ -11,7 +11,7 @@ Documentação: [`management/`](management/) (visão, arquitetura, ADRs, specs) 
 Pré-requisitos: Python 3.11+ e Docker.
 
 ```bash
-cd Hackathon
+git clone https://github.com/Miguel-Soares1/hackathon.git && cd hackathon
 cp .env.example .env                 # edite API_KEY (e DEEPSEEK_API_KEY, se tiver)
 docker compose up -d                 # sobe o MySQL 8 e aplica db/schema.sql
 python -m venv .venv && source .venv/bin/activate
@@ -19,7 +19,7 @@ pip install -r requirements.txt          # inclui o PyTorch (download grande na 
 python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"   # baixa o modelo de embeddings (1ª vez)
 ```
 
-Em três terminais (todos dentro de `Hackathon/`, com o venv ativo):
+Em três terminais (todos na raiz do repositório, com o venv ativo):
 
 ```bash
 python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + webhook
