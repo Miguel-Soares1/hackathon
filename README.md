@@ -19,15 +19,14 @@ pip install -r requirements.txt          # inclui o PyTorch (download grande na 
 python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"   # baixa o modelo de embeddings (1ª vez)
 ```
 
-Em três terminais (todos na raiz do repositório, com o venv ativo):
+Em dois terminais (na raiz do repositório, com o venv ativo):
 
 ```bash
-python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + webhook
-streamlit run dashboard/app.py                                  # 2) painel em http://localhost:8501
-python scripts/simular.py                                       # 3) envia as 34 mensagens de demo
+python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + painel em http://localhost:8000
+python scripts/simular.py                                       # 2) envia as 34 mensagens de demo
 ```
 
-Documentação interativa da API: http://localhost:8000/docs (use o header `X-API-Key`).
+Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
 > **Windows:** troque `source .venv/bin/activate` por `.venv\Scripts\activate`.
 > **Sem Docker:** crie o banco `hackathon` num MySQL 8 local, rode `db/schema.sql` nele e ajuste `DATABASE_URL`.
@@ -96,7 +95,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 
 ```
 src/triagem/   api, pipeline, classifier (LLM), fallback (regras), embeddings, incidents, sla, corrections, metrics
-dashboard/     painel Streamlit
+frontend/      painel em HTML, CSS e JavaScript puros (servido pela própria API, sem build)
 db/            schema.sql (DDL versionado) e init do banco de testes
 scripts/       simular.py (canais) · calibrar_limiar.py
 data/          mensagens_demo.json (34 mensagens rotuladas)

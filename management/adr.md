@@ -79,7 +79,7 @@ Consequências: ...
 
 ## ADR-005: Streamlit para o painel
 
-**Status:** accepted
+**Status:** superseded por ADR-010
 
 **Contexto:** entregar fila, alertas e métricas em poucas horas.
 
@@ -149,3 +149,20 @@ Consequências: ...
 - Nenhuma mensagem se perde se a API externa cair.
 - A fila pode mostrar tickets `pendente` por alguns segundos.
 - Mais um estado no ciclo de vida do ticket.
+
+---
+
+## ADR-010: Painel em HTML, CSS e JavaScript puros, servido pela API
+
+**Status:** accepted
+
+**Contexto:** o projeto precisa ser publicado em hospedagem gratuita. O Streamlit é um segundo serviço Python, com servidor próprio, dependências pesadas (pandas, pyarrow) e acesso direto ao banco. Em planos gratuitos, isso dobra o consumo de memória e o número de serviços.
+
+**Decisão:** reescrever o painel como arquivos estáticos (`frontend/`: HTML, CSS e JavaScript, sem framework, sem build e sem dependências externas). A própria API FastAPI serve esses arquivos na raiz (`/`) e o painel consome os mesmos endpoints públicos da API, com a chave no header `X-API-Key` (guardada só na aba, em `sessionStorage`). O endpoint `GET /dominio` expõe os valores permitidos para os formulários.
+
+**Consequências:**
+- Um único serviço para subir; o painel pesa alguns KB e carrega instantaneamente.
+- O painel deixa de acessar o banco direto: tudo passa pela API autenticada (reduz T7 do threat model).
+- Os arquivos estáticos podem ir para qualquer CDN gratuita se um dia o backend ficar separado.
+- Sem gráficos de biblioteca: as barras são feitas em CSS.
+
