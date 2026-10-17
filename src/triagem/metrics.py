@@ -64,5 +64,6 @@ def resumo(agora: Optional[datetime] = None) -> dict:
         "precisao": corrections.precisao(),
         "precisao_llm": corrections.precisao("llm"),
         "precisao_fallback": corrections.precisao("fallback"),
+        "precisao_por_versao": corrections.precisao_por_versao(),
         "incidentes": len(incidents.listar_incidentes(apenas_incidentes=True)),
     }

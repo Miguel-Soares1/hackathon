@@ -35,6 +35,9 @@ class Classificacao(BaseModel):
     resposta_sugerida: str = Field(min_length=1, max_length=MAX_RESPOSTA)
     confianca: dict[str, float]
     origem: str = "llm"
+    # Preenchidos pelo classificador, nunca pela resposta do LLM (ver classifier.chamar_llm).
+    prompt_version: str = "v2"
+    exemplos: list[int] = Field(default_factory=list)
 
     @field_validator("assunto", "urgencia", "sentimento", "equipe", mode="before")
     @classmethod

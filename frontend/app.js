@@ -170,6 +170,9 @@ function renderDetalhe() {
     <p class="muted">Prazo: ${esc(ROTULO_ESTADO[s.estado])} — ${s.prazo_minutos} min · vence ${esc(hora(s.vence_em))} · triagem: ${esc(t.origem)}</p>
     <div><h3>Resposta sugerida</h3><div class="resposta">${esc(t.resposta_sugerida)}</div></div>
     <p class="muted">Confiança: ${DIMS.map((k) => `${k} ${Math.round(Number(t["conf_" + k]) * 100)}%`).join(" · ")}</p>
+    ${t.exemplos
+      ? `<p class="aprendizado">🧠 Prompt ${esc(t.prompt_version)} · aprendeu com tickets já revisados parecidos: ${t.exemplos.split(",").map((i) => `#${esc(i)}`).join(", ")}</p>`
+      : `<p class="muted">Prompt ${esc(t.prompt_version || "—")} · sem exemplos revisados parecidos</p>`}
     <div class="acoes">
       <button class="btn" data-acao="revisar" ${t.revisado ? "disabled" : ""}>✓ Triagem correta</button>
       <button class="btn" data-acao="responder" ${t.first_response_at ? "disabled" : ""}>📨 Marcar respondido</button>
@@ -215,6 +218,14 @@ function renderMetricas() {
         <tr><td><b>agregado</b></td><td><b>${pct(p.agregado)}</b></td><td>${pct(r.precisao_llm.agregado)}</td><td>${pct(r.precisao_fallback.agregado)}</td></tr>
       </tbody></table><p class="muted">${p.revisados} tickets revisados.</p>`;
 
+  const versoes = r.precisao_por_versao || [];
+  const evolucao = versoes.length
+    ? `<table class="tabela tabela-simples"><thead><tr><th>Versão</th><th>Revisados</th>${DIMS.map((k) => `<th>${k}</th>`).join("")}<th>Agregado</th></tr></thead><tbody>
+        ${versoes.map((v) => `<tr><td>${esc(v.prompt_version)}</td><td>${v.revisados}</td>${DIMS.map((k) => `<td>${pct(v.por_dimensao[k])}</td>`).join("")}<td><b>${pct(v.agregado)}</b></td></tr>`).join("")}
+      </tbody></table>
+      <p class="muted"><code>+fewshot</code> = a IA recebeu como exemplo tickets parecidos já revisados pelos atendentes · <code>regras</code> = plano B sem IA.</p>`
+    : `<p class="muted">Revise tickets para comparar as versões do prompt.</p>`;
+
   const sli = r.sli;
   const risco = r.prazos_em_risco.length
     ? `<table class="tabela tabela-simples"><thead><tr><th>#</th><th>Urgência</th><th>Estado</th><th>Consumido</th></tr></thead><tbody>
@@ -225,6 +236,7 @@ function renderMetricas() {
   $("#metricas").innerHTML = `
     <div class="card"><h2>Principais motivos de contato</h2>${motivos}</div>
     <div class="card"><h2>Precisão da triagem</h2>${precisao}</div>
+    <div class="card"><h2>Evolução da IA por versão do prompt</h2>${evolucao}</div>
     <div class="card"><h2>SLI e error budget</h2>
       <div class="politica ${esc(sli.politica)}">${esc(POLITICA_TEXTO[sli.politica])}</div>
       <p>SLI (janela ${sli.janela_dias} dias): <b>${pct(sli.sli_pct)}</b> · meta ${sli.alvo_pct.toFixed(0)}%</p>

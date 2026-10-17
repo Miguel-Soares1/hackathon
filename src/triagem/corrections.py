@@ -120,15 +120,17 @@ def calcular_precisao(revisados: int, erros_por_dimensao: dict[str, int]) -> dic
     return {"revisados": revisados, "por_dimensao": por_dim, "agregado": agregado}
 
 
-def precisao(origem: Optional[str] = None) -> dict:
-    """Precisão da triagem. `origem` ('llm' ou 'fallback') separa o plano B da IA (ADR-009)."""
+def precisao(origem: Optional[str] = None, prompt_version: Optional[str] = None) -> dict:
+    """Precisão da triagem. `origem` ('llm' ou 'fallback') separa o plano B da IA (ADR-009);
+    `prompt_version` separa as versões do prompt (ex.: 'v1' contra 'v1+fewshot', ADR-014)."""
+    filtros = {"o": origem, "pv": prompt_version}
     with get_engine().connect() as conn:
         revisados = conn.execute(
             text(
                 "SELECT COUNT(*) FROM reviews rv JOIN classifications cl ON cl.ticket_id = rv.ticket_id "
-                "WHERE (:o IS NULL OR cl.origem = :o)"
+                "WHERE (:o IS NULL OR cl.origem = :o) AND (:pv IS NULL OR cl.prompt_version = :pv)"
             ),
-            {"o": origem},
+            filtros,
         ).scalar() or 0
         rows = conn.execute(
             text(
@@ -138,10 +140,25 @@ def precisao(origem: Optional[str] = None) -> dict:
                 "JOIN reviews rv ON rv.ticket_id = c.ticket_id "
                 "JOIN classifications cl ON cl.ticket_id = c.ticket_id "
                 "WHERE c.valor_corrigido <> c.valor_original AND (:o IS NULL OR cl.origem = :o) "
+                "AND (:pv IS NULL OR cl.prompt_version = :pv) "
                 "GROUP BY c.dimensao"
             ),
-            {"o": origem},
+            filtros,
         ).fetchall()
     resultado = calcular_precisao(int(revisados), {r.dimensao: int(r.erros) for r in rows})
     resultado["origem"] = origem or "todas"
+    if prompt_version:
+        resultado["prompt_version"] = prompt_version
     return resultado
+
+
+def precisao_por_versao() -> list[dict]:
+    """Taxa de acerto de cada versão do prompt que já tem tickets revisados, da mais antiga para a mais nova."""
+    with get_engine().connect() as conn:
+        versoes = conn.execute(
+            text(
+                "SELECT cl.prompt_version, MIN(cl.classified_at) AS desde FROM classifications cl "
+                "JOIN reviews rv ON rv.ticket_id = cl.ticket_id GROUP BY cl.prompt_version ORDER BY desde"
+            )
+        ).fetchall()
+    return [precisao(prompt_version=v.prompt_version) for v in versoes]

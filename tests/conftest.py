@@ -40,6 +40,13 @@ def engine():
         )
     comandos = [c.strip() for c in SCHEMA.read_text(encoding="utf-8").split(";\n") if c.strip()]
     with eng.begin() as conn:
+        # Recria do zero (só no banco *_test): CREATE TABLE IF NOT EXISTS não adiciona colunas novas do schema.
+        conn.execute(text("DROP VIEW IF EXISTS vw_tickets"))
+        conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+        for tabela in ("group_members", "incident_groups", "ticket_embeddings", "reviews", "corrections",
+                       "classifications", "tickets", "sla_policy", "app_config"):
+            conn.execute(text(f"DROP TABLE IF EXISTS {tabela}"))
+        conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
         for cmd in comandos:
             conn.execute(text(cmd))
     return eng

@@ -24,6 +24,8 @@ class Settings:
     public_rate_global_min: int
     whatsapp_verify_token: str
     whatsapp_app_secret: str
+    fewshot_k: int = 4
+    fewshot_sim_min: float = 0.45
 
 
 def _bool(nome: str, padrao: bool) -> bool:
@@ -41,6 +43,8 @@ def get_settings() -> Settings:
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
         llm_timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "15")),
+        fewshot_k=int(os.getenv("FEWSHOT_K", "4")),
+        fewshot_sim_min=float(os.getenv("FEWSHOT_SIM_MIN", "0.45")),
         embedding_backend=os.getenv("EMBEDDING_BACKEND", "onnx").lower(),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

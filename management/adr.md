@@ -213,3 +213,19 @@ Consequências: ...
 - IMAP é por varredura (30 s): latência de até 30 s para e-mail, aceitável frente ao menor prazo de SLA (15 min).
 - Migração de bancos existentes: `db/migrations/002_external_id.sql`.
 
+## ADR-014: A triagem aprende com as correções por few-shot dinâmico (sem fine-tuning)
+
+**Status:** accepted
+
+**Contexto:** queremos que a IA melhore com as correções do atendente (Spec 3). A API do DeepSeek não oferece fine-tuning, e treinar um modelo próprio exige GPU, milhares de exemplos e mais tempo do que o hackathon permite.
+
+**Decisão:** antes de classificar, buscar entre os tickets **já revisados** (confirmados ou corrigidos) os `FEWSHOT_K` (padrão 4) mais parecidos com a mensagem nova, pelo cosseno dos embeddings locais já usados no agrupamento (ADR-008), com similaridade mínima `FEWSHOT_SIM_MIN` (padrão 0,45). Eles entram no prompt como exemplos, com os valores **efetivos** (a última correção, não a predição original). Cada classificação grava `prompt_version` (`v1` = prompt original, `v2` = prompt com critérios, `v2+fewshot`, `regras`) e os ids dos exemplos usados. A taxa de acerto é medida por versão (`/metricas` → `precisao_por_versao`), e um conjunto rotulado fixo (`data/avaliacao.json`) com `scripts/avaliar_triagem.py` compara regras, LLM e LLM + few-shot antes de cada mudança de prompt.
+
+**Alternativas descartadas:** fine-tuning (indisponível na API, caro e lento); exemplos fixos escritos à mão (não aprendem com o uso); RAG em base vetorial externa (mais infraestrutura, desnecessário na escala atual: a busca é em memória sobre até 3.000 revisados).
+
+**Consequências:**
+- Cada correção passa a valer para as próximas mensagens parecidas, sem retreino; o painel mostra quais tickets serviram de exemplo (explicabilidade).
+- O prompt fica maior (≈ +80 tokens por exemplo), e o custo e a latência sobem um pouco.
+- Uma correção errada do atendente também se propaga; mitigação: a taxa de acerto por versão e o eval fixo expõem regressões.
+- O texto dos exemplos é conteúdo de cliente: vai delimitado por tags, que são removidas do texto (mesma defesa contra prompt injection da mensagem principal).
+- Falha na busca nunca impede a classificação (segue sem exemplos). Migração de bancos existentes: `db/migrations/003_prompt_version.sql`.

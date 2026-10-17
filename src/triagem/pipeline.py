@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import text
 
-from . import incidents
+from . import exemplos, incidents
 from .classifier import classificar
 from .db import com_retry_deadlock, get_engine, utcnow
 
@@ -19,18 +19,21 @@ def _salvar_classificacao(ticket_id: int, c) -> None:
         conn.execute(
             text(
                 "INSERT INTO classifications (ticket_id, assunto, urgencia, sentimento, equipe, "
-                "resposta_sugerida, conf_assunto, conf_urgencia, conf_sentimento, conf_equipe, origem, classified_at) "
-                "VALUES (:id, :a, :u, :s, :e, :r, :ca, :cu, :cs, :ce, :o, :q) "
+                "resposta_sugerida, conf_assunto, conf_urgencia, conf_sentimento, conf_equipe, origem, prompt_version, "
+                "exemplos, classified_at) "
+                "VALUES (:id, :a, :u, :s, :e, :r, :ca, :cu, :cs, :ce, :o, :pv, :ex, :q) "
                 "ON DUPLICATE KEY UPDATE assunto = VALUES(assunto), urgencia = VALUES(urgencia), "
                 "sentimento = VALUES(sentimento), equipe = VALUES(equipe), "
                 "resposta_sugerida = VALUES(resposta_sugerida), conf_assunto = VALUES(conf_assunto), "
                 "conf_urgencia = VALUES(conf_urgencia), conf_sentimento = VALUES(conf_sentimento), "
-                "conf_equipe = VALUES(conf_equipe), origem = VALUES(origem), classified_at = VALUES(classified_at)"
+                "conf_equipe = VALUES(conf_equipe), origem = VALUES(origem), prompt_version = VALUES(prompt_version), "
+                "exemplos = VALUES(exemplos), classified_at = VALUES(classified_at)"
             ),
             {
                 "id": ticket_id, "a": c.assunto, "u": c.urgencia, "s": c.sentimento, "e": c.equipe,
                 "r": c.resposta_sugerida, "ca": c.confianca["assunto"], "cu": c.confianca["urgencia"],
-                "cs": c.confianca["sentimento"], "ce": c.confianca["equipe"], "o": c.origem, "q": utcnow(),
+                "cs": c.confianca["sentimento"], "ce": c.confianca["equipe"], "o": c.origem,
+                "pv": c.prompt_version, "ex": ",".join(map(str, c.exemplos)) or None, "q": utcnow(),
             },
         )
 
@@ -46,9 +49,12 @@ def processar_ticket(ticket_id: int) -> str:
         if t is None or t.status != "pendente":
             return "ignorado"
 
-        c = classificar(t.texto)
+        # Few-shot dinâmico: tickets revisados parecidos orientam a classificação (ADR-014).
+        refs = exemplos.buscar(t.texto, excluir_ticket=ticket_id)
+        c = classificar(t.texto, exemplos=refs)
         _salvar_classificacao(ticket_id, c)
-        logger.info("ticket %s classificado (origem=%s)", ticket_id, c.origem)
+        logger.info("ticket %s classificado (origem=%s, prompt=%s, exemplos=%s)",
+                    ticket_id, c.origem, c.prompt_version, c.exemplos)
     except Exception:
         logger.exception("erro ao classificar o ticket %s", ticket_id)
         return "erro"

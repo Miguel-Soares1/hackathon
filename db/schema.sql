@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS classifications (
   conf_sentimento DECIMAL(4,3) NOT NULL,
   conf_equipe DECIMAL(4,3) NOT NULL,
   origem VARCHAR(10) NOT NULL,
+  -- Versão do prompt (ex.: 'v2', 'v2+fewshot', 'regras') e ids dos tickets revisados usados como exemplo.
+  prompt_version VARCHAR(30) NOT NULL DEFAULT 'v1',
+  exemplos VARCHAR(255) NULL,
   classified_at DATETIME NOT NULL,
   CONSTRAINT fk_class_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -109,7 +112,7 @@ INSERT IGNORE INTO app_config (chave, valor) VALUES
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
-  cl.origem,
+  cl.origem, cl.prompt_version, cl.exemplos,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,
   cl.resposta_sugerida AS resposta_original,

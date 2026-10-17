@@ -67,10 +67,27 @@ python scripts/calibrar_limiar.py        # mostra precisão/revocação por limi
 mysql -h127.0.0.1 -uhackathon -phackathon hackathon -e "UPDATE app_config SET valor='0.xx' WHERE chave='similarity_threshold';"
 ```
 
+## A IA aprende com as correções (few-shot dinâmico)
+
+Não há fine-tuning: antes de classificar, o sistema busca os tickets **já revisados** pelo atendente mais parecidos
+com a mensagem nova e os envia ao DeepSeek como exemplos (ADR-014). Corrigiu uma triagem no painel? A próxima
+mensagem parecida já usa essa correção. O painel mostra os exemplos usados em cada ticket e, em Métricas, a taxa de
+acerto por versão do prompt (`v2`, `v2+fewshot`, `regras`). Ajuste com `FEWSHOT_K` (0 desliga) e `FEWSHOT_SIM_MIN`.
+
+**Medir antes de mudar o prompt:** `data/avaliacao.json` tem 60 mensagens rotuladas nas 4 dimensões, separadas das
+mensagens de demo (inclui ironia e prompt injection). Ao mudar o texto do prompt, incremente `PROMPT_VERSION` em
+`src/triagem/classifier.py` e compare:
+
+```bash
+python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json   # regras × LLM × LLM+few-shot + injection
+```
+
+**Banco criado antes desta versão:** rode `db/migrations/003_prompt_version.sql` e depois `python scripts/criar_banco.py`.
+
 ## Scripts da demo
 
 ```bash
-python scripts/avaliar_triagem.py      # taxa de acerto do LLM e das regras contra os rótulos + teste de prompt injection
+python scripts/avaliar_triagem.py      # taxa de acerto: regras × LLM × LLM+few-shot + teste de prompt injection
 python scripts/resetar_demo.py         # apaga tickets e incidentes para repetir a demo (mantém a configuração)
 ```
 

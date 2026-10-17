@@ -106,4 +106,5 @@ def classificar_por_regras(texto: str) -> Classificacao:
         resposta_sugerida=resposta,
         confianca={"assunto": base, "urgencia": 0.35, "sentimento": 0.35, "equipe": base},
         origem="fallback",
+        prompt_version="regras",
     )

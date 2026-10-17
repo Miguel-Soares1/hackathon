@@ -11,6 +11,7 @@
 | 3 | Registro de Correções e Taxa de Acerto | implemented | 1 |
 | 4 | Painel de Monitoramento e Métricas | implemented | 1, 2, 3, 5 |
 | 5 | Prazos de Resposta (SLA) e Primeira Resposta | implemented | 1 |
+| 6 | Aprendizado com correções (few-shot dinâmico, eval e versão do prompt) — ADR-014 | implemented | 1, 2, 3 |
 
 ## Status
 
