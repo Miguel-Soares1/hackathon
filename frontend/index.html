@@ -12,7 +12,7 @@
   <!-- Tela de acesso: a chave fica só nesta aba (sessionStorage) -->
   <main id="login" class="login" hidden>
     <form id="form-login" class="card login-card">
-      <h1>🎯 Triagem IA</h1>
+      <div class="marca"><div class="logo">T</div><div class="nome">Triagem IA</div></div>
       <p class="muted">Painel de atendimento. Informe a chave de API do servidor.</p>
       <label>Chave de API
         <input id="chave" type="password" autocomplete="current-password" required>
@@ -22,76 +22,88 @@
     </form>
   </main>
 
-  <div id="app" hidden>
-    <header class="topo">
-      <h1>🎯 Triagem IA <span class="muted">painel de atendimento</span></h1>
-      <div class="topo-acoes">
-        <span id="status" class="muted" aria-live="polite"></span>
-        <label class="muted">Atualizar a cada
-          <select id="intervalo">
-            <option value="5">5 s</option>
-            <option value="10" selected>10 s</option>
-            <option value="30">30 s</option>
-            <option value="0">pausado</option>
-          </select>
-        </label>
-        <button id="sair" class="btn">Sair</button>
-      </div>
-    </header>
+  <div id="app" class="app" hidden>
+    <!-- Menu lateral (layout da dashboard do chat de atendimento, ADR-016) -->
+    <aside class="lateral">
+      <div class="marca"><div class="logo">T</div><div class="nome">Triagem IA</div></div>
+      <div class="menu-titulo">Menu</div>
+      <nav class="menu" aria-label="Páginas">
+        <button type="button" data-pagina="dashboard" aria-current="page"><span aria-hidden="true">📊</span> Dashboard</button>
+        <button type="button" data-pagina="atendimento"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
+        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
+        <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
+        <button type="button" data-pagina="nova"><span aria-hidden="true">✉️</span> Simular mensagem</button>
+      </nav>
+      <hr>
+      <label>Seu nome no chat <input id="atendente" maxlength="60" value="Atendente"></label>
+      <label>Atualização automática
+        <select id="intervalo">
+          <option value="5">a cada 5 s</option>
+          <option value="10" selected>a cada 10 s</option>
+          <option value="30">a cada 30 s</option>
+          <option value="0">pausada</option>
+        </select>
+      </label>
+      <p class="legenda">Datas exibidas em horário de Brasília.</p>
+      <p id="status" class="legenda" aria-live="polite"></p>
+      <button id="sair" class="btn sair" type="button">Sair</button>
+    </aside>
 
-    <section id="kpis" class="kpis" aria-label="Indicadores"></section>
-    <section id="alertas" aria-label="Incidentes abertos"></section>
+    <main class="conteudo">
+      <h1 id="titulo">Dashboard</h1>
 
-    <nav class="abas" role="tablist">
-      <button role="tab" data-aba="fila" aria-selected="true">📋 Fila</button>
-      <button role="tab" data-aba="incidentes">🚨 Incidentes</button>
-      <button role="tab" data-aba="metricas">📊 Métricas</button>
-      <button role="tab" data-aba="correcoes">📝 Correções</button>
-      <button role="tab" data-aba="nova">✉️ Nova mensagem</button>
-    </nav>
+      <!-- Dashboard: indicadores, incidentes abertos e métricas -->
+      <section id="pagina-dashboard" class="pagina">
+        <div id="kpis" class="kpis" aria-label="Indicadores"></div>
+        <div id="alertas" aria-label="Incidentes abertos"></div>
+        <div id="metricas" class="grade-2"></div>
+      </section>
 
-    <section id="aba-fila" class="aba">
-      <div class="fila-layout">
-        <div>
-          <label class="toggle"><input type="checkbox" id="so-abertos" checked> Somente aguardando resposta</label>
-          <div class="tabela-wrap"><table id="tabela-fila" class="tabela"></table></div>
+      <!-- Atendimento: fila estilo chat (em espera × respondidos) e conversa com a triagem -->
+      <section id="pagina-atendimento" class="pagina" hidden>
+        <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente, canal ou mensagem…" aria-label="Buscar atendimento">
+        <div class="atendimento">
+          <div class="coluna-lista">
+            <div class="abas-lista" role="tablist">
+              <button type="button" role="tab" data-lista="espera" aria-selected="true">Em espera (<span id="qtd-espera">0</span>)</button>
+              <button type="button" role="tab" data-lista="respondidos" aria-selected="false">Respondidos (<span id="qtd-respondidos">0</span>)</button>
+            </div>
+            <div id="cartoes" class="cartoes"></div>
+          </div>
+          <div id="detalhe" class="detalhe">
+            <div class="vazio">Escolha um atendimento na lista para conversar com o cliente, ver a triagem e a resposta sugerida, e corrigir a IA.</div>
+          </div>
         </div>
-        <aside id="detalhe" class="card detalhe">
-          <p class="muted">Clique em um ticket para atender.</p>
-        </aside>
-      </div>
-    </section>
+      </section>
 
-    <section id="aba-incidentes" class="aba" hidden>
-      <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
-      <div id="lista-incidentes"></div>
-    </section>
+      <section id="pagina-incidentes" class="pagina" hidden>
+        <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
+        <div id="lista-incidentes"></div>
+      </section>
 
-    <section id="aba-metricas" class="aba" hidden>
-      <div id="metricas" class="grade-2"></div>
-    </section>
+      <section id="pagina-correcoes" class="pagina" hidden>
+        <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
+      </section>
 
-    <section id="aba-correcoes" class="aba" hidden>
-      <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
-    </section>
-
-    <section id="aba-nova" class="aba" hidden>
-      <form id="form-nova" class="card form-nova">
-        <h2>Simular mensagem de cliente</h2>
-        <p class="muted">Envia para o webhook, como faria um canal real. A IA classifica em segundos.</p>
-        <div class="linha">
-          <label>Canal
-            <select name="canal">
-              <option>WhatsApp</option><option>E-mail</option><option>Chat</option><option>Instagram</option>
-            </select>
-          </label>
-          <label>Cliente <input name="cliente" maxlength="120" placeholder="Ex.: Loja Aurora"></label>
-        </div>
-        <label>Mensagem <textarea name="texto" rows="4" minlength="3" maxlength="4000" required></textarea></label>
-        <button type="submit" class="btn primario">Enviar</button>
-        <p id="nova-status" class="muted" aria-live="polite"></p>
-      </form>
-    </section>
+      <section id="pagina-nova" class="pagina" hidden>
+        <form id="form-nova" class="card form-nova">
+          <h2>Simular mensagem de cliente</h2>
+          <p class="muted">Envia para o webhook, como faria um canal real. A IA classifica em segundos e o atendimento aparece em <b>Atendimento → Em espera</b>.</p>
+          <div class="linha">
+            <label>Canal
+              <select name="canal">
+                <option>WhatsApp</option><option>E-mail</option><option>Chat</option><option>Instagram</option>
+              </select>
+            </label>
+            <label>Cliente <input name="cliente" maxlength="120" placeholder="Ex.: Loja Aurora"></label>
+          </div>
+          <label>Mensagem <textarea name="texto" rows="4" minlength="3" maxlength="4000" required></textarea></label>
+          <button type="submit" class="btn primario">Enviar</button>
+          <p id="nova-status" class="muted" aria-live="polite"></p>
+          <p class="muted">Quer conversar com um cliente simulado pela IA? Abra o <a href="/demo" target="_blank" rel="noopener">simulador de canais ↗</a>.</p>
+        </form>
+      </section>
+    </main>
   </div>
 </body>
 </html>

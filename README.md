@@ -26,7 +26,7 @@ python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + paine
 python scripts/simular.py                                       # 2) envia as 34 mensagens de demo
 ```
 
-Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. O painel tem menu lateral: **Dashboard** (indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa e triagem da IA), **Incidentes**, **Correções** e **Simular mensagem**. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
 Simulador de canais para a apresentação (WhatsApp, Instagram e e-mail fictícios): http://localhost:8000/demo (veja `docs/canais.md`).
 

@@ -1,6 +1,6 @@
 # Chat do atendimento e integração com o chat do cliente
 
-No painel, ao abrir um ticket na **Fila**, o detalhe mostra a conversa do cliente (balões de cliente e atendente) e uma caixa para responder (Enter envia; Shift+Enter quebra a linha).
+No painel, na página **Atendimento**, os clientes aparecem em cartões (**Em espera**: o cliente falou por último; **Respondidos**: a vez é do cliente). Ao abrir um cartão, o painel mostra a conversa do cliente (balões de cliente e atendente) e uma caixa para responder (Enter envia; Shift+Enter quebra a linha).
 Nesta versão o chat é **de demonstração**: a resposta do atendente fica gravada na conversa, mas **não é enviada** ao canal do cliente.
 A integração com o chat do cliente usa a API abaixo (todas as rotas exigem o header `X-API-Key`).
 

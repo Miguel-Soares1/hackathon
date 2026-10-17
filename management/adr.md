@@ -265,6 +265,6 @@ Consequências: ...
 **Consequências:**
 - O polling basta para o volume esperado; pode virar push depois sem mudar o modelo de dados.
 - Mensagens anexadas não são reclassificadas nem entram no agrupamento de incidentes.
-- No painel HTML (ADR-010), a conversa aparece no detalhe do ticket e atualiza a cada ciclo de atualização automática, não em tempo real.
+- No painel HTML (ADR-010), o layout segue a dashboard de atendimento desenhada para o chat (menu lateral; página Atendimento com cartões "Em espera" × "Respondidos", conversa e a triagem num painel recolhível). A conversa atualiza a cada ciclo de atualização automática, não em tempo real.
 - WhatsApp, Instagram e e-mail usam o remetente como `conversa_id`, inclusive nas telas `/demo/*`.
 
