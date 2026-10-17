@@ -195,7 +195,8 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 #kpis .card-icone { width: 48px; height: 48px; border-radius: 12px; }
 #kpis .card-icone svg { width: 24px; height: 24px; }
 #kpis .card-valor { font-size: 28px; }
-#alertas:not(:empty) { margin-top: 18px; }
+/* respiro entre os indicadores e a tabela de chamadas (mesmo espaço entre os cards) */
+.chamadas-espera { margin-top: 22px; }
 
 /* ---------- desfecho do atendimento */
 .btn.ok { border-color: #1f7a52; color: var(--ok); }

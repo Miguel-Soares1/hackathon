@@ -157,7 +157,6 @@ async function carregar() {
     estado.resumo = resumo;
     renderKpis();
     renderBadgeIncidentes();
-    renderAlertas(incidentes.filter((g) => g.status === "incidente"));
     renderMetricas();
     renderChamadas();
     renderCartoes();
@@ -230,15 +229,6 @@ function renderKpis() {
 }
 
 // Total de incidentes no menu lateral, como o contador de atendimentos em espera.
-function renderAlertas(incidentes) {
-  $("#alertas").innerHTML = incidentes
-    .map((g) => `<div class="alerta" role="alert">🚨 <strong>Incidente — ${esc(g.assunto_predominante || "assunto indefinido")}</strong>
-      · ${g.size} mensagens · aberto às ${esc(hora(g.incident_opened_at))}<br><span class="muted">${esc(g.justificativa)}</span>
-      <details><summary>Ver mensagens do grupo</summary><ul>${g.tickets.map((t) =>
-        `<li><b>${esc(t.cliente || "cliente")}</b> (${esc(t.canal)}, ${esc(hora(t.received_at))}): ${esc(t.texto)}</li>`).join("")}</ul></details></div>`)
-    .join("");
-}
-
 function renderBadgeIncidentes() {
   const badge = $("#badge-incidentes");
   const total = estado.resumo.incidentes;
