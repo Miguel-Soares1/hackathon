@@ -6,7 +6,8 @@ import json
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from triagem import canais, cliente_simulado, demo_chat
+from conftest import CHAVE
+from triagem import canais, demo_chat
 
 SEGREDO = "segredo-do-app"
 TOKEN = "token-ig"
@@ -124,60 +125,41 @@ def test_rota_antiga_de_ticket_da_demo_nao_existe(client):
     assert client.get(f"/demo/tickets/{r.json()['ticket_id']}").status_code == 404
 
 
-def test_cliente_simulado_abre_conversa_e_vira_ticket_do_canal(client, db):
-    # Act
-    r = client.post("/demo/whatsapp/conversas", json={"cenario": "pix"})
-    # Assert
-    assert r.status_code == 201
-    d = r.json()
-    assert d["cenario"] == "Pix não caiu" and d["cliente"]["nome"]
-    assert d["mensagem"]["texto"] == cliente_simulado.CENARIOS["pix"][2][0]  # roteiro: sem chave do LLM nos testes
-    with db.connect() as conn:
-        canal, status = conn.execute(text("SELECT canal, status FROM tickets WHERE id = :i"),
-                                     {"i": d["mensagem"]["ticket_id"]}).one()
-    assert canal == "whatsapp" and status == "classificado"
+def test_conversa_do_cliente_traz_a_resposta_da_ia_e_as_do_atendente(client):
+    # Arrange: o cliente escreve pela tela de demo
+    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "meu pix não caiu, preciso hoje"}).json()
+    assert r["status"] == "pendente" and r["senha"]
+    url = f"/demo/conversa/{r['ticket_id']}"
+    # Act: o atendente responde pelo painel (chat do atendimento)
+    client.post(f"/tickets/{r['ticket_id']}/mensagens", headers=CHAVE, json={"texto": "Oi! Já estou vendo o seu Pix.", "autor": "Joana"})
+    conversa = client.get(url, params={"senha": r["senha"]}).json()
+    # Assert: resposta sugerida (resposta automática da demo) e a mensagem do atendente; nada de classificação
+    assert conversa["respondida"] and conversa["resposta"]
+    assert [(m["texto"], m["autor"]) for m in conversa["atendente"]] == [("Oi! Já estou vendo o seu Pix.", "Joana")]
+    assert set(conversa) == {"respondida", "resposta", "equipe", "atendente", "ultimo_id"}
+    # e o polling com depois_de não repete o que já foi visto
+    assert client.get(url, params={"senha": r["senha"], "depois_de": conversa["ultimo_id"]}).json()["atendente"] == []
 
 
-def test_resposta_do_atendente_registra_primeira_resposta_e_o_cliente_responde(client, db):
-    d = client.post("/demo/instagram/conversas", json={"cenario": "app"}).json()
-    primeiro = d["mensagem"]["ticket_id"]
-    # Act
-    r = client.post(f"/demo/conversas/{d['conversa']}/respostas", json={"texto": "Qual o modelo do seu celular?"})
-    # Assert
-    assert r.status_code == 200
-    seguinte = r.json()["mensagem"]
-    assert seguinte["texto"] == cliente_simulado.CENARIOS["app"][2][1]
-    assert seguinte["ticket_id"] is None  # uma conversa = um ticket: a continuação não abre outro
-    with db.connect() as conn:
-        respondido = conn.execute(text("SELECT first_response_at FROM tickets WHERE id = :i"), {"i": primeiro}).scalar()
-        conversa = conn.execute(text("SELECT direcao, texto FROM messages WHERE ticket_id = :i ORDER BY id"),
-                                {"i": primeiro}).all()
-    assert respondido is not None
-    assert [m.direcao for m in conversa] == ["entrada", "saida", "entrada"]
-    assert conversa[1].texto == "Qual o modelo do seu celular?" and conversa[2].texto == seguinte["texto"]
+def test_segunda_mensagem_do_cliente_entra_na_mesma_conversa(client):
+    a = client.post("/demo/instagram", json={"remetente": "mari.souza", "texto": "o app não abre desde ontem"}).json()
+    b = client.post("/demo/instagram", json={"remetente": "mari.souza", "texto": "alguém pode me ajudar?"}).json()
+    assert a["status"] == "pendente" and b["status"] == "anexada" and b["ticket_id"] == a["ticket_id"]
+    assert b["senha"] == a["senha"]
 
 
-def test_painel_da_demo_so_mostra_tickets_da_propria_conversa(client):
-    a = client.post("/demo/whatsapp/conversas", json={"cenario": "acesso"}).json()
-    b = client.post("/demo/whatsapp/conversas", json={"cenario": "cobranca"}).json()
-    t = client.get(f"/demo/conversas/{a['conversa']}/tickets/{a['mensagem']['ticket_id']}")
-    assert t.status_code == 200 and t.json()["resposta_sugerida"] and t.json()["sla"]["prazo_minutos"]
-    assert client.get(f"/demo/conversas/{a['conversa']}/tickets/{b['mensagem']['ticket_id']}").status_code == 404
-    assert client.get(f"/demo/conversas/nao-existe/tickets/{a['mensagem']['ticket_id']}").status_code == 404
-    assert client.post("/demo/conversas/nao-existe/respostas", json={"texto": "oi"}).status_code == 404
-    assert client.post("/demo/telegram/conversas").status_code == 404
+def test_conversa_recusa_senha_errada_ou_de_outro_ticket(client):
+    a = client.post("/demo/instagram", json={"remetente": "mari.souza", "texto": "quero cancelar minha conta"}).json()
+    b = client.post("/demo/instagram", json={"remetente": "joaop", "texto": "o app não abre desde ontem"}).json()
+    assert client.get(f"/demo/conversa/{a['ticket_id']}").status_code == 404
+    assert client.get(f"/demo/conversa/{a['ticket_id']}", params={"senha": "x" * 32}).status_code == 404
+    assert client.get(f"/demo/conversa/{a['ticket_id']}", params={"senha": b["senha"]}).status_code == 404
 
 
-def test_cliente_encerra_a_conversa_e_nao_aceita_mais_respostas(client):
-    d = client.post("/demo/whatsapp/conversas", json={"cenario": "elogio"}).json()
-    falas = []
-    for _ in range(5):
-        r = client.post(f"/demo/conversas/{d['conversa']}/respostas", json={"texto": "Que bom! Obrigado pelo retorno."})
-        if r.status_code != 200:
-            break
-        falas.append(r.json()["mensagem"])
-    assert falas[-1]["encerrou"] and falas[-1]["texto"] == cliente_simulado.DESPEDIDA
-    assert r.status_code == 409
+def test_tela_do_cliente_nao_mostra_a_classificacao(client):
+    for canal in ("whatsapp", "instagram"):
+        html = client.get(f"/demo/{canal}").text.lower()
+        assert "triagem" not in html and "urgência" not in html
 
 
 def test_demo_valida_remetente_por_canal(client):

@@ -1,4 +1,6 @@
 """API HTTP (FastAPI). Webhook único (ADR-001), responde 202 e processa em background (ADR-009)."""
+import hashlib
+import hmac
 import json
 import re
 import logging
@@ -16,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
-from . import canais, cliente_simulado, corrections, demo_chat, demo_email, incidents, metrics, pipeline, tickets
+from . import canais, corrections, demo_chat, demo_email, incidents, metrics, pipeline, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -115,14 +117,6 @@ class ChatDemoIn(BaseModel):
     remetente: str = Field(min_length=1, max_length=30, description="WhatsApp: telefone só com dígitos; Instagram: usuário")
     nome: Optional[str] = Field(default=None, max_length=80)
     texto: str = Field(min_length=1, max_length=1000)
-
-
-class ConversaDemoIn(BaseModel):
-    cenario: Optional[str] = Field(default=None, max_length=30, description="situação do cliente; vazio = sorteada")
-
-
-class RespostaDemoIn(BaseModel):
-    texto: str = Field(min_length=1, max_length=2000)
 
 
 class MensagemChatIn(BaseModel):
@@ -287,80 +281,30 @@ def create_app() -> FastAPI:
     if settings.demo_enabled:
         csp_demo = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
                     "connect-src 'self'; base-uri 'none'; form-action 'none'")
-        # O apresentador é o atendente e a IA faz o papel do cliente (cliente_simulado). Cada fala do cliente passa pelo
-        # mesmo conversor do canal real e entra na conversa do chat (ADR-016): a primeira abre o ticket e é classificada,
-        # as seguintes são anexadas a ele. A resposta do atendente vai para a mesma conversa e registra a 1ª resposta.
-        conversas = cliente_simulado.Conversas()
+        # A tela do cliente acompanha a própria conversa: a resposta sugerida pela IA (resposta automática da demo) e as
+        # respostas que o atendente enviar pelo painel. Só quem enviou a mensagem tem a senha do ticket (HMAC com um
+        # segredo que muda a cada subida da API); a classificação nunca sai por aqui.
+        segredo_demo = secrets.token_bytes(32)
 
-        def _fala_do_cliente(cid: str, conv: cliente_simulado.Conversa, background: BackgroundTasks) -> dict:
-            fala = cliente_simulado.proxima_fala(conv)
-            if fala["assunto"]:
-                conv.assunto = fala["assunto"]
-            conv.historico.append(("cliente", fala["mensagem"]))
-            conv.encerrada = fala["encerrou"]
-            if conv.canal == "email":
-                assunto = conv.assunto or ""
-                m = demo_email.email_demo_para_mensagem(conv.contato, conv.nome, "atendimento@suaempresa.com.br",
-                                                        assunto if conv.falas_cliente == 1 else "Re: " + assunto,
-                                                        fala["mensagem"])
-            else:
-                m = demo_chat.mensagem_demo(conv.canal, conv.contato, conv.nome if conv.canal == "whatsapp" else None,
-                                            fala["mensagem"])
-            ticket_id = None
-            if m is not None:  # texto que o canal real ignoraria (curto demais) não entra
-                # Cada "Novo cliente" é uma conversa nova, mesmo que a persona sorteada se repita.
-                tid, novo = tickets.receber_mensagem(conv.canal, m["texto"], m["cliente"], m["received_at"],
-                                                     m["external_id"], f"demo:{cid}")
-                if novo:
-                    conv.tickets.append(tid)
-                    ticket_id = tid
-                    background.add_task(pipeline.processar_ticket, tid)
-            return {"texto": fala["mensagem"], "ticket_id": ticket_id, "encerrou": conv.encerrada,
-                    "assunto": conv.assunto if conv.canal == "email" else None}
+        def _senha_conversa(ticket_id: int) -> str:
+            return hmac.new(segredo_demo, str(ticket_id).encode(), hashlib.sha256).hexdigest()[:32]
 
-        def _conversa(cid: str) -> cliente_simulado.Conversa:
-            conv = conversas.obter(cid)
-            if conv is None:
-                raise HTTPException(status_code=404, detail="conversa não encontrada (a API reiniciou?)")
-            return conv
+        def _enviado(ticket_id: int, status: str) -> dict:
+            return {"ticket_id": ticket_id, "status": status, "senha": _senha_conversa(ticket_id)}
 
-        @app.get("/demo/cenarios", include_in_schema=False)
-        def demo_cenarios():
-            return [{"chave": k, "titulo": v[0]} for k, v in cliente_simulado.CENARIOS.items()]
-
-        @app.post("/demo/{canal}/conversas", status_code=201, include_in_schema=False)
-        def demo_nova_conversa(canal: str, background: BackgroundTasks, corpo: Optional[ConversaDemoIn] = None):
-            if canal not in cliente_simulado.CANAIS:
-                raise HTTPException(status_code=404, detail="canal de demonstração inexistente")
-            cid, conv = conversas.nova(canal, corpo.cenario if corpo else None)
-            mensagem = _fala_do_cliente(cid, conv, background)
-            return {"conversa": cid, "cliente": {"nome": conv.nome, "contato": conv.contato},
-                    "cenario": cliente_simulado.CENARIOS[conv.cenario][0], "mensagem": mensagem}
-
-        @app.post("/demo/conversas/{cid}/respostas", include_in_schema=False)
-        def demo_responder(cid: str, corpo: RespostaDemoIn, background: BackgroundTasks):
-            conv = _conversa(cid)
-            if conv.encerrada:
-                raise HTTPException(status_code=409, detail="o cliente já encerrou a conversa")
-            conv.historico.append(("atendente", corpo.texto.strip()))
-            if conv.tickets:  # grava na conversa do ticket; a 1ª resposta conta para o prazo (SLA)
-                try:
-                    tickets.responder_chat(conv.tickets[0], corpo.texto, "Atendente (demo)")
-                except tickets.TicketNaoEncontrado:
-                    pass  # a demo foi zerada no meio da conversa
-            return {"mensagem": _fala_do_cliente(cid, conv, background)}
-
-        @app.get("/demo/conversas/{cid}/tickets/{ticket_id}", include_in_schema=False)
-        def demo_ticket_da_conversa(cid: str, ticket_id: int):
-            if ticket_id not in _conversa(cid).tickets:
-                raise HTTPException(status_code=404, detail="ticket não pertence a esta conversa")
+        @app.get("/demo/conversa/{ticket_id}", include_in_schema=False)
+        def demo_conversa(ticket_id: int, senha: str = Query("", max_length=64), depois_de: int = Query(0, ge=0)):
+            if not hmac.compare_digest(senha, _senha_conversa(ticket_id)):
+                raise HTTPException(status_code=404, detail="conversa não encontrada")
             try:
-                tk = tickets.obter(ticket_id)
+                t = tickets.obter(ticket_id)
+                msgs = tickets.mensagens(ticket_id, depois_de)
             except tickets.TicketNaoEncontrado:
-                raise HTTPException(status_code=404, detail="ticket não encontrado")
-            campos = ("ticket_id", "status", "origem", "assunto", "urgencia", "sentimento", "equipe", "resposta_sugerida",
-                      "exemplos", "first_response_at")
-            return {**{k: tk.get(k) for k in campos}, "sla": {k: tk["sla"][k] for k in ("estado", "prazo_minutos")}}
+                raise HTTPException(status_code=404, detail="conversa não encontrada")
+            resposta = t.get("resposta_sugerida") if t.get("status") != "pendente" else None
+            atendente = [{"id": m["id"], "texto": m["texto"], "autor": m["autor"]} for m in msgs if m["direcao"] == "saida"]
+            return {"respondida": bool(resposta), "resposta": resposta, "equipe": t.get("equipe") if resposta else None,
+                    "atendente": atendente, "ultimo_id": max([m["id"] for m in msgs], default=depois_de)}
 
         @app.get("/demo", include_in_schema=False)
         def demo_inicio():
@@ -379,9 +323,9 @@ def create_app() -> FastAPI:
                                                        convertida["received_at"], convertida["external_id"],
                                                        convertida.get("conversa_id"))
             if not novo:
-                return {"ticket_id": ticket_id, "status": "anexada"}
+                return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
-            return {"ticket_id": ticket_id, "status": "pendente"}
+            return _enviado(ticket_id, "pendente")
 
         @app.get("/demo/{canal}", response_class=HTMLResponse, include_in_schema=False)
         def demo_chat_pagina(canal: str):
@@ -403,9 +347,9 @@ def create_app() -> FastAPI:
             ticket_id, novo = tickets.receber_mensagem(canal, m["texto"], m["cliente"], m["received_at"],
                                                        m["external_id"], m.get("conversa_id"))
             if not novo:
-                return {"ticket_id": ticket_id, "status": "anexada"}
+                return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
-            return {"ticket_id": ticket_id, "status": "pendente"}
+            return _enviado(ticket_id, "pendente")
 
 
     @app.get("/tickets", dependencies=[Depends(exigir_chave)])

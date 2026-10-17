@@ -18,7 +18,7 @@ python scripts/simular.py                                         # carrega as 3
 - [ ] Painel aberto em http://localhost:8000 (entrar com a `API_KEY`), na aba **📋 Fila**, com zoom do navegador em 125%
 - [ ] Os incidentes do Pix e do login aparecem na aba **🚨 Incidentes**
 - [ ] Terminal 2 pronto com o comando da rajada **digitado, sem Enter** (bloco 3, passo 3)
-- [ ] Segunda janela do navegador em http://localhost:8000/demo (WhatsApp), situação **Pix não caiu** já escolhida (passo 1b)
+- [ ] Segunda janela do navegador em http://localhost:8000/demo (celular de WhatsApp), lado a lado com o painel na página **Atendimento** (passo 1b)
 - [ ] Wi-Fi testado. Sem internet, a triagem cai no plano B automaticamente; a demo continua e vira argumento a favor (ver "Se algo der errado")
 - [ ] Notificações do Windows desligadas (modo Não Perturbe)
 
@@ -39,7 +39,7 @@ Três dores: **urgente misturado com simples**, **incidente invisível** e **sem
 | # | Ação no painel | O que falar |
 |---|---|---|
 | 1 | Aba **📋 Fila**: mostrar a fila ordenada, com urgência e prazo | "Cada mensagem já chega classificada. A crítica tem 15 minutos de prazo; a dúvida simples, 24 horas." |
-| 1b | Na janela do **/demo**, clicar em **Novo cliente**: a IA, fazendo papel de cliente, reclama do Pix. Mostrar o **Assistente de IA** ao lado (urgência, equipe, prazo), clicar em **Usar sugestão**, ajustar e enviar. O cliente responde de acordo | "Aqui eu sou o atendente e a IA faz o papel de um cliente de verdade. A mensagem chega já classificada, com prazo e uma resposta sugerida; eu reviso e envio, e o cliente reage ao que eu disse." |
+| 1b | Na janela do **/demo**, mandar "Pix não caiu" como cliente: chega a confirmação com protocolo e a resposta automática. No painel, **Atendimento → Em espera**, abrir o cartão do cliente, ver a triagem e responder; a resposta aparece no celular do cliente | "Do lado do cliente é só o WhatsApp de sempre. Do nosso lado, a mensagem já chega classificada, com prazo e resposta sugerida, e eu respondo daqui mesmo." |
 | 2 | Abrir um ticket crítico do Pix e mostrar a **resposta sugerida** e a **equipe** | "O atendente não começa do zero: já recebe a equipe responsável e uma resposta pronta." |
 | 3 | **Momento principal.** No terminal 2, dar Enter em:<br>`python scripts/simular.py --arquivo data/rajada_demo.json --tempo-real --intervalo 2`<br>Ir para a aba **🚨 Incidentes** | "Agora quatro clientes, por quatro canais diferentes, escrevem com palavras diferentes que o app fecha sozinho depois da atualização…" → o alerta aparece. "Nenhuma palavra-chave: a IA entendeu que é o **mesmo problema** e abriu o incidente em segundos." |
 | 4 | Voltar à **Fila**, escolher um ticket e **corrigir a urgência** no formulário | "A IA pode errar. O atendente corrige com um clique, e cada correção vira medida de qualidade." |
