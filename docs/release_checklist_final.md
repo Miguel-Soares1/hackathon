@@ -11,7 +11,8 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [x] **Segurança:** sem segredos no código; schema versionado em `db/`; threat modeling (`threat-model.md`).
 - [x] **Limiar de similaridade calibrado com o modelo de embeddings real:** 0,60, com 2/2 incidentes e 0 falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).
 - [x] **Auditoria cruzada (ensaio):** clone limpo seguindo só o README, no Windows: ~3 min até a API rodar com 34 mensagens e 2 incidentes, com PyTorch e o modelo já em cache (numa máquina nova, some o download, de ~5 a 8 min). Achado corrigido: o README mandava `cd Hackathon`, uma pasta que não existe. **Pendente:** repetir com outra pessoa do grupo.
-- [x] **Teste com a chave real do LLM** (DeepSeek), 34 mensagens: 89,2% de acerto agregado (assunto 94,1%, urgência 82,4%, sentimento 91,2%), JSON válido 34/34, prompt injection resistido 3/3; plano B por regras: 80,4% (`scripts/avaliar_triagem.py`).
+- [x] **Teste com a chave real do LLM** (DeepSeek), 34 mensagens: 89,2% de acerto agregado (assunto 94,1%, urgência 82,4%, sentimento 91,2%), JSON válido 34/34, prompt injection resistido 3/3; plano B por regras: 80,4% (`scripts/avaliar_triagem.py`). Esses números são do conjunto usado para ajustar o prompt e as regras.
+- [ ] **Avaliação no conjunto separado (holdout)**, 30 mensagens nunca usadas no ajuste: plano B 48,3% (urgência subestimada em 17/30). **Pendente:** LLM com 3 rodadas (`docs/avaliacao_triagem.md`).
 - [x] **Ensaio com falha:** API do LLM inacessível → 2 tentativas → plano B (`origem = fallback`) em ~5 s.
 - [x] **Aprendizado com correções (Spec 6, ADR-014):** few-shot dinâmico com testes (`tests/test_exemplos.py`), versão do prompt gravada em cada triagem e conjunto de avaliação separado com 60 mensagens.
 - [ ] **Linha de base do prompt `v2` × `v2+fewshot`** com a chave real: `python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json`.
