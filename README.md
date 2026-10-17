@@ -26,7 +26,13 @@ python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + paine
 python scripts/simular.py                                       # 2) envia as 34 mensagens de demo
 ```
 
-Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. O painel tem menu lateral: **Dashboard** (indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa e triagem da IA), **Incidentes**, **Correções** e **Simular mensagem**. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+Abra http://localhost:8000. **No primeiro acesso**, o painel pede a `API_KEY` do `.env` uma única vez para criar o
+administrador (nome, usuário e senha); depois disso a entrada é por **usuário e senha** (com "manter conectado", a
+sessão vale 30 dias no navegador). O administrador cadastra atendentes, troca papéis, desativa contas e redefine
+senhas em **Administração**; cada um troca a própria senha em **Minha conta** (ADR-018). A `API_KEY` continua só para
+integrações (webhook, canais e scripts). O painel tem menu lateral: **Dashboard** (indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa e triagem da IA), **Incidentes**, **Correções** e **Simular mensagem**. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+
+**Banco criado antes do login:** aplique `db/migrations/007_usuarios.sql` (ou rode `python scripts/criar_banco.py`).
 
 Simulador de canais para a apresentação (WhatsApp, Instagram e e-mail fictícios): http://localhost:8000/demo (veja `docs/canais.md`).
 

@@ -17,12 +17,15 @@ const POLITICA_TEXTO = {
   congelar_funcionalidades: "Error budget esgotado: congelar funcionalidades novas e corrigir as causas dos atrasos.",
   sem_dados: "Ainda não há tickets com desfecho para calcular o SLI.",
 };
-const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", nova: "Simular mensagem" };
+const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções",
+  nova: "Simular mensagem", admin: "Administração", conta: "Minha conta" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
 
 const estado = {
-  chave: lerArmazenado(sessionStorage, "triagem.chave"),
+  // Sessão do usuário (ADR-018): "manter conectado" guarda no localStorage (30 dias); senão só nesta aba.
+  token: lerArmazenado(localStorage, "triagem.sessao") || lerArmazenado(sessionStorage, "triagem.sessao"),
+  usuario: null,
   dominio: null,
   tickets: [],
   resumo: null,
@@ -69,7 +72,8 @@ class NaoAutorizado extends Error {}
 async function api(caminho, opcoes = {}) {
   const resp = await fetch(caminho, {
     ...opcoes,
-    headers: { "X-API-Key": estado.chave, ...(opcoes.body ? { "Content-Type": "application/json" } : {}) },
+    headers: { ...(estado.token ? { Authorization: `Bearer ${estado.token}` } : {}),
+      ...(opcoes.body ? { "Content-Type": "application/json" } : {}) },
   });
   if (resp.status === 401) throw new NaoAutorizado();
   if (!resp.ok) {
@@ -100,7 +104,7 @@ async function carregar() {
     if (estado.pagina === "correcoes") renderCorrecoes(await api("/correcoes"));
     $("#status").textContent = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
   } catch (e) {
-    if (e instanceof NaoAutorizado) return sair("Chave inválida ou expirada.");
+    if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
     $("#status").textContent = `⚠ ${e.message}`;
   }
 }
@@ -113,7 +117,7 @@ function agendar() {
 
 // A conversa aberta no Atendimento é um chat: atualiza a cada 3 s, sem esperar o ciclo do painel.
 setInterval(() => {
-  if (estado.chave && estado.pagina === "atendimento" && estado.selecionado && !document.hidden) carregarConversa(estado.selecionado);
+  if (estado.token && estado.pagina === "atendimento" && estado.selecionado && !document.hidden) carregarConversa(estado.selecionado);
 }, 3000);
 
 // ---------------------------------------------------------------- dashboard
@@ -311,7 +315,7 @@ async function carregarConversa(id) {
     caixa.innerHTML = html;
     caixa.scrollTop = caixa.scrollHeight;
   } catch (e) {
-    if (e instanceof NaoAutorizado) return sair("Chave inválida ou expirada.");
+    if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
     alertaStatus(e.message);
   }
 }
@@ -321,7 +325,7 @@ async function enviarChat(form) {
   const texto = form.texto.value.trim();
   if (!texto) return;
   try {
-    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, autor: $("#atendente").value.trim() || "Atendente" }) });
+    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto }) }); // assina quem está logado
     form.texto.value = "";
     estado.editando = false;
     await carregar(); // a 1ª resposta muda o prazo (SLA) e o ticket sai de "Em espera"
@@ -351,12 +355,12 @@ function renderMidias(t) {
     </div>`).join("")}</div>`;
 }
 
-// <img>/<audio> não mandam o header X-API-Key: baixa com a chave e mostra a partir de uma URL local (blob).
+// <img>/<audio> não mandam o header de autorização: baixa com a sessão e mostra a partir de uma URL local (blob).
 async function carregarMidias(t) {
   for (const m of t.midias || []) {
     try {
       if (!estado.midiaUrls[m.id]) {
-        const resp = await fetch(`/tickets/${t.ticket_id}/midias/${m.id}`, { headers: { "X-API-Key": estado.chave } });
+        const resp = await fetch(`/tickets/${t.ticket_id}/midias/${m.id}`, { headers: { Authorization: `Bearer ${estado.token}` } });
         if (!resp.ok) throw new Error(`erro ${resp.status}`);
         estado.midiaUrls[m.id] = URL.createObjectURL(await resp.blob());
       }
@@ -525,6 +529,7 @@ function irPara(pagina) {
   $("#titulo").textContent = TITULOS[pagina];
   gravarArmazenado(sessionStorage, "triagem.pagina", pagina);
   if (pagina === "correcoes") api("/correcoes").then(renderCorrecoes).catch((e) => alertaStatus(e.message));
+  if (pagina === "admin") carregarUsuarios();
 }
 
 function abrirTicket(id) {
@@ -534,44 +539,174 @@ function abrirTicket(id) {
   renderDetalhe();
 }
 
-// ---------------------------------------------------------------- acesso
+// ---------------------------------------------------------------- acesso (usuário e senha, ADR-018)
+function guardarSessao(token, manter) {
+  estado.token = token;
+  gravarArmazenado(localStorage, "triagem.sessao", manter ? token : "");
+  gravarArmazenado(sessionStorage, "triagem.sessao", manter ? "" : token);
+}
+
+async function postPublico(caminho, corpo) {
+  const resp = await fetch(caminho, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  const dados = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(dados.detail || (Array.isArray(dados.erros) ? dados.erros.map((e) => e.erro).join("; ") : `erro ${resp.status}`));
+  return dados;
+}
+
 async function entrar() {
   try {
+    estado.usuario = await api("/auth/eu");
     estado.dominio = await api("/dominio");
   } catch (e) {
-    return sair(e instanceof NaoAutorizado ? "Chave inválida." : `Servidor indisponível: ${e.message}`);
+    return sair(e instanceof NaoAutorizado ? "Sua sessão expirou. Entre de novo." : `Servidor indisponível: ${e.message}`);
   }
+  const u = estado.usuario;
+  $("#eu-nome").textContent = u.nome;
+  $("#eu-papel").textContent = `${u.usuario} · ${u.papel === "admin" ? "administrador" : "atendente"}`;
+  $("#eu-inicial").textContent = (u.nome || "?").trim().slice(0, 1).toUpperCase();
+  $("#menu-admin").hidden = u.papel !== "admin";
   $("#login").hidden = true;
   $("#app").hidden = false;
-  irPara(lerArmazenado(sessionStorage, "triagem.pagina") || "dashboard");
+  const ultima = lerArmazenado(sessionStorage, "triagem.pagina") || "dashboard";
+  irPara(ultima === "admin" && u.papel !== "admin" ? "dashboard" : ultima);
   await carregar();
   agendar();
 }
 
-function sair(erro) {
+async function sair(erro) {
   clearInterval(estado.timer);
-  estado.chave = "";
-  gravarArmazenado(sessionStorage, "triagem.chave", "");
+  if (estado.token && !erro) fetch("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${estado.token}` } }).catch(() => {});
+  guardarSessao("", false);
+  estado.usuario = null;
   $("#app").hidden = true;
   $("#login").hidden = false;
   const p = $("#login-erro");
   p.hidden = !erro;
   p.textContent = erro || "";
+  // Banco sem usuários: mostra o primeiro acesso (criar o administrador).
+  try {
+    const { precisa_configurar } = await (await fetch("/auth/estado")).json();
+    $("#form-login").hidden = precisa_configurar;
+    $("#form-primeiro").hidden = !precisa_configurar;
+  } catch { /* servidor fora do ar: fica o login */ }
+}
+
+async function fazerLogin() {
+  const erro = $("#login-erro");
+  erro.hidden = true;
+  try {
+    const manter = $("#manter").checked;
+    const r = await postPublico("/auth/login", { usuario: $("#usuario").value.trim(), senha: $("#senha").value, manter_conectado: manter });
+    $("#senha").value = "";
+    guardarSessao(r.token, manter);
+    entrar();
+  } catch (e) {
+    erro.hidden = false;
+    erro.textContent = e.message;
+  }
+}
+
+async function criarPrimeiroAdmin(form) {
+  const erro = $("#primeiro-erro");
+  erro.hidden = true;
+  const d = Object.fromEntries(new FormData(form));
+  if (d.senha !== d.senha2) { erro.hidden = false; erro.textContent = "As senhas não conferem."; return; }
+  try {
+    const r = await postPublico("/auth/primeiro-admin", { chave_api: d.chave_api, nome: d.nome, usuario: d.usuario, senha: d.senha });
+    form.reset();
+    guardarSessao(r.token, true);
+    entrar();
+  } catch (e) {
+    erro.hidden = false;
+    erro.textContent = e.message;
+  }
+}
+
+// ---------------------------------------------------------------- administração e minha conta
+async function carregarUsuarios() {
+  try {
+    renderUsuarios(await api("/usuarios"));
+  } catch (e) {
+    $("#admin-status").textContent = `⚠ ${e.message}`;
+  }
+}
+
+function renderUsuarios(lista) {
+  $("#tabela-usuarios").innerHTML = `<thead><tr><th>Nome</th><th>Usuário</th><th>Papel</th><th>Situação</th><th>Último acesso</th><th>Ações</th></tr></thead>
+    <tbody>${lista.map((u) => `<tr data-usuario="${u.id}" class="${u.ativo ? "" : "inativo"}">
+      <td><input name="nome" value="${esc(u.nome)}" maxlength="120" aria-label="Nome de ${esc(u.usuario)}"></td>
+      <td>${esc(u.usuario)}${u.id === estado.usuario?.id ? ' <span class="muted">(você)</span>' : ""}</td>
+      <td><select name="papel" aria-label="Papel de ${esc(u.usuario)}">
+        <option value="atendente" ${u.papel === "atendente" ? "selected" : ""}>Atendente</option>
+        <option value="admin" ${u.papel === "admin" ? "selected" : ""}>Administrador</option></select></td>
+      <td>${u.ativo ? "✅ ativo" : "⛔ desativado"}</td>
+      <td>${esc(hora(u.ultimo_login) || "nunca")}</td>
+      <td><div class="acoes-usuario">
+        <button type="button" class="btn" data-acao-usuario="salvar">Salvar</button>
+        <button type="button" class="btn" data-acao-usuario="${u.ativo ? "desativar" : "reativar"}">${u.ativo ? "Desativar" : "Reativar"}</button>
+        <input name="senha" type="password" placeholder="nova senha" minlength="8" maxlength="200" autocomplete="new-password" aria-label="Nova senha de ${esc(u.usuario)}">
+        <button type="button" class="btn" data-acao-usuario="senha">Redefinir senha</button>
+      </div></td></tr>`).join("")}</tbody>`;
+}
+
+async function acaoUsuario(botao) {
+  const tr = botao.closest("tr[data-usuario]");
+  const id = tr.dataset.usuario;
+  const acao = botao.dataset.acaoUsuario;
+  const st = $("#admin-status");
+  const corpo = acao === "salvar" ? { nome: tr.querySelector("[name=nome]").value.trim(), papel: tr.querySelector("[name=papel]").value }
+    : acao === "desativar" ? { ativo: false } : acao === "reativar" ? { ativo: true } : { senha: tr.querySelector("[name=senha]").value };
+  if (acao === "senha" && (corpo.senha || "").length < 8) { st.textContent = "⚠ A nova senha precisa ter pelo menos 8 caracteres."; return; }
+  try {
+    const u = await api(`/usuarios/${id}`, { method: "PATCH", body: JSON.stringify(corpo) });
+    st.textContent = { salvar: `✅ ${u.nome} atualizado.`, desativar: `✅ ${u.nome} desativado (sessões encerradas).`,
+      reativar: `✅ ${u.nome} reativado.`, senha: `✅ Senha de ${u.nome} redefinida (sessões encerradas).` }[acao];
+    if (u.id === estado.usuario.id) return entrar(); // mudou o próprio nome
+    carregarUsuarios();
+  } catch (e) {
+    if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
+    st.textContent = `⚠ ${e.message}`;
+  }
+}
+
+async function criarUsuario(form) {
+  const st = $("#admin-status");
+  try {
+    const u = await api("/usuarios", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+    form.reset();
+    st.textContent = `✅ Usuário ${u.usuario} criado. Passe a senha inicial para ${u.nome}; ela pode ser trocada em Minha conta.`;
+    carregarUsuarios();
+  } catch (e) {
+    st.textContent = `⚠ ${e.message}`;
+  }
+}
+
+async function trocarSenha(form) {
+  const st = $("#senha-status");
+  const d = Object.fromEntries(new FormData(form));
+  if (d.nova_senha !== d.nova_senha2) { st.textContent = "⚠ As novas senhas não conferem."; return; }
+  try {
+    await api("/auth/senha", { method: "POST", body: JSON.stringify({ senha_atual: d.senha_atual, nova_senha: d.nova_senha }) });
+    form.reset();
+    st.textContent = "✅ Senha alterada.";
+  } catch (e) {
+    st.textContent = `⚠ ${e.message}`;
+  }
 }
 
 // ---------------------------------------------------------------- eventos
 document.addEventListener("DOMContentLoaded", () => {
-  $("#form-login").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    estado.chave = $("#chave").value.trim();
-    gravarArmazenado(sessionStorage, "triagem.chave", estado.chave);
-    entrar();
+  $("#form-login").addEventListener("submit", (ev) => { ev.preventDefault(); fazerLogin(); });
+  $("#form-primeiro").addEventListener("submit", (ev) => { ev.preventDefault(); criarPrimeiroAdmin(ev.target); });
+  $("#form-usuario").addEventListener("submit", (ev) => { ev.preventDefault(); criarUsuario(ev.target); });
+  $("#form-senha").addEventListener("submit", (ev) => { ev.preventDefault(); trocarSenha(ev.target); });
+  $("#tabela-usuarios").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-acao-usuario]");
+    if (b) acaoUsuario(b);
   });
   $("#sair").addEventListener("click", () => sair());
   $("#intervalo").addEventListener("change", agendar);
   $("#todos-grupos").addEventListener("change", carregar);
-  $("#atendente").value = lerArmazenado(localStorage, "triagem.atendente") || "Atendente";
-  $("#atendente").addEventListener("change", (ev) => gravarArmazenado(localStorage, "triagem.atendente", ev.target.value.trim()));
   $(".menu").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-pagina]");
     if (b) irPara(b.dataset.pagina);
@@ -639,5 +774,5 @@ document.addEventListener("DOMContentLoaded", () => {
     renderAnexos();
   });
 
-  if (estado.chave) entrar(); else sair();
+  if (estado.token) entrar(); else sair();
 });

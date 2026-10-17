@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
-from . import canais, corrections, demo_chat, demo_email, incidents, metrics, midias, pipeline, tickets
+from . import canais, corrections, demo_chat, demo_email, incidents, metrics, midias, pipeline, tickets, usuarios
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -32,8 +32,26 @@ CANAIS_MAX = 30
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
-def exigir_chave(x_api_key: Optional[str] = Header(default=None)) -> None:
-    """Autenticação por chave no header X-API-Key (threat model T1)."""
+def _token_bearer(authorization: Optional[str]) -> str:
+    if authorization and authorization[:7].lower() == "bearer ":
+        return authorization[7:].strip()
+    return ""
+
+
+def exigir_chave(request: Request, x_api_key: Optional[str] = Header(default=None),
+                 authorization: Optional[str] = Header(default=None)) -> None:
+    """Acesso às rotas protegidas por um de dois caminhos:
+    - painel: sessão de usuário (`Authorization: Bearer <token>`, ADR-018), aberta com usuário e senha;
+    - integrações (webhook, canais, scripts): chave no header X-API-Key (threat model T1).
+    """
+    token = _token_bearer(authorization)
+    if token:
+        usuario = usuarios.usuario_da_sessao(token)
+        if usuario is None:
+            raise HTTPException(status_code=401, detail="sessão expirada ou inválida: entre de novo")
+        request.state.usuario = usuario
+        return
+    request.state.usuario = None
     esperada = get_settings().api_key
     if not esperada:
         raise HTTPException(status_code=503, detail="API_KEY não configurada no servidor")
@@ -141,6 +159,38 @@ class MensagemChatIn(BaseModel):
     autor: Optional[str] = Field(default=None, max_length=120)
 
 
+class LoginIn(BaseModel):
+    usuario: str = Field(min_length=1, max_length=60)
+    senha: str = Field(min_length=1, max_length=200)
+    manter_conectado: bool = True
+
+
+class PrimeiroAdminIn(BaseModel):
+    chave_api: str = Field(min_length=1, max_length=200, description="API_KEY do servidor: prova que é o dono")
+    usuario: str = Field(min_length=3, max_length=60)
+    nome: str = Field(min_length=1, max_length=120)
+    senha: str = Field(min_length=1, max_length=200)
+
+
+class TrocaSenhaIn(BaseModel):
+    senha_atual: str = Field(min_length=1, max_length=200)
+    nova_senha: str = Field(min_length=1, max_length=200)
+
+
+class UsuarioNovoIn(BaseModel):
+    usuario: str = Field(min_length=3, max_length=60)
+    nome: str = Field(min_length=1, max_length=120)
+    senha: str = Field(min_length=1, max_length=200)
+    papel: str = "atendente"
+
+
+class UsuarioAlteracaoIn(BaseModel):
+    nome: Optional[str] = Field(default=None, max_length=120)
+    papel: Optional[str] = None
+    ativo: Optional[bool] = None
+    senha: Optional[str] = Field(default=None, max_length=200, description="redefine a senha do usuário")
+
+
 class RespostaIn(BaseModel):
     respondido_em: Optional[datetime] = Field(
         default=None, description="Opcional: momento da 1ª resposta (importação/simulação). Padrão: agora (UTC)."
@@ -220,6 +270,95 @@ def create_app() -> FastAPI:
         with get_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
         return {"status": "ok"}
+
+    # ---- Login do painel e administração de usuários (ADR-018) ----
+    limitador_login = LimitadorJanela(10, 200)  # tentativas por IP e no total, por minuto
+
+    def _conferir_limite(request: Request) -> None:
+        permitido, espera = limitador_login.permitir(ip_do_cliente(request, settings.trust_proxy))
+        if not permitido:
+            raise HTTPException(status_code=429, detail="muitas tentativas; aguarde um minuto",
+                                headers={"Retry-After": str(espera)})
+
+    def _sessao(usuario: dict, lembrar: bool) -> dict:
+        token, expira = usuarios.abrir_sessao(usuario["id"], lembrar)
+        return {"token": token, "expira_em": expira, "usuario": usuario}
+
+    def usuario_logado(request: Request, _: None = Depends(exigir_chave)) -> dict:
+        if not getattr(request.state, "usuario", None):
+            raise HTTPException(status_code=401, detail="entre com usuário e senha")
+        return request.state.usuario
+
+    def exigir_admin(usuario: dict = Depends(usuario_logado)) -> dict:
+        if usuario["papel"] != "admin":
+            raise HTTPException(status_code=403, detail="somente administradores")
+        return usuario
+
+    @app.get("/auth/estado")
+    def auth_estado():
+        """Público: diz se ainda falta criar o primeiro administrador."""
+        return {"precisa_configurar": not usuarios.existe_algum()}
+
+    @app.post("/auth/primeiro-admin", status_code=201)
+    def auth_primeiro_admin(corpo: PrimeiroAdminIn, request: Request):
+        """Cria o 1º administrador. Só funciona com o banco sem usuários e com a API_KEY do servidor."""
+        _conferir_limite(request)
+        esperada = settings.api_key
+        if not esperada or not secrets.compare_digest(corpo.chave_api.encode(), esperada.encode()):
+            raise HTTPException(status_code=401, detail="chave de API do servidor incorreta")
+        if usuarios.existe_algum():
+            raise HTTPException(status_code=409, detail="o administrador já foi criado; entre com usuário e senha")
+        try:
+            u = usuarios.criar(corpo.usuario, corpo.nome, corpo.senha, "admin")
+        except (usuarios.UsuarioInvalido, usuarios.UsuarioDuplicado) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return _sessao(u, True)
+
+    @app.post("/auth/login")
+    def auth_login(corpo: LoginIn, request: Request):
+        _conferir_limite(request)
+        u = usuarios.autenticar(corpo.usuario, corpo.senha)
+        if u is None:
+            raise HTTPException(status_code=401, detail="usuário ou senha incorretos")
+        return _sessao(u, corpo.manter_conectado)
+
+    @app.post("/auth/logout", status_code=204)
+    def auth_logout(authorization: Optional[str] = Header(default=None)):
+        usuarios.encerrar_sessao(_token_bearer(authorization))
+
+    @app.get("/auth/eu")
+    def auth_eu(usuario: dict = Depends(usuario_logado)):
+        return {k: v for k, v in usuario.items() if k != "token_hash"}
+
+    @app.post("/auth/senha", status_code=204)
+    def auth_trocar_senha(corpo: TrocaSenhaIn, request: Request, usuario: dict = Depends(usuario_logado)):
+        _conferir_limite(request)
+        try:
+            usuarios.trocar_propria_senha(usuario["id"], corpo.senha_atual, corpo.nova_senha, usuario["token_hash"])
+        except usuarios.UsuarioInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/usuarios", dependencies=[Depends(exigir_admin)])
+    def listar_usuarios():
+        return usuarios.listar()
+
+    @app.post("/usuarios", status_code=201, dependencies=[Depends(exigir_admin)])
+    def criar_usuario(corpo: UsuarioNovoIn):
+        try:
+            return usuarios.criar(corpo.usuario, corpo.nome, corpo.senha, corpo.papel)
+        except usuarios.UsuarioDuplicado as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except usuarios.UsuarioInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.patch("/usuarios/{usuario_id}", dependencies=[Depends(exigir_admin)])
+    def alterar_usuario(usuario_id: int, corpo: UsuarioAlteracaoIn):
+        try:
+            return usuarios.alterar(usuario_id, corpo.nome, corpo.papel, corpo.ativo, corpo.senha)
+        except usuarios.UsuarioNaoEncontrado:
+            raise HTTPException(status_code=404, detail="usuário não encontrado")
+        except usuarios.UsuarioInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @app.post("/webhook/mensagens", status_code=202, dependencies=[Depends(exigir_chave)])
     def webhook(msg: MensagemIn, background: BackgroundTasks):
@@ -417,12 +556,14 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
 
     @app.post("/tickets/{ticket_id}/mensagens", status_code=201, dependencies=[Depends(exigir_chave)])
-    def enviar_mensagem(ticket_id: int, corpo: MensagemChatIn):
+    def enviar_mensagem(ticket_id: int, corpo: MensagemChatIn, request: Request):
         """Resposta do atendente na conversa (chat). Registra a 1ª resposta para o SLA."""
         if not corpo.texto.strip():
             raise HTTPException(status_code=400, detail="mensagem vazia")
+        logado = getattr(request.state, "usuario", None)
+        autor = logado["nome"] if logado else corpo.autor  # pelo painel, assina quem está logado (ADR-018)
         try:
-            return tickets.responder_chat(ticket_id, corpo.texto, corpo.autor)
+            return tickets.responder_chat(ticket_id, corpo.texto, autor)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
 
