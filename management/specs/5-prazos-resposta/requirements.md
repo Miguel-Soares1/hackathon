@@ -1,6 +1,6 @@
 ---
 name: Prazos de Resposta (SLA) e Primeira Resposta
-status: created
+status: implemented
 references: [1]
 ---
 
@@ -29,13 +29,13 @@ Definir de onde vem o prazo de cada solicitação, registrar a primeira resposta
 
 ## Critérios de Aceitação
 
-- [ ] Todo ticket classificado recebe um prazo derivado da urgência e da `sla_policy`.
-- [ ] O estado do ticket (`no_prazo`, `em_risco`, `estourado`, `respondido`) é calculado a partir de `received_at`, prazo e `first_response_at`.
-- [ ] Um ticket com 75% ou mais do prazo consumido e sem resposta é `em_risco`.
-- [ ] O atendente consegue marcar um ticket como respondido e `first_response_at` é persistido.
-- [ ] Alterar a urgência de um ticket recalcula o prazo.
-- [ ] O SLI de cumprimento de prazo é calculado e exposto ao painel (Spec 4).
-- [ ] Prazos e o percentual de risco são configuráveis sem alterar código.
+- [x] Todo ticket classificado recebe um prazo derivado da urgência e da `sla_policy`.
+- [x] O estado do ticket (`no_prazo`, `em_risco`, `estourado`, `respondido`) é calculado a partir de `received_at`, prazo e `first_response_at`.
+- [x] Um ticket com 75% ou mais do prazo consumido e sem resposta é `em_risco`.
+- [x] O atendente consegue marcar um ticket como respondido e `first_response_at` é persistido.
+- [x] Alterar a urgência de um ticket recalcula o prazo.
+- [x] O SLI de cumprimento de prazo é calculado e exposto ao painel (Spec 4).
+- [x] Prazos e o percentual de risco são configuráveis sem alterar código.
 
 ## Fora de Escopo (V1)
 

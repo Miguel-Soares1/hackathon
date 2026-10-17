@@ -1,6 +1,6 @@
 ---
 name: Agrupamento de Mensagens e Detecção de Incidentes
-status: created
+status: in-progress
 references: [1]
 ---
 
@@ -23,12 +23,12 @@ Agrupar mensagens semelhantes por embeddings + similaridade de cosseno e abrir u
 
 ## Critérios de Aceitação
 
-- [ ] Mensagens com similaridade de cosseno acima do limiar configurado são agrupadas.
+- [x] Mensagens com similaridade de cosseno acima do limiar configurado são agrupadas.
 - [ ] O limiar padrão foi calibrado com o conjunto de demo rotulado e o resultado está registrado em `docs/`.
-- [ ] Um incidente é aberto quando 3+ mensagens de um grupo ultrapassam o limiar dentro de 30 minutos.
-- [ ] Limiar, janela e volume mínimo são configuráveis.
-- [ ] Cada alerta inclui o grupo associado e uma justificativa/evidência.
-- [ ] Alertas são persistidos e expostos ao painel (Spec 4).
+- [x] Um incidente é aberto quando 3+ mensagens de um grupo ultrapassam o limiar dentro de 30 minutos.
+- [x] Limiar, janela e volume mínimo são configuráveis.
+- [x] Cada alerta inclui o grupo associado e uma justificativa/evidência.
+- [x] Alertas são persistidos e expostos ao painel (Spec 4).
 
 ## Fora de Escopo (V1)
 

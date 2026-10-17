@@ -1,6 +1,6 @@
 ---
 name: Classificação de Solicitações por Assunto, Urgência e Sentimento
-status: created
+status: implemented
 references: []
 ---
 
@@ -26,14 +26,14 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 
 ## Critérios de Aceitação
 
-- [ ] Toda solicitação recebe `assunto`, `urgencia`, `sentimento`, `equipe` e `resposta_sugerida`.
-- [ ] A saída do LLM é um JSON válido e estruturado.
-- [ ] É feita uma única chamada ao LLM por ticket.
-- [ ] Cada predição inclui um score de confiança.
-- [ ] O resultado é persistido em MySQL (ADR-006) associado ao identificador do ticket, com `origem` (`llm` ou `fallback`) e `received_at`.
-- [ ] O webhook responde `202` sem aguardar o LLM e exige a chave de API no header.
-- [ ] Se o JSON for inválido, há uma nova tentativa; persistindo a falha, aplica-se o plano B.
-- [ ] Valores fora do conjunto permitido (assunto, urgência, sentimento, equipe) são rejeitados.
+- [x] Toda solicitação recebe `assunto`, `urgencia`, `sentimento`, `equipe` e `resposta_sugerida`.
+- [x] A saída do LLM é um JSON válido e estruturado.
+- [x] É feita uma única chamada ao LLM por ticket.
+- [x] Cada predição inclui um score de confiança.
+- [x] O resultado é persistido em MySQL (ADR-006) associado ao identificador do ticket, com `origem` (`llm` ou `fallback`) e `received_at`.
+- [x] O webhook responde `202` sem aguardar o LLM e exige a chave de API no header.
+- [x] Se o JSON for inválido, há uma nova tentativa; persistindo a falha, aplica-se o plano B.
+- [x] Valores fora do conjunto permitido (assunto, urgência, sentimento, equipe) são rejeitados.
 
 ## Fora de Escopo (V1)
 

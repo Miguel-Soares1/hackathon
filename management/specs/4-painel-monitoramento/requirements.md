@@ -1,6 +1,6 @@
 ---
 name: Painel de Monitoramento e Métricas
-status: created
+status: implemented
 references: [1, 2, 3, 5]
 ---
 
@@ -21,14 +21,14 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 
 ## Critérios de Aceitação
 
-- [ ] O painel exibe a fila de atendimento.
-- [ ] O painel lista os incidentes detectados.
-- [ ] O painel exibe a distribuição dos principais motivos de contato.
-- [ ] O painel sinaliza os prazos de resposta em risco e estourados (Spec 5).
-- [ ] O painel exibe o SLI de cumprimento de prazo e o consumo do error budget.
-- [ ] Tickets classificados por `fallback` são identificados e contados separadamente na precisão.
-- [ ] O painel exibe a precisão de triagem.
-- [ ] As métricas são atualizadas em um intervalo definido.
+- [x] O painel exibe a fila de atendimento.
+- [x] O painel lista os incidentes detectados.
+- [x] O painel exibe a distribuição dos principais motivos de contato.
+- [x] O painel sinaliza os prazos de resposta em risco e estourados (Spec 5).
+- [x] O painel exibe o SLI de cumprimento de prazo e o consumo do error budget.
+- [x] Tickets classificados por `fallback` são identificados e contados separadamente na precisão.
+- [x] O painel exibe a precisão de triagem.
+- [x] As métricas são atualizadas em um intervalo definido.
 
 ## Fora de Escopo (V1)
 
