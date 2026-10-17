@@ -52,3 +52,57 @@ def test_desfecho_invalido_ou_ticket_inexistente(client):
 def test_encerrar_exige_chave(client):
     tid = _post(client).json()["ticket_id"]
     assert client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado"}).status_code == 401
+
+
+# ---------- junção com o relatório final (encerrar pelo painel gera o relatório; reabrir descarta) ----------
+def test_encerrar_pelo_painel_grava_resultado_observacao_e_relatorio(client):
+    tid = _post(client).json()["ticket_id"]
+    r = client.post(f"/tickets/{tid}/encerrar", headers=CHAVE,
+                    json={"desfecho": "encerrado", "resultado": "encaminhado", "observacao": "Foi para o financeiro."})
+    assert r.status_code == 200
+    rel = r.json()["relatorio"]
+    assert (rel["desfecho"], rel["desfecho_rotulo"], rel["observacao"]) == ("encaminhado", "encaminhado a outra equipe",
+                                                                          "Foi para o financeiro.")
+    assert client.get(f"/tickets/{tid}/relatorio", headers=CHAVE).json()["desfecho"] == "encaminhado"
+    assert _ticket(client, tid)["encerrado"] is True
+
+
+def test_cancelar_tambem_gera_relatorio(client):
+    tid = _post(client).json()["ticket_id"]
+    rel = client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "cancelado"}, headers=CHAVE).json()["relatorio"]
+    assert rel["desfecho"] == "cancelado" and rel["proximos_passos"] is None
+    assert _ticket(client, tid)["desfecho"] == "cancelado"
+
+
+def test_reabrir_descarta_o_relatorio_e_o_prazo_volta_a_correr(client):
+    tid = _post(client).json()["ticket_id"]
+    client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado"}, headers=CHAVE)
+    assert _ticket(client, tid)["first_response_at"] is not None  # encerrar sem responder conta para o prazo
+    t = client.post(f"/tickets/{tid}/reabrir", headers=CHAVE).json()
+    assert t["first_response_at"] is None and t["aguardando"] is True and t["encerrado_por"] is None
+    assert client.get(f"/tickets/{tid}/relatorio", headers=CHAVE).status_code == 404
+    # e dá para encerrar de novo, com um relatório novo
+    assert client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado"}, headers=CHAVE).status_code == 200
+
+
+def test_reabrir_mantem_a_resposta_que_ja_tinha_sido_dada(client):
+    tid = _post(client).json()["ticket_id"]
+    client.post(f"/tickets/{tid}/mensagens", json={"texto": "Já estou vendo!"}, headers=CHAVE)
+    client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado"}, headers=CHAVE)
+    assert client.post(f"/tickets/{tid}/reabrir", headers=CHAVE).json()["first_response_at"] is not None
+
+
+def test_finalizado_nao_aceita_resposta_nem_novo_encerramento(client):
+    tid = _post(client).json()["ticket_id"]
+    client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "cancelado"}, headers=CHAVE)
+    assert client.post(f"/tickets/{tid}/mensagens", json={"texto": "oi"}, headers=CHAVE).status_code == 409
+    assert client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado"}, headers=CHAVE).status_code == 409
+    assert client.post(f"/tickets/{tid}/encerramento", json={"desfecho": "resolvido"}, headers=CHAVE).status_code == 409
+
+
+def test_resultado_invalido_retorna_400(client):
+    tid = _post(client).json()["ticket_id"]
+    r = client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado", "resultado": "talvez"}, headers=CHAVE)
+    assert r.status_code == 400
+    r = client.post(f"/tickets/{tid}/encerrar", json={"desfecho": "encerrado", "resultado": "cancelado"}, headers=CHAVE)
+    assert r.status_code == 400

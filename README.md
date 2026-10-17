@@ -136,6 +136,22 @@ Formatos: foto JPG, PNG ou WebP; áudio OGG/Opus (WhatsApp), WebM (navegador), M
 conferido pelos primeiros bytes (um arquivo com o tipo trocado é recusado). Configure `GEMINI_API_KEY` no `.env`;
 sem ela, a mídia fica guardada, o ticket é classificado só com o texto e o painel avisa que a IA não leu a mídia.
 
+## Encerramento e relatório do atendimento
+
+No Atendimento, **✓ Encerrar** pede como terminou (resolvido, não resolvido, cliente sem retorno, encaminhado) e uma
+observação; **✕ Cancelar** finaliza como cancelado. Nos dois casos sai na hora o **relatório**: resumo da conversa
+escrito pela IA (ou automático, sem o LLM), próximos passos, duração, tempo da 1ª resposta, prazo (SLA), mensagens e
+triagem final. O ticket vai para **Finalizados** e não aceita mais respostas; se o cliente escrever de novo, nasce
+outro atendimento. Encerrar sem responder conta como desfecho do prazo. **↺ Reabrir** devolve o atendimento à fila e
+descarta o relatório. Por API: `POST /tickets/{id}/encerrar` (`desfecho`, `resultado`, `observacao`) ou
+`POST /tickets/{id}/encerramento`; `GET /tickets/{id}/relatorio` e `GET /relatorios`.
+
+O **filtro das chamadas** (Dashboard e Atendimento) mostra todas na ordem de prioridade da IA, só as de maior
+prioridade ou um filtro personalizado (ordem, urgência, estado do prazo, quanto do prazo já foi consumido).
+
+**Banco criado antes desta versão:** rode `python scripts/criar_banco.py` (aplica sozinho as migrações que faltam;
+o `scripts\iniciar.ps1` já faz isso).
+
 ## Scripts da demo
 
 ```bash
@@ -181,6 +197,8 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |
 | `POST /tickets/{id}/revisao` | confirma a triagem | 204, 404, 409 |
 | `POST /tickets/{id}/correcoes` | corrige assunto/urgência/sentimento/equipe/resposta | 201, 400, 404, 409 |
+| `POST /tickets/{id}/encerramento` | encerra o atendimento (desfecho + observação) e devolve o relatório final | 201, 400, 404, 409 |
+| `GET /tickets/{id}/relatorio` · `GET /relatorios` | relatório de um atendimento encerrado · todos os relatórios | 200, 404 · 200 |
 | `GET /correcoes` | histórico de correções | 200 |
 | `GET /incidentes` | incidentes e justificativa | 200 |
 | `GET /metricas` | motivos, idiomas, prazos em risco, SLI, precisão (por origem e por versão do prompt) | 200 |

@@ -20,6 +20,19 @@ const POLITICA_TEXTO = {
 const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções",
   atendimentos: "Atendimentos", admin: "Administração", conta: "Minha conta" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
+const ORDEM_ESTADO = { estourado: 0, em_risco: 1, no_prazo: 2, aguardando_classificacao: 3, respondido: 4 };
+// Filtro das chamadas, o mesmo no Dashboard e no Atendimento (guardado neste navegador).
+const URGENCIAS_FILTRO = [["critica", "crítica"], ["alta", "alta"], ["media", "média"], ["baixa", "baixa"], ["", "sem triagem"]];
+const ESTADOS_FILTRO = [["estourado", "estourado"], ["em_risco", "em risco"], ["no_prazo", "no prazo"],
+  ["respondido", "respondido"], ["aguardando_classificacao", "classificando"]];
+const FILTRO_PADRAO = {
+  modo: "ia", // ia = todas na ordem da IA · prioridade = só as de maior prioridade · personalizado
+  ordem: "urgencia",
+  inverter: false,
+  urgencias: URGENCIAS_FILTRO.map(([v]) => v),
+  estados: ESTADOS_FILTRO.map(([v]) => v),
+  consumidoMin: 0,
+};
 const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
 
 const estado = {
@@ -35,10 +48,13 @@ const estado = {
   selecionado: null,
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
   triagemAberta: false,
+  encerrando: false, // formulário de encerramento aberto no detalhe
+  relatorios: {}, // relatório já carregado por ticket (não muda depois do encerramento)
   timer: null,
   midiaUrls: {}, // id da mídia -> URL local (blob) já baixada, para não baixar a cada atualização
   anexos: [], // imagem/áudio a enviar na resposta do chat: { tipo, mime, dados_base64, nome, url }
   gravador: null,
+  filtro: lerFiltro(),
 };
 
 // ---------------------------------------------------------------- utilidades
@@ -140,8 +156,10 @@ async function carregar() {
     estado.tickets = tickets;
     estado.resumo = resumo;
     renderKpis();
+    renderBadgeIncidentes();
     renderAlertas(incidentes.filter((g) => g.status === "incidente"));
     renderMetricas();
+    renderChamadas();
     renderCartoes();
     renderRelatorio();
     if (!estado.editando && !tocandoAudio() && !estado.anexos.length && !estado.gravador) renderDetalhe();
@@ -211,6 +229,7 @@ function renderKpis() {
   ].join("");
 }
 
+// Total de incidentes no menu lateral, como o contador de atendimentos em espera.
 function renderAlertas(incidentes) {
   $("#alertas").innerHTML = incidentes
     .map((g) => `<div class="alerta" role="alert">🚨 <strong>Incidente — ${esc(g.assunto_predominante || "assunto indefinido")}</strong>
@@ -218,6 +237,13 @@ function renderAlertas(incidentes) {
       <details><summary>Ver mensagens do grupo</summary><ul>${g.tickets.map((t) =>
         `<li><b>${esc(t.cliente || "cliente")}</b> (${esc(t.canal)}, ${esc(hora(t.received_at))}): ${esc(t.texto)}</li>`).join("")}</ul></details></div>`)
     .join("");
+}
+
+function renderBadgeIncidentes() {
+  const badge = $("#badge-incidentes");
+  const total = estado.resumo.incidentes;
+  badge.hidden = !total;
+  badge.textContent = total;
 }
 
 function barras(itens, rotulo) {
@@ -248,11 +274,6 @@ function renderMetricas() {
     : `<p class="muted">Revise tickets para comparar as versões do prompt.</p>`;
 
   const sli = r.sli;
-  const risco = r.prazos_em_risco.length
-    ? `<table class="tabela"><thead><tr><th>#</th><th>Urgência</th><th>Estado</th><th>Consumido</th></tr></thead><tbody>
-        ${r.prazos_em_risco.map((x) => `<tr><td>#${x.ticket_id}</td><td>${pill(x.urgencia)}</td><td>${esc(ROTULO_ESTADO[x.estado])}</td><td>${pct(x.consumido_pct)}</td></tr>`).join("")}
-      </tbody></table>`
-    : `<p>✅ Nenhum ticket com prazo em risco.</p>`;
 
   $("#metricas").innerHTML = `
     <div class="card"><h2>Principais motivos de contato</h2>${barras(r.motivos_contato, (m) => m.assunto)}</div>
@@ -265,8 +286,136 @@ function renderMetricas() {
     <div class="card largo"><div class="lado-a-lado">
       <div><h2>Precisão da triagem</h2>${precisao}</div>
       <div><h2>Evolução da IA por versão do prompt</h2>${evolucao}</div>
-    </div></div>
-    <div class="card largo"><h2>Prazos de resposta em risco</h2>${risco}</div>`;
+    </div></div>`;
+}
+
+// ---------------------------------------------------------------- filtro das chamadas (Dashboard e Atendimento)
+function lerFiltro() {
+  try {
+    const salvo = JSON.parse(lerArmazenado(localStorage, "triagem.filtro") || "{}");
+    return { ...FILTRO_PADRAO, ...salvo };
+  } catch {
+    return { ...FILTRO_PADRAO };
+  }
+}
+
+// Prioridade da IA: urgência que ela atribuiu, depois o estado do prazo e o quanto do prazo já foi consumido.
+function porPrioridadeIa(a, b) {
+  return (ORDEM_URGENCIA[a.urgencia] ?? 4) - (ORDEM_URGENCIA[b.urgencia] ?? 4)
+    || (ORDEM_ESTADO[a.sla.estado] ?? 5) - (ORDEM_ESTADO[b.sla.estado] ?? 5)
+    || (b.sla.consumido_pct ?? 0) - (a.sla.consumido_pct ?? 0);
+}
+
+const COMPARADORES = {
+  numero: (a, b) => a.ticket_id - b.ticket_id,
+  urgencia: (a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 4) - (ORDEM_URGENCIA[b.urgencia] ?? 4),
+  estado: (a, b) => (ORDEM_ESTADO[a.sla.estado] ?? 5) - (ORDEM_ESTADO[b.sla.estado] ?? 5),
+  consumido: (a, b) => (b.sla.consumido_pct ?? 0) - (a.sla.consumido_pct ?? 0),
+};
+
+const maiorPrioridade = (t) => ["critica", "alta"].includes(t.urgencia) || ["estourado", "em_risco"].includes(t.sla.estado);
+
+function aplicarFiltro(tickets) {
+  const f = estado.filtro;
+  if (f.modo === "ia") return [...tickets].sort(porPrioridadeIa);
+  if (f.modo === "prioridade") return tickets.filter(maiorPrioridade).sort(porPrioridadeIa);
+  const sentido = f.inverter ? -1 : 1;
+  const comparar = COMPARADORES[f.ordem] || COMPARADORES.urgencia;
+  return tickets
+    .filter((t) => f.urgencias.includes(t.urgencia || "")
+      && f.estados.includes(t.sla.estado)
+      && (t.sla.consumido_pct ?? 0) >= f.consumidoMin)
+    .sort((a, b) => sentido * comparar(a, b) || porPrioridadeIa(a, b));
+}
+
+const caixas = (nome, itens, marcados) => itens
+  .map(([v, rot]) => `<label class="chip"><input type="checkbox" name="${nome}" value="${esc(v)}" ${marcados.includes(v) ? "checked" : ""}> ${esc(rot)}</label>`)
+  .join("");
+
+function htmlFiltros() {
+  const f = estado.filtro;
+  const sel = (v, atual, rot) => `<option value="${v}" ${String(v) === String(atual) ? "selected" : ""}>${rot}</option>`;
+  return `
+    <div class="filtros-linha">
+      <label>Mostrar <select name="modo">
+        ${sel("ia", f.modo, "Todas, na ordem de prioridade da IA")}
+        ${sel("prioridade", f.modo, "Só as de maior prioridade (IA)")}
+        ${sel("personalizado", f.modo, "Personalizado")}
+      </select></label>
+      <button type="button" class="btn" data-acao="limpar-filtro">Limpar filtros</button>
+      <span class="contagem muted" aria-live="polite"></span>
+    </div>
+    <div class="filtros-personalizado" ${f.modo === "personalizado" ? "" : "hidden"}>
+      <div class="filtros-linha">
+        <label>Ordenar por <select name="ordem">
+          ${sel("numero", f.ordem, "Número (#)")}
+          ${sel("urgencia", f.ordem, "Urgência (crítica primeiro)")}
+          ${sel("estado", f.ordem, "Estado do prazo (estourado primeiro)")}
+          ${sel("consumido", f.ordem, "Prazo consumido (maior primeiro)")}
+        </select></label>
+        <label class="toggle"><input type="checkbox" name="inverter" ${f.inverter ? "checked" : ""}> Inverter a ordem</label>
+        <label>Prazo consumido <select name="consumidoMin">
+          ${[0, 25, 50, 75, 100].map((v) => sel(v, f.consumidoMin, v ? `≥ ${v}%` : "qualquer")).join("")}
+        </select></label>
+      </div>
+      <fieldset class="chips"><legend>Urgência</legend>${caixas("urgencias", URGENCIAS_FILTRO, f.urgencias)}</fieldset>
+      <fieldset class="chips"><legend>Estado</legend>${caixas("estados", ESTADOS_FILTRO, f.estados)}</fieldset>
+    </div>
+    <p class="muted legenda-filtro" ${f.modo === "prioridade" ? "" : "hidden"}>Urgência crítica ou alta, ou prazo estourado ou em risco.</p>`;
+}
+
+function renderFiltros() {
+  document.querySelectorAll(".filtros").forEach((caixa) => { caixa.innerHTML = htmlFiltros(); });
+}
+
+function lerFiltrosDe(caixa) {
+  const marcados = (nome) => [...caixa.querySelectorAll(`input[name="${nome}"]:checked`)].map((i) => i.value);
+  return {
+    modo: caixa.querySelector('[name="modo"]').value,
+    ordem: caixa.querySelector('[name="ordem"]').value,
+    inverter: caixa.querySelector('[name="inverter"]').checked,
+    urgencias: marcados("urgencias"),
+    estados: marcados("estados"),
+    consumidoMin: Number(caixa.querySelector('[name="consumidoMin"]').value),
+  };
+}
+
+function mudarFiltro(novo) {
+  estado.filtro = novo;
+  gravarArmazenado(localStorage, "triagem.filtro", JSON.stringify(novo));
+  // As duas barras (Dashboard e Atendimento) mostram o mesmo filtro.
+  document.querySelectorAll(".filtros").forEach((caixa) => {
+    caixa.querySelector('[name="modo"]').value = novo.modo;
+    caixa.querySelector('[name="ordem"]').value = novo.ordem;
+    caixa.querySelector('[name="inverter"]').checked = novo.inverter;
+    caixa.querySelector('[name="consumidoMin"]').value = String(novo.consumidoMin);
+    caixa.querySelectorAll('input[name="urgencias"]').forEach((i) => { i.checked = novo.urgencias.includes(i.value); });
+    caixa.querySelectorAll('input[name="estados"]').forEach((i) => { i.checked = novo.estados.includes(i.value); });
+    caixa.querySelector(".filtros-personalizado").hidden = novo.modo !== "personalizado";
+    caixa.querySelector(".legenda-filtro").hidden = novo.modo !== "prioridade";
+  });
+  renderChamadas();
+  renderCartoes();
+}
+
+function contagem(contexto, mostradas, total) {
+  const el = document.querySelector(`.filtros[data-contexto="${contexto}"] .contagem`);
+  if (el) el.textContent = mostradas === total ? `${total} chamada(s)` : `${mostradas} de ${total} chamada(s)`;
+}
+
+// ---------------------------------------------------------------- dashboard: tabela de chamadas em espera
+function renderChamadas() {
+  const espera = estado.tickets.filter(aguardando);
+  const lista = aplicarFiltro(espera);
+  contagem("dashboard", lista.length, espera.length);
+  const linhas = lista.slice(0, 50);
+  $("#tabela-chamadas").innerHTML = linhas.length
+    ? `<table class="tabela chamadas"><thead><tr><th>#</th><th>Cliente</th><th>Urgência</th><th>Estado</th><th>Consumido</th><th>Assunto</th></tr></thead><tbody>
+        ${linhas.map((t) => `<tr data-id="${t.ticket_id}" tabindex="0" title="Abrir no Atendimento">
+          <td>#${t.ticket_id}</td><td>${esc(t.cliente || "—")}</td><td>${pill(t.urgencia)}</td>
+          <td>${esc(ROTULO_ESTADO[t.sla.estado] || t.sla.estado)}</td><td>${pct(t.sla.consumido_pct)}</td><td>${esc(t.assunto || "classificando")}</td></tr>`).join("")}
+      </tbody></table>${lista.length > linhas.length ? `<p class="muted">Mostrando as 50 primeiras de ${lista.length}.</p>` : ""}`
+    : `<p class="muted">${espera.length ? "Nenhuma chamada com esses filtros." : "✅ Nenhuma chamada em espera."}</p>`;
 }
 
 // ---------------------------------------------------------------- atendimento: fila estilo chat
@@ -276,12 +425,14 @@ function filtrados() {
   const todos = q
     ? base.filter((t) => [t.cliente, t.canal, t.texto, t.ultima_texto, t.assunto].join(" ").toLowerCase().includes(q))
     : base;
-  const espera = todos.filter((t) => situacao(t) === "espera").sort((a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 4) - (ORDEM_URGENCIA[b.urgencia] ?? 4)
-    || (b.sla.consumido_pct ?? 0) - (a.sla.consumido_pct ?? 0));
-  const atendimento = todos.filter((t) => situacao(t) === "atendimento");
-  const finalizados = todos.filter((t) => t.desfecho);
-  return { espera, atendimento, finalizados };
+  return {
+    espera: aplicarFiltro(todos.filter((t) => situacao(t) === "espera")),
+    atendimento: aplicarFiltro(todos.filter((t) => situacao(t) === "atendimento")),
+    finalizados: aplicarFiltro(todos.filter((t) => t.desfecho)),
+  };
 }
+
+const listaDe = (t) => (t.desfecho ? "finalizados" : situacao(t));
 
 // O texto vem do cliente (não confiável): tudo passa por esc() (threat model T19).
 function cartao(t) {
@@ -313,7 +464,9 @@ function renderCartoes() {
   const totalEspera = estado.tickets.filter((t) => situacao(t) === "espera").length;
   badge.hidden = !totalEspera;
   badge.textContent = totalEspera;
-  const itens = (listas[estado.lista] || listas.espera).slice(0, 80);
+  const atual = listas[estado.lista] || listas.espera;
+  contagem("atendimento", atual.length, estado.tickets.filter((t) => listaDe(t) === (listas[estado.lista] ? estado.lista : "espera")).length);
+  const itens = atual.slice(0, 80);
   $("#cartoes").innerHTML = itens.map(cartao).join("") || `<div class="vazio">Nenhum atendimento aqui.</div>`;
 }
 
@@ -332,7 +485,7 @@ function renderDetalhe() {
   const c = contato(t);
   const acoes = t.desfecho
     ? `<span class="finalizado">${t.desfecho === "cancelado" ? "Cancelado" : "Encerrado"} · ${esc(horaCurta(t.encerrado_em))}</span><button type="button" class="btn pequeno" data-acao="reabrir">↺ Reabrir</button>`
-    : `<button type="button" class="btn pequeno ok" data-acao="encerrar">✓ Encerrar</button><button type="button" class="btn pequeno perigo" data-acao="cancelar">✕ Cancelar</button>`;
+    : `<button type="button" class="btn pequeno ok" data-acao="abrir-encerramento" ${estado.encerrando ? "disabled" : ""}>✓ Encerrar</button><button type="button" class="btn pequeno perigo" data-acao="cancelar">✕ Cancelar</button>`;
   // Conversa (ADR-016): a primeira mensagem do cliente aparece até a conversa carregar.
   painel.innerHTML = `
     <div class="cab-chat">${avatar(t, true)}
@@ -341,7 +494,9 @@ function renderDetalhe() {
       <div class="cab-acoes">${acoes}</div></div>
     <div id="conversa" class="conversa" aria-live="polite">${bolha({ direcao: "entrada", autor: t.cliente, texto: t.texto, created_at: t.received_at })}</div>
     ${renderMidias(t)}
-    <form id="form-chat" class="form-chat"${t.desfecho ? " hidden" : ""}>
+    ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
+      : estado.encerrando ? formEncerramento() : `
+    <form id="form-chat" class="form-chat">
       ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao">💡 Usar resposta sugerida pela IA</button>` : ""}
       <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
@@ -355,6 +510,7 @@ function renderDetalhe() {
         <span id="chat-status" class="muted" aria-live="polite"></span>
       </div>
     </form>
+    `}
     <details class="triagem" id="triagem" ${estado.triagemAberta ? "open" : ""}>
       <summary>Triagem da IA${classificado ? ` <span class="resumo-triagem">${esc(t.assunto || "")} · ${esc((t.equipe || "").replace("_", " "))}</span>` : ""}</summary>
       <div class="corpo">${classificado ? triagem(t) : `<p class="muted">⏳ A IA ainda está ${t.midias?.length ? "lendo as mídias e " : ""}classificando este atendimento.</p>`}</div>
@@ -362,6 +518,86 @@ function renderDetalhe() {
   carregarConversa(t.ticket_id);
   carregarMidias(t);
   renderAnexos();
+  if (t.desfecho && !estado.relatorios[t.ticket_id]) carregarRelatorio(t.ticket_id);
+}
+
+// ---------------------------------------------------------------- encerramento e relatório
+function formEncerramento() {
+  const desfechos = Object.entries(estado.dominio.desfechos || { resolvido: "resolvido" });
+  return `
+    <form id="form-encerrar" class="card encerramento">
+      <h3>Encerrar atendimento</h3>
+      <label>Como terminou? <select name="resultado">${desfechos.map(([v, rot]) => `<option value="${esc(v)}">${esc(rot)}</option>`).join("")}</select></label>
+      <label>Observação para o relatório (opcional) <textarea name="observacao" rows="3" maxlength="2000" placeholder="Ex.: estorno solicitado ao financeiro"></textarea></label>
+      <div class="acoes-chat">
+        <button type="submit" class="btn primario">Encerrar e gerar relatório</button>
+        <button type="button" class="btn" data-acao="cancelar-encerramento">Voltar</button>
+        <span id="encerrar-status" class="muted" aria-live="polite"></span>
+      </div>
+      <p class="nota">Depois de encerrado, o atendimento não recebe mais respostas (dá para reabrir). Se o cliente escrever de novo, abre um novo atendimento.</p>
+    </form>`;
+}
+
+function duracao(min) {
+  if (min === null || min === undefined) return "—";
+  if (min < 60) return `${Math.round(min)} min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h} h ${Math.round(min % 60)} min` : `${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
+function htmlRelatorio(r) {
+  const d = r.dados;
+  const tr = d.triagem;
+  const prazo = d.sla.cumpriu === null || d.sla.cumpriu === undefined ? "—" : d.sla.cumpriu ? "✅ cumprido" : "🔴 estourado";
+  return `
+    <div class="cab-relatorio"><h3>📄 Relatório do atendimento #${r.ticket_id}</h3>${selo(r.desfecho_rotulo, r.desfecho === "resolvido" ? "s-no_prazo" : "s-em_risco")}</div>
+    <p class="muted">${r.desfecho === "cancelado" ? "Cancelado" : "Encerrado"} por ${esc(r.atendente || "atendente")} em ${esc(hora(r.gerado_em))}</p>
+    <div class="resposta">${esc(r.resumo)}</div>
+    ${r.proximos_passos ? `<p><b>Próximos passos:</b> ${esc(r.proximos_passos)}</p>` : ""}
+    ${r.observacao ? `<p><b>Observação do atendente:</b> ${esc(r.observacao)}</p>` : ""}
+    <dl class="numeros">
+      <div><dt>Cliente</dt><dd>${esc(d.cliente || "sem identificação")} · ${esc(d.canal)}</dd></div>
+      <div><dt>Duração</dt><dd>${duracao(d.duracao_min)}</dd></div>
+      <div><dt>1ª resposta</dt><dd>${d.sem_resposta ? "encerrado sem resposta" : duracao(d.primeira_resposta_min)}</dd></div>
+      <div><dt>Prazo (SLA)</dt><dd>${prazo}${d.sla.prazo_minutos ? ` · ${duracao(d.sla.prazo_minutos)}` : ""}</dd></div>
+      <div><dt>Mensagens</dt><dd>${d.mensagens.cliente} do cliente · ${d.mensagens.atendente} do atendente</dd></div>
+      <div><dt>Idioma</dt><dd>${esc(nomeIdioma(d.idioma))}</dd></div>
+      <div><dt>Triagem final</dt><dd>${pill(tr.urgencia)} ${esc(tr.assunto || "—")} · ${esc(tr.sentimento || "—")} · ${esc((tr.equipe || "—").replace("_", " "))}</dd></div>
+      <div><dt>Revisão da IA</dt><dd>${tr.corrigida ? "corrigida pelo atendente" : tr.revisada ? "confirmada" : "não revisada"}</dd></div>
+    </dl>
+    <p class="nota">Resumo ${r.origem_resumo === "llm" ? "escrito pela IA a partir da conversa" : "automático (IA indisponível)"}.</p>`;
+}
+
+async function carregarRelatorio(id) {
+  try {
+    const r = await api(`/tickets/${id}/relatorio`);
+    estado.relatorios[id] = r;
+    const caixa = $("#relatorio");
+    if (estado.selecionado === id && caixa) caixa.innerHTML = htmlRelatorio(r);
+  } catch (e) {
+    if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
+    const caixa = $("#relatorio");
+    if (caixa) caixa.innerHTML = `<p class="muted">⚠ ${esc(e.message)}</p>`;
+  }
+}
+
+async function encerrarAtendimento(form) {
+  const id = estado.selecionado;
+  const dados = { desfecho: "encerrado", ...Object.fromEntries(new FormData(form)) };
+  const botao = form.querySelector('button[type="submit"]');
+  botao.disabled = true;
+  $("#encerrar-status").textContent = "Gerando o relatório…";
+  try {
+    estado.relatorios[id] = (await api(`/tickets/${id}/encerrar`, { method: "POST", body: JSON.stringify(dados) })).relatorio;
+    estado.encerrando = false;
+    estado.editando = false;
+    estado.lista = "finalizados";
+    document.querySelectorAll(".abas-lista button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.lista === "finalizados")));
+    await carregar(); // o detalhe redesenha com o relatório
+  } catch (e) {
+    botao.disabled = false;
+    $("#encerrar-status").textContent = `⚠ ${e.message}`;
+  }
 }
 
 function triagem(t) {
@@ -576,6 +812,12 @@ function renderCorrecoes(hist) {
 // ---------------------------------------------------------------- ações
 async function acaoDetalhe(acao) {
   const id = estado.selecionado;
+  if (acao === "abrir-encerramento" || acao === "cancelar-encerramento") {
+    estado.encerrando = acao === "abrir-encerramento";
+    estado.editando = estado.encerrando; // não redesenhar o formulário enquanto o atendente escolhe
+    renderDetalhe();
+    return;
+  }
   if (acao === "sugestao") {
     const t = estado.tickets.find((x) => x.ticket_id === id);
     const caixa = $("#form-chat textarea");
@@ -587,11 +829,13 @@ async function acaoDetalhe(acao) {
   try {
     if (acao === "revisar") await api(`/tickets/${id}/revisao`, { method: "POST" });
     if (acao === "responder") await api(`/tickets/${id}/resposta`, { method: "POST", body: "{}" });
-    if (acao === "encerrar" || acao === "cancelar") {
-      const desfecho = acao === "encerrar" ? "encerrado" : "cancelado";
-      await api(`/tickets/${id}/encerrar`, { method: "POST", body: JSON.stringify({ desfecho }) });
+    if (acao === "cancelar") {
+      estado.relatorios[id] = (await api(`/tickets/${id}/encerrar`, { method: "POST", body: JSON.stringify({ desfecho: "cancelado" }) })).relatorio;
     }
-    if (acao === "reabrir") await api(`/tickets/${id}/reabrir`, { method: "POST" });
+    if (acao === "reabrir") {
+      await api(`/tickets/${id}/reabrir`, { method: "POST" });
+      delete estado.relatorios[id]; // reabrir descarta o relatório; um novo sai no próximo encerramento
+    }
   } catch (e) {
     alertaStatus(e.message);
   }
@@ -639,6 +883,7 @@ function abrirTicket(id) {
   }
   estado.selecionado = id;
   estado.editando = false;
+  estado.encerrando = false;
   renderCartoes();
   renderDetalhe();
 }
@@ -861,6 +1106,7 @@ async function entrar() {
   $("#menu-admin").hidden = u.papel !== "admin";
   $("#login").hidden = true;
   $("#app").hidden = false;
+  renderFiltros();
   const ultima = lerArmazenado(sessionStorage, "triagem.pagina") || "dashboard";
   irPara(!TITULOS[ultima] || (ultima === "admin" && u.papel !== "admin") ? "dashboard" : ultima);
   await carregar();
@@ -1028,6 +1274,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const c = ev.target.closest("[data-ir-lista]");
     if (c && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); irLista(c.dataset.irLista); }
   });
+  document.querySelectorAll(".filtros").forEach((caixa) => {
+    caixa.addEventListener("change", () => mudarFiltro(lerFiltrosDe(caixa)));
+    caixa.addEventListener("click", (ev) => {
+      if (ev.target.closest('[data-acao="limpar-filtro"]')) mudarFiltro({ ...FILTRO_PADRAO });
+    });
+  });
+  const tabela = $("#tabela-chamadas");
+  tabela.addEventListener("click", (ev) => {
+    const tr = ev.target.closest("tr[data-id]");
+    if (tr) abrirNoAtendimento(Number(tr.dataset.id));
+  });
+  tabela.addEventListener("keydown", (ev) => {
+    const tr = ev.target.closest("tr[data-id]");
+    if (tr && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); abrirNoAtendimento(Number(tr.dataset.id)); }
+  });
   $(".abas-lista").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-lista]");
     if (!b) return;
@@ -1074,6 +1335,9 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (ev.target.id === "form-correcao") {
       ev.preventDefault();
       salvarCorrecao(ev.target);
+    } else if (ev.target.id === "form-encerrar") {
+      ev.preventDefault();
+      encerrarAtendimento(ev.target);
     }
   });
   // Enter envia a resposta do chat; Shift+Enter quebra a linha.

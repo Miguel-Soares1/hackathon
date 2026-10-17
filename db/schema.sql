@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   first_response_at DATETIME NULL,
   desfecho VARCHAR(12) NULL,
   encerrado_em DATETIME NULL,
+  encerrado_por VARCHAR(120) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
   INDEX idx_tickets_status (status),
@@ -123,6 +124,21 @@ CREATE TABLE IF NOT EXISTS group_members (
   CONSTRAINT fk_mem_group FOREIGN KEY (group_id) REFERENCES incident_groups(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Relatório final do atendimento, gerado quando o atendente encerra a conversa.
+CREATE TABLE IF NOT EXISTS relatorios (
+  ticket_id BIGINT UNSIGNED PRIMARY KEY,
+  desfecho VARCHAR(20) NOT NULL,
+  atendente VARCHAR(120) NULL,
+  observacao TEXT NULL,
+  resumo TEXT NOT NULL,
+  proximos_passos TEXT NULL,
+  origem_resumo VARCHAR(10) NOT NULL,
+  dados JSON NOT NULL,
+  gerado_em DATETIME NOT NULL,
+  INDEX idx_relatorios_gerado (gerado_em),
+  CONSTRAINT fk_rel_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Política de SLA (ADR-007): prazo da primeira resposta por urgência.
 CREATE TABLE IF NOT EXISTS sla_policy (
   urgencia VARCHAR(10) PRIMARY KEY,
@@ -173,7 +189,7 @@ CREATE TABLE IF NOT EXISTS sessoes (
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
-  t.desfecho, t.encerrado_em,
+  t.desfecho, t.encerrado_em, t.encerrado_por,
   cl.origem, cl.prompt_version, cl.exemplos, cl.idioma,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,

@@ -51,7 +51,7 @@
       <nav class="menu" aria-label="Páginas">
         <button type="button" data-pagina="dashboard" aria-current="page"><span aria-hidden="true">📊</span> Dashboard</button>
         <button type="button" data-pagina="atendimento"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
-        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
+        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
         <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
         <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
         <button type="button" data-pagina="admin" id="menu-admin" hidden><span aria-hidden="true">🛡️</span> Administração</button>
@@ -76,7 +76,7 @@
     <main class="conteudo">
       <h1 id="titulo">Dashboard</h1>
 
-      <!-- Dashboard: indicadores, incidentes abertos e métricas -->
+      <!-- Dashboard: indicadores e métricas -->
       <section id="pagina-dashboard" class="pagina">
         <header class="hero">
           <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
@@ -90,6 +90,11 @@
         <h2 class="secao">Indicadores da triagem</h2>
         <div id="kpis" class="cards" aria-label="Indicadores da triagem"></div>
         <div id="alertas" aria-label="Incidentes abertos"></div>
+        <section class="card chamadas-espera" aria-label="Chamadas em espera">
+          <h2>Chamadas em espera</h2>
+          <div class="filtros" data-contexto="dashboard"></div>
+          <div id="tabela-chamadas" class="tabela-rolagem"></div>
+        </section>
         <div id="metricas" class="grade-2"></div>
       </section>
 
@@ -104,6 +109,7 @@
             <button type="button" data-canal="email" aria-pressed="false">E-mail</button>
           </div>
         </div>
+        <div class="filtros" data-contexto="atendimento"></div>
         <div class="atendimento">
           <div class="coluna-lista">
             <div class="abas-lista" role="tablist">

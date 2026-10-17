@@ -27,11 +27,8 @@ class RespostaAnteriorAoRecebimento(ValueError):
     pass
 
 
-class DesfechoInvalido(ValueError):
-    pass
-
-
-DESFECHOS = ("encerrado", "cancelado")
+class TicketEncerrado(Exception):
+    """O atendimento já foi encerrado ou cancelado: não aceita mais respostas do atendente."""
 
 
 JANELA_CONVERSA = timedelta(hours=24)
@@ -123,7 +120,8 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
     """Entrada de mensagem de um canal. Retorna (ticket_id, novo, id da mensagem anexada ou None).
 
     Com `conversa_id`, a mensagem entra na conversa já existente do cliente (mesmo canal) enquanto ela está
-    aberta ou foi respondida há menos de 24 h; fora disso (ou sem `conversa_id`) nasce um ticket novo.
+    aberta ou foi respondida há menos de 24 h; fora disso, depois do encerramento/cancelamento pelo atendente
+    ou sem `conversa_id`, nasce um ticket novo.
     As mídias de uma mensagem anexada ficam no ticket e são lidas pela IA depois (`midias.processar` com o id da
     mensagem); a triagem do ticket não muda (ADR-016).
     """
@@ -170,7 +168,8 @@ def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
         "consumido_pct": est.consumido_pct,
         "cumpriu": est.cumpriu,
     }
-    if d.get("desfecho"):
+    d["encerrado"] = bool(d.get("desfecho"))
+    if d["encerrado"]:
         d["aguardando"] = False  # encerrado ou cancelado: sai da fila
     elif d["first_response_at"] is None:
         d["aguardando"] = True
@@ -268,9 +267,11 @@ def mensagens(ticket_id: int, depois_de: int = 0) -> list[dict]:
 def _gravar_resposta_chat(ticket_id: int, texto: str, autor: Optional[str], agora: datetime,
                           midias: Sequence[midias_mod.Midia] = ()) -> int:
     with get_engine().begin() as conn:
-        existe = conn.execute(text("SELECT id FROM tickets WHERE id = :id"), {"id": ticket_id}).fetchone()
+        existe = conn.execute(text("SELECT id, desfecho FROM tickets WHERE id = :id"), {"id": ticket_id}).fetchone()
         if existe is None:
             raise TicketNaoEncontrado(ticket_id)
+        if existe.desfecho is not None:
+            raise TicketEncerrado(ticket_id)
         conn.execute(  # tickets primeiro, depois a mensagem filha (ordem que evita deadlock com o pipeline)
             text("UPDATE tickets SET first_response_at = :q WHERE id = :id AND first_response_at IS NULL"),
             {"q": agora, "id": ticket_id},
@@ -303,29 +304,24 @@ def responder_chat(ticket_id: int, texto: str, autor: Optional[str] = None,
             "midias": anexos}
 
 
-def encerrar(ticket_id: int, desfecho: str, quando: Optional[datetime] = None) -> dict:
-    """Finaliza o atendimento como 'encerrado' (resolvido) ou 'cancelado'. Repetir só troca o desfecho.
-
-    Se o cliente escrever de novo depois disso, nasce um ticket novo (ver receber_mensagem).
-    """
-    if desfecho not in DESFECHOS:
-        raise DesfechoInvalido(desfecho)
-    with get_engine().begin() as conn:
-        n = conn.execute(
-            text("UPDATE tickets SET desfecho = :d, encerrado_em = COALESCE(encerrado_em, :q) WHERE id = :id"),
-            {"d": desfecho, "q": quando or utcnow(), "id": ticket_id},
-        ).rowcount
-        if not n and conn.execute(text("SELECT 1 FROM tickets WHERE id = :id"), {"id": ticket_id}).scalar() is None:
-            raise TicketNaoEncontrado(ticket_id)
-    return obter(ticket_id)
-
-
 def reabrir(ticket_id: int) -> dict:
-    """Desfaz o encerramento/cancelamento (o atendimento volta para a fila)."""
+    """Desfaz o encerramento/cancelamento: o atendimento volta para a fila e o relatório final é descartado.
+
+    Se o encerramento tinha contado como 1ª resposta (encerrado sem responder ao cliente), o prazo volta a correr.
+    O encerramento em si (com o relatório) fica em `relatorios.encerrar`.
+    """
     with get_engine().begin() as conn:
         if conn.execute(text("SELECT 1 FROM tickets WHERE id = :id"), {"id": ticket_id}).scalar() is None:
             raise TicketNaoEncontrado(ticket_id)
-        conn.execute(text("UPDATE tickets SET desfecho = NULL, encerrado_em = NULL WHERE id = :id"), {"id": ticket_id})
+        sem_resposta = conn.execute(
+            text("SELECT JSON_EXTRACT(dados, '$.sem_resposta') FROM relatorios WHERE ticket_id = :id"), {"id": ticket_id}
+        ).scalar()
+        conn.execute(
+            text("UPDATE tickets SET desfecho = NULL, encerrado_em = NULL, encerrado_por = NULL, "
+                 "first_response_at = IF(:sem, NULL, first_response_at) WHERE id = :id"),
+            {"sem": str(sem_resposta).lower() == "true", "id": ticket_id},
+        )
+        conn.execute(text("DELETE FROM relatorios WHERE ticket_id = :id"), {"id": ticket_id})
     return obter(ticket_id)
 
 

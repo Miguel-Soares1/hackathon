@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
 from . import (canais, corrections, demo_celular, demo_chat, demo_email, incidents, metrics, midias, pipeline,
-               tickets, usuarios)
+               relatorios, tickets, usuarios)
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -168,6 +168,8 @@ class MensagemChatIn(BaseModel):
 
 class DesfechoIn(BaseModel):
     desfecho: Literal["encerrado", "cancelado"]
+    resultado: str = Field(default="resolvido", description="Ao encerrar: resolvido | nao_resolvido | sem_retorno | encaminhado")
+    observacao: Optional[str] = Field(default=None, max_length=2000, description="Vai para o relatório final.")
 
 
 class LoginIn(BaseModel):
@@ -200,6 +202,12 @@ class UsuarioAlteracaoIn(BaseModel):
     papel: Optional[str] = None
     ativo: Optional[bool] = None
     senha: Optional[str] = Field(default=None, max_length=200, description="redefine a senha do usuário")
+
+
+class EncerramentoIn(BaseModel):
+    desfecho: str = Field(description="resolvido | nao_resolvido | sem_retorno | encaminhado")
+    observacao: Optional[str] = Field(default=None, max_length=2000)
+    autor: Optional[str] = Field(default=None, max_length=120)
 
 
 class RespostaIn(BaseModel):
@@ -583,12 +591,20 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="respondido_em anterior ao recebimento do ticket")
 
     @app.post("/tickets/{ticket_id}/encerrar", dependencies=[Depends(exigir_chave)])
-    def encerrar(ticket_id: int, corpo: DesfechoIn):
-        """Finaliza o atendimento: desfecho 'encerrado' (resolvido) ou 'cancelado'."""
+    def encerrar(ticket_id: int, corpo: DesfechoIn, request: Request):
+        """Finaliza o atendimento pelo painel: 'encerrado' (com o resultado) ou 'cancelado'. Gera o relatório final."""
+        resultado = corpo.resultado if corpo.desfecho == "encerrado" else relatorios.CANCELADO
+        if resultado == relatorios.CANCELADO and corpo.desfecho == "encerrado":
+            raise HTTPException(status_code=400, detail="para cancelar use desfecho 'cancelado'")
         try:
-            return tickets.encerrar(ticket_id, corpo.desfecho)
+            rel = relatorios.encerrar(ticket_id, resultado, _quem(request, None), corpo.observacao)
+            return tickets.obter(ticket_id) | {"relatorio": rel}
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
+        except relatorios.TicketJaEncerrado:
+            raise HTTPException(status_code=409, detail="atendimento já encerrado")
+        except relatorios.DesfechoInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @app.post("/tickets/{ticket_id}/reabrir", dependencies=[Depends(exigir_chave)])
     def reabrir(ticket_id: int):
@@ -620,6 +636,35 @@ def create_app() -> FastAPI:
             return tickets.responder_chat(ticket_id, corpo.texto, autor, anexos)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
+        except tickets.TicketEncerrado:
+            raise HTTPException(status_code=409, detail="atendimento já encerrado")
+
+    def _quem(request: Request, autor: Optional[str]) -> Optional[str]:
+        logado = getattr(request.state, "usuario", None)
+        return logado["nome"] if logado else autor  # pelo painel, assina quem está logado (ADR-018)
+
+    @app.post("/tickets/{ticket_id}/encerramento", status_code=201, dependencies=[Depends(exigir_chave)])
+    def encerramento(ticket_id: int, corpo: EncerramentoIn, request: Request):
+        """Encerra o atendimento e devolve o relatório final da conversa (resumo pela IA ou por regras)."""
+        try:
+            return relatorios.encerrar(ticket_id, corpo.desfecho, _quem(request, corpo.autor), corpo.observacao)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
+        except relatorios.TicketJaEncerrado:
+            raise HTTPException(status_code=409, detail="atendimento já encerrado")
+        except relatorios.DesfechoInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/tickets/{ticket_id}/relatorio", dependencies=[Depends(exigir_chave)])
+    def obter_relatorio(ticket_id: int):
+        try:
+            return relatorios.obter(ticket_id)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="relatório não encontrado (atendimento não encerrado)")
+
+    @app.get("/relatorios", dependencies=[Depends(exigir_chave)])
+    def listar_relatorios(limite: int = Query(100, ge=1, le=1000)):
+        return relatorios.listar(limite)
 
     @app.post("/tickets/{ticket_id}/revisao", status_code=204, dependencies=[Depends(exigir_chave)])
     def confirmar(ticket_id: int):
@@ -659,7 +704,7 @@ def create_app() -> FastAPI:
     def dominio():
         """Valores permitidos na triagem, para o painel montar os formulários de correção."""
         return {"assuntos": ASSUNTOS, "urgencias": URGENCIAS, "sentimentos": SENTIMENTOS, "equipes": EQUIPES,
-                "idiomas": IDIOMAS}
+                "idiomas": IDIOMAS, "desfechos": relatorios.DESFECHOS}
 
     # Painel (HTML/CSS/JS estáticos) servido pela própria API: um único serviço para subir.
     # Montado por último para não sombrear as rotas acima.

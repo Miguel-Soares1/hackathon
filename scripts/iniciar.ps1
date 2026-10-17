@@ -19,6 +19,10 @@ Write-Host "Subindo o MySQL e esperando ficar pronto..."
 docker compose up -d --wait
 if ($LASTEXITCODE -ne 0) { throw "O MySQL não subiu. Veja: docker compose logs db" }
 
+Write-Host "Atualizando o banco (migrações que faltarem)..."
+& $python scripts\criar_banco.py
+if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar o banco. Veja a mensagem acima." }
+
 $hostApi = "127.0.0.1"
 Write-Host "Painel: http://localhost:8000 (entre com a API_KEY do .env). Ctrl+C para parar."
 if ($Celular) {

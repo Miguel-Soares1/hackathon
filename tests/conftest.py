@@ -19,8 +19,9 @@ os.environ["EMBEDDING_BACKEND"] = "hash"
 SCHEMA = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 LIMPEZA = [
     "TRUNCATE TABLE group_members", "TRUNCATE TABLE incident_groups", "TRUNCATE TABLE ticket_embeddings",
-    "TRUNCATE TABLE reviews", "TRUNCATE TABLE messages", "TRUNCATE TABLE corrections", "TRUNCATE TABLE classifications",
-    "TRUNCATE TABLE ticket_midias", "TRUNCATE TABLE tickets", "TRUNCATE TABLE sessoes", "TRUNCATE TABLE usuarios",
+    "TRUNCATE TABLE reviews", "TRUNCATE TABLE relatorios", "TRUNCATE TABLE messages", "TRUNCATE TABLE corrections",
+    "TRUNCATE TABLE classifications", "TRUNCATE TABLE ticket_midias", "TRUNCATE TABLE tickets", "TRUNCATE TABLE sessoes",
+    "TRUNCATE TABLE usuarios",
 ]
 CHAVE = {"X-API-Key": "chave-de-teste"}
 
@@ -44,7 +45,7 @@ def engine():
         # Recria do zero (só no banco *_test): CREATE TABLE IF NOT EXISTS não adiciona colunas novas do schema.
         conn.execute(text("DROP VIEW IF EXISTS vw_tickets"))
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
-        for tabela in ("group_members", "incident_groups", "ticket_embeddings", "reviews", "corrections",
+        for tabela in ("group_members", "incident_groups", "ticket_embeddings", "reviews", "corrections", "relatorios",
                        "classifications", "ticket_midias", "messages", "sessoes", "usuarios", "tickets", "sla_policy",
                        "app_config"):
             conn.execute(text(f"DROP TABLE IF EXISTS {tabela}"))
