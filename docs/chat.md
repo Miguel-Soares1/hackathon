@@ -10,6 +10,10 @@ A integração com o chat do cliente usa a API abaixo (todas as rotas exigem o h
 - Sem `conversa_id`, o cliente é reconhecido pelo contato no mesmo canal (telefone entre parênteses no WhatsApp, usuário no Instagram, e-mail ou o nome no chat): as mensagens dele entram na mesma conversa. Sem cliente identificado, cada mensagem é um ticket. WhatsApp usa o número como `conversa_id`; Instagram, o id do remetente; e-mail, o endereço do remetente. As telas `/demo/*` seguem a mesma regra.
 - Resposta: `{"status": "pendente"}` (ticket novo, vai para a IA), `"anexada"` (entrou numa conversa existente) ou `"duplicado"` (mesmo `external_id` já recebido).
 - Mensagens anexadas não são reclassificadas: a triagem e o SLA valem para a primeira mensagem do ticket.
+- **A resposta sugerida acompanha a conversa:** a cada nova mensagem do cliente, a IA reescreve a sugestão para a
+  **última** mensagem, com a conversa inteira (cliente e atendente) e a triagem como contexto, no idioma do cliente.
+  A sugestão original da triagem fica guardada para medir a precisão. Se o atendente corrigir a resposta, vale o
+  texto dele até o cliente escrever de novo; sem LLM (ou se ele falhar), a sugestão anterior continua.
 
 ## Integrar o chat do cliente
 1. **Cliente → sistema:** `POST /webhook/mensagens` com `{"canal": "chat", "cliente": "Nome", "conversa_id": "<id da sessão>", "texto": "...", "external_id": "<id da mensagem>"}`.

@@ -497,7 +497,7 @@ function renderDetalhe() {
     ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
       : estado.encerrando ? formEncerramento() : `
     <form id="form-chat" class="form-chat">
-      ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao">💡 Usar resposta sugerida pela IA</button>` : ""}
+      ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao" title="${t.sugestao_atualizada ? "Responde à última mensagem do cliente" : "Resposta da triagem ou corrigida pelo atendente"}">💡 Usar resposta sugerida pela IA</button>` : ""}
       <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
         <textarea name="texto" rows="2" maxlength="2000" placeholder="Responder pelo ${esc(CANAIS[chaveCanal(t.canal)].rotulo)}…" aria-label="Resposta ao cliente"></textarea>
@@ -606,7 +606,8 @@ function triagem(t) {
   return `
     <div>${pill(t.urgencia)}${selo(t.assunto, "s-respondido")}${selo(t.sentimento, "s-respondido")}${selo("→ " + t.equipe.replace("_", " "), "s-novo")}</div>
     <p class="muted">Prazo: ${esc(ROTULO_ESTADO[s.estado])} — ${s.prazo_minutos} min · vence ${esc(hora(s.vence_em))} · origem da triagem: ${esc(t.origem)}</p>
-    <div><h3>Resposta sugerida</h3><div class="resposta" lang="${esc(t.idioma || "pt")}">${esc(t.resposta_sugerida)}</div></div>
+    <div><h3>Resposta sugerida</h3><div class="resposta" lang="${esc(t.idioma || "pt")}">${esc(t.resposta_sugerida)}</div>
+      <p class="muted">${t.sugestao_atualizada ? "💬 Para a última mensagem do cliente, com a conversa como contexto." : t.sugestao_mensagem_id ? "✏️ Texto corrigido pelo atendente." : "💬 Para a mensagem que abriu o atendimento."}</p></div>
     <p class="muted">🌐 Cliente escreveu em ${esc(nomeIdioma(t.idioma))}${t.idioma && t.idioma !== "pt" ? " · resposta sugerida no mesmo idioma" : ""}</p>
     <p class="muted">Confiança: ${DIMS.map((k) => `${k} ${Math.round(Number(t["conf_" + k]) * 100)}%`).join(" · ")}</p>
     ${t.exemplos

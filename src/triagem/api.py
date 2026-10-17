@@ -392,8 +392,8 @@ def create_app() -> FastAPI:
         except tickets.TicketDuplicado as dup:
             return {"ticket_id": dup.ticket_id, "status": "duplicado"}
         if not novo:
-            if anexos:  # áudio/foto na continuação da conversa: a IA lê e o texto entra na mensagem
-                background.add_task(midias.processar, ticket_id, msg.texto, msg_id)
+            # continuação da conversa: lê a mídia (se houver) e a sugestão passa a responder a esta mensagem
+            background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id, msg.texto, bool(anexos))
             return {"ticket_id": ticket_id, "status": "anexada"}
         background.add_task(pipeline.processar_ticket, ticket_id)
         return {"ticket_id": ticket_id, "status": "pendente"}
@@ -426,13 +426,15 @@ def create_app() -> FastAPI:
             if recebido and recebido > utcnow():
                 recebido = None
             try:
-                ticket_id, novo, _ = tickets.receber_mensagem(
+                ticket_id, novo, msg_id = tickets.receber_mensagem(
                     canal, m["texto"], m["cliente"], recebido, m["external_id"], m.get("conversa_id")
                 )
             except tickets.TicketDuplicado:
                 continue  # a Meta reenvia quando não recebe 200 a tempo
             if novo:
                 background.add_task(pipeline.processar_ticket, ticket_id)
+            else:
+                background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id)
             novas += 1
         return {"recebidas": novas}  # 200 sempre que a assinatura é válida, para a Meta não reenviar em loop
 
@@ -518,10 +520,11 @@ def create_app() -> FastAPI:
             convertida = demo_email.email_demo_para_mensagem(msg.de_email, msg.de_nome, msg.para, msg.assunto, msg.corpo)
             if convertida is None:  # remetente no-reply, texto vazio etc.: o leitor IMAP também ignoraria
                 return JSONResponse(status_code=400, content={"detail": "e-mail ignorado pelo filtro (remetente automático ou texto vazio)"})
-            ticket_id, novo, _ = tickets.receber_mensagem("email", convertida["texto"], convertida["cliente"],
-                                                       convertida["received_at"], convertida["external_id"],
-                                                       convertida.get("conversa_id"))
+            ticket_id, novo, msg_id = tickets.receber_mensagem("email", convertida["texto"], convertida["cliente"],
+                                                            convertida["received_at"], convertida["external_id"],
+                                                            convertida.get("conversa_id"))
             if not novo:
+                background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id)
                 return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
             return _enviado(ticket_id, "pendente")
@@ -549,9 +552,8 @@ def create_app() -> FastAPI:
                 return JSONResponse(status_code=400, content={"detail": "mensagem ignorada pelo canal (texto curto demais)"})
             ticket_id, novo, msg_id = tickets.receber_mensagem(canal, m["texto"], m["cliente"], m["received_at"],
                                                             m["external_id"], m.get("conversa_id"), anexos)
-            if not novo:
-                if anexos:  # mesmo caminho do webhook: a IA lê a mídia e o texto entra na mensagem
-                    background.add_task(midias.processar, ticket_id, m["texto"], msg_id)
+            if not novo:  # mesmo caminho do webhook: lê a mídia (se houver) e atualiza a sugestão
+                background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id, m["texto"], bool(anexos))
                 return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
             return _enviado(ticket_id, "pendente")

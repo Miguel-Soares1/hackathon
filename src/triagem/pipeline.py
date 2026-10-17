@@ -1,10 +1,11 @@
 """Processamento em background de um ticket: classificar, agrupar e (se couber) abrir incidente (ADR-009)."""
 import logging
+from typing import Optional
 
 from sqlalchemy import text
 
-from . import exemplos, incidents, midias
-from .classifier import classificar
+from . import exemplos, incidents, midias, tickets
+from .classifier import LLMError, classificar, sugerir_resposta
 from .db import com_retry_deadlock, get_engine, utcnow
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,8 @@ def processar_ticket(ticket_id: int) -> str:
     except Exception:
         # Falha no agrupamento não invalida a classificação já salva.
         logger.exception("erro ao agrupar o ticket %s", ticket_id)
+    # O cliente pode ter escrito de novo enquanto a 1ª mensagem era classificada: a sugestão já responde à última.
+    atualizar_sugestao(ticket_id)
     return "classificado"
 
 
@@ -77,3 +80,50 @@ def recuperar_pendentes() -> int:
     for i in ids:
         processar_ticket(i)
     return len(ids)
+
+
+def atualizar_sugestao(ticket_id: int, mensagem_id: Optional[int] = None) -> str:
+    """Reescreve a resposta sugerida para a ÚLTIMA mensagem do cliente, com a conversa como contexto.
+
+    A triagem (assunto, urgência, equipe e prazo) continua a da 1ª mensagem (ADR-016); só a sugestão acompanha a
+    conversa. Sem LLM, ou se ele falhar, a sugestão anterior fica. Nunca levanta exceção.
+    Retorna: atualizada | sem_mudanca | ignorado | mantida
+    """
+    try:
+        t = tickets.obter(ticket_id)
+        if t["status"] == "pendente" or t.get("desfecho"):
+            return "ignorado"  # ainda classificando (processar_ticket chama de novo no fim) ou atendimento encerrado
+        msgs = tickets.mensagens(ticket_id)
+        entradas = [m for m in msgs if m["direcao"] == "entrada"]
+        if len(entradas) < 2:
+            return "sem_mudanca"  # só a 1ª mensagem: a sugestão da triagem já responde a ela
+        ultima = entradas[-1]
+        if mensagem_id is not None and ultima["id"] != mensagem_id:
+            return "ignorado"  # chegou uma mensagem mais nova; a tarefa dela atualiza
+        if t.get("sugestao_mensagem_id") == ultima["id"]:
+            return "sem_mudanca"
+        conversa = [("cliente" if m["direcao"] == "entrada" else "atendente", m["texto"]) for m in msgs if m["texto"]]
+        triagem = {k: t.get(k) for k in ("assunto", "urgencia", "sentimento", "equipe")}
+        resposta = sugerir_resposta(conversa, triagem)
+    except LLMError as exc:
+        logger.info("sugestão do ticket %s mantida: %s", ticket_id, exc)
+        return "mantida"
+    except Exception:
+        logger.exception("erro ao atualizar a sugestão do ticket %s", ticket_id)
+        return "mantida"
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("UPDATE tickets SET sugestao_contexto = :r, sugestao_em = :q, sugestao_mensagem_id = :m WHERE id = :id"),
+            {"r": resposta, "q": utcnow(), "m": ultima["id"], "id": ticket_id},
+        )
+    return "atualizada"
+
+
+def mensagem_anexada(ticket_id: int, mensagem_id: Optional[int], texto: str = "", tem_midia: bool = False) -> None:
+    """Background de uma mensagem que entrou numa conversa já aberta: lê a mídia (se houver) e atualiza a sugestão."""
+    if tem_midia:
+        try:
+            midias.processar(ticket_id, texto, mensagem_id)
+        except Exception:
+            logger.exception("erro ao ler a mídia da mensagem %s do ticket %s", mensagem_id, ticket_id)
+    atualizar_sugestao(ticket_id, mensagem_id)

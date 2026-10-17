@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS tickets (
   desfecho VARCHAR(12) NULL,
   encerrado_em DATETIME NULL,
   encerrado_por VARCHAR(120) NULL,
+  sugestao_contexto TEXT NULL,
+  sugestao_em DATETIME NULL,
+  sugestao_mensagem_id BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
   INDEX idx_tickets_status (status),
@@ -199,7 +202,13 @@ SELECT
   COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'urgencia' ORDER BY c.id DESC LIMIT 1), cl.urgencia) AS urgencia,
   COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'sentimento' ORDER BY c.id DESC LIMIT 1), cl.sentimento) AS sentimento,
   COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'equipe' ORDER BY c.id DESC LIMIT 1), cl.equipe) AS equipe,
-  COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'resposta_sugerida' ORDER BY c.id DESC LIMIT 1), cl.resposta_sugerida) AS resposta_sugerida,
+  -- Resposta sugerida: a da última mensagem do cliente (ADR-016) ou, se não houver, a correção do atendente ou a da triagem.
+  -- Uma correção da resposta apaga a sugestão atualizada; a próxima mensagem do cliente gera outra.
+  COALESCE(t.sugestao_contexto,
+    (SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'resposta_sugerida' ORDER BY c.id DESC LIMIT 1),
+    cl.resposta_sugerida) AS resposta_sugerida,
+  (t.sugestao_contexto IS NOT NULL) AS sugestao_atualizada,
+  t.sugestao_mensagem_id,
   (rv.ticket_id IS NOT NULL) AS revisado
 FROM tickets t
 LEFT JOIN classifications cl ON cl.ticket_id = t.id

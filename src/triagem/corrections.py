@@ -51,6 +51,9 @@ def registrar_correcoes(ticket_id: int, correcoes: dict[str, str]) -> list[dict]
             raise TicketNaoClassificado(ticket_id)
         original = dict(row._mapping)
 
+        # Sugestão atualizada para a última mensagem (ADR-016): reenviar o mesmo texto no formulário não é correção.
+        sugestao_atual = conn.execute(text("SELECT sugestao_contexto FROM tickets WHERE id = :id"), {"id": ticket_id}).scalar()
+
         registradas = []
         for dim, novo in validadas.items():
             atual = conn.execute(
@@ -61,7 +64,7 @@ def registrar_correcoes(ticket_id: int, correcoes: dict[str, str]) -> list[dict]
                 {"id": ticket_id, "d": dim},
             ).scalar()
             vigente = atual if atual is not None else original[dim]
-            if novo == vigente:
+            if novo == vigente or (dim == "resposta_sugerida" and novo == sugestao_atual):
                 continue
             conn.execute(
                 text(
@@ -71,6 +74,8 @@ def registrar_correcoes(ticket_id: int, correcoes: dict[str, str]) -> list[dict]
                 {"id": ticket_id, "d": dim, "o": original[dim], "n": novo, "q": utcnow()},
             )
             registradas.append({"dimensao": dim, "valor_original": original[dim], "valor_corrigido": novo})
+            if dim == "resposta_sugerida":  # o texto do atendente passa a valer até o cliente escrever de novo
+                conn.execute(text("UPDATE tickets SET sugestao_contexto = NULL WHERE id = :id"), {"id": ticket_id})
 
         conn.execute(
             text("INSERT IGNORE INTO reviews (ticket_id, reviewed_at) VALUES (:id, :q)"),
