@@ -19,7 +19,8 @@ from sqlalchemy import text  # noqa: E402
 from triagem.db import get_engine  # noqa: E402
 
 # Ordem: filhas antes das mães (FKs).
-TABELAS = ("group_members", "incident_groups", "ticket_embeddings", "corrections", "reviews", "classifications", "tickets")
+TABELAS = ("group_members", "incident_groups", "ticket_embeddings", "corrections", "reviews", "classifications",
+           "ticket_midias", "tickets")
 
 
 def main() -> int:

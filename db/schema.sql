@@ -35,6 +35,21 @@ CREATE TABLE IF NOT EXISTS classifications (
   CONSTRAINT fk_class_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Áudios e fotos enviados pelo cliente (ADR-015). A IA de mídia grava em `conteudo` a transcrição ou a descrição.
+CREATE TABLE IF NOT EXISTS ticket_midias (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ticket_id BIGINT UNSIGNED NOT NULL,
+  tipo VARCHAR(10) NOT NULL,
+  mime VARCHAR(60) NOT NULL,
+  tamanho INT UNSIGNED NOT NULL,
+  dados MEDIUMBLOB NOT NULL,
+  status VARCHAR(12) NOT NULL DEFAULT 'pendente',
+  conteudo TEXT NULL,
+  processed_at DATETIME NULL,
+  INDEX idx_midias_ticket (ticket_id),
+  CONSTRAINT fk_midia_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Histórico append-only de correções do atendente (valor original = predição da IA).
 CREATE TABLE IF NOT EXISTS corrections (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

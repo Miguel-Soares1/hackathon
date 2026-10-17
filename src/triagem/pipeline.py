@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import text
 
-from . import exemplos, incidents
+from . import exemplos, incidents, midias
 from .classifier import classificar
 from .db import com_retry_deadlock, get_engine, utcnow
 
@@ -49,9 +49,12 @@ def processar_ticket(ticket_id: int) -> str:
         if t is None or t.status != "pendente":
             return "ignorado"
 
+        # Áudio e foto viram texto antes da triagem (ADR-015).
+        texto = midias.processar(ticket_id, t.texto) or t.texto
+
         # Few-shot dinâmico: tickets revisados parecidos orientam a classificação (ADR-014).
-        refs = exemplos.buscar(t.texto, excluir_ticket=ticket_id)
-        c = classificar(t.texto, exemplos=refs)
+        refs = exemplos.buscar(texto, excluir_ticket=ticket_id)
+        c = classificar(texto, exemplos=refs)
         _salvar_classificacao(ticket_id, c)
         logger.info("ticket %s classificado (origem=%s, prompt=%s, exemplos=%s)",
                     ticket_id, c.origem, c.prompt_version, c.exemplos)

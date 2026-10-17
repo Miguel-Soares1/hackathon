@@ -87,7 +87,13 @@
           </label>
           <label>Cliente <input name="cliente" maxlength="120" placeholder="Ex.: Loja Aurora"></label>
         </div>
-        <label>Mensagem <textarea name="texto" rows="4" minlength="3" maxlength="4000" required></textarea></label>
+        <label>Mensagem <textarea name="texto" rows="4" maxlength="4000" placeholder="Opcional se houver foto ou áudio"></textarea></label>
+        <div class="acoes">
+          <button type="button" id="anexar" class="btn">📎 Anexar imagem</button>
+          <button type="button" id="gravar" class="btn" aria-pressed="false">🎙 Gravar áudio</button>
+          <input type="file" id="arquivo" accept="image/jpeg,image/png,image/webp" multiple hidden>
+        </div>
+        <ul id="lista-anexos" class="anexos"></ul>
         <button type="submit" class="btn primario">Enviar</button>
         <p id="nova-status" class="muted" aria-live="polite"></p>
       </form>

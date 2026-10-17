@@ -1,10 +1,11 @@
 """Ingestão e consulta de tickets (Specs 1 e 5)."""
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+from . import midias as midias_mod
 from . import sla
 from .db import com_retry_deadlock, get_engine, utcnow
 
@@ -26,11 +27,12 @@ class RespostaAnteriorAoRecebimento(ValueError):
 
 
 def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received_at: Optional[datetime] = None,
-                 external_id: Optional[str] = None) -> int:
+                 external_id: Optional[str] = None, midias: Sequence[midias_mod.Midia] = ()) -> int:
     """Persiste o ticket como 'pendente' (ADR-009). A classificação acontece em background.
 
     Com `external_id` (id da mensagem no WhatsApp, Message-ID do e-mail) a criação é idempotente:
     repetir (canal, external_id) levanta TicketDuplicado com o ticket já existente.
+    As `midias` (áudio/foto, ADR-015) são gravadas na mesma transação e lidas pela IA no background.
     """
     agora = utcnow()
     try:
@@ -43,7 +45,9 @@ def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received
                 {"canal": canal, "cliente": cliente, "texto": texto, "external_id": external_id,
                  "received_at": received_at or agora},
             )
-            return int(res.lastrowid)
+            ticket_id = int(res.lastrowid)
+            midias_mod.salvar(conn, ticket_id, list(midias))
+            return ticket_id
     except IntegrityError:
         if external_id is None:
             raise
@@ -57,9 +61,10 @@ def criar_ticket(canal: str, texto: str, cliente: Optional[str] = None, received
         raise TicketDuplicado(int(existente)) from None
 
 
-def _linha_para_dict(row, prazos, risco_pct, agora) -> dict:
+def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
     d = dict(row._mapping)
     d["revisado"] = bool(d.get("revisado"))
+    d["midias"] = midias
     est = sla.avaliar(d["received_at"], d.get("urgencia"), prazos, d["first_response_at"], agora, risco_pct)
     d["sla"] = {
         "estado": est.estado,
@@ -83,7 +88,8 @@ def listar(limite: int = 200, apenas_abertos: bool = False, agora: Optional[date
             ),
             {"limite": limite, "so_abertos": 1 if apenas_abertos else 0},
         ).fetchall()
-    return [_linha_para_dict(r, prazos, risco, agora) for r in rows]
+        midias = midias_mod.por_ticket(conn, [r.ticket_id for r in rows])
+    return [_linha_para_dict(r, prazos, risco, agora, midias.get(r.ticket_id, [])) for r in rows]
 
 
 def obter(ticket_id: int, agora: Optional[datetime] = None) -> dict:
@@ -92,9 +98,10 @@ def obter(ticket_id: int, agora: Optional[datetime] = None) -> dict:
         prazos = sla.carregar_prazos(conn)
         risco = sla.carregar_config(conn)["sla_risco_pct"]
         row = conn.execute(text("SELECT * FROM vw_tickets WHERE ticket_id = :id"), {"id": ticket_id}).fetchone()
+        midias = midias_mod.por_ticket(conn, [ticket_id])
     if row is None:
         raise TicketNaoEncontrado(ticket_id)
-    return _linha_para_dict(row, prazos, risco, agora)
+    return _linha_para_dict(row, prazos, risco, agora, midias.get(ticket_id, []))
 
 
 @com_retry_deadlock()

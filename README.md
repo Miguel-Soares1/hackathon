@@ -84,6 +84,25 @@ python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json   # regras × 
 
 **Banco criado antes desta versão:** rode `db/migrations/003_prompt_version.sql` e depois `python scripts/criar_banco.py`.
 
+## Áudio e foto do cliente
+
+O webhook aceita até 3 mídias por mensagem (áudio ou foto, até 8 MB cada) em `midias`, e o texto passa a ser
+opcional quando há mídia (ADR-015). No background, o **Gemini** transcreve o áudio e descreve a foto (inclusive o
+texto que aparece nela). O resultado é anexado ao texto do ticket (`[Áudio transcrito pela IA]: …`) e a triagem,
+o few-shot e os incidentes seguem iguais. No painel, a aba **Nova mensagem** anexa arquivos ou grava áudio pelo
+microfone, e o detalhe do ticket toca o áudio e mostra a foto original.
+
+```json
+{"canal": "whatsapp", "cliente": "Loja Aurora", "texto": "",
+ "midias": [{"tipo": "audio", "mime": "audio/ogg", "dados_base64": "T2dnUw..."}]}
+```
+
+Formatos: foto JPG, PNG ou WebP; áudio OGG/Opus (WhatsApp), WebM (navegador), MP3, M4A, WAV ou AAC. O conteúdo é
+conferido pelos primeiros bytes (um arquivo com o tipo trocado é recusado). Configure `GEMINI_API_KEY` no `.env`;
+sem ela, a mídia fica guardada, o ticket é classificado só com o texto e o painel avisa que a IA não leu a mídia.
+
+**Banco criado antes desta versão:** rode `db/migrations/004_midias.sql` (ou `python scripts/criar_banco.py`).
+
 ## Scripts da demo
 
 ```bash
@@ -97,7 +116,8 @@ Roteiro da apresentação: [`docs/roteiro_demo.md`](docs/roteiro_demo.md).
 
 ```
 Canais (webhook, WhatsApp, e-mail, formulário público) → MySQL (ticket pendente, 202)
-   └→ background: busca tickets já revisados parecidos (few-shot, ADR-014)
+   └→ background: áudio/foto → Gemini → texto anexado ao ticket (ADR-015)
+                  └→ busca tickets já revisados parecidos (few-shot, ADR-014)
                   └→ LLM com os exemplos (JSON validado) ──falha──▶ regras (fallback)
                   └→ embedding local → grupo (centroide) → incidente (≥3 em 30 min)
 Atendente (painel/API): confirmar ou corrigir a triagem · marcar 1ª resposta  → a correção vira exemplo
@@ -117,10 +137,11 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 
 | Método e rota | Função | Respostas |
 |---|---|---|
-| `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações) | 202, 400, 401 |
+| `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações), com áudio e foto opcionais | 202, 400, 401 |
 | `GET` · `POST /webhooks/whatsapp` | verificação e mensagens da WhatsApp Cloud API (token e assinatura HMAC, sem `X-API-Key`) | 200 · 200, 401, 503 |
 | `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
-| `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA), versão do prompt e exemplos usados | 200, 404 |
+| `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA), versão do prompt, exemplos usados e mídias | 200, 404 |
+| `GET /tickets/{id}/midias/{midia_id}` | arquivo original do áudio ou da foto | 200, 404 |
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |
 | `POST /tickets/{id}/revisao` | confirma a triagem | 204, 404, 409 |
 | `POST /tickets/{id}/correcoes` | corrige assunto/urgência/sentimento/equipe/resposta | 201, 400, 404, 409 |
@@ -150,6 +171,9 @@ management/    vision · arch · adr · roadmap · specs
 - O texto do cliente é enviado ao LLM como dado delimitado e a saída é validada contra valores permitidos (prompt injection).
   Os exemplos do few-shot (também texto de cliente) seguem a mesma regra, e versão do prompt e exemplos nunca vêm da resposta do LLM.
 - O texto da mensagem é enviado ao provedor do LLM (DeepSeek); não use dados pessoais reais na demo.
+- Áudios e fotos são enviados ao Google (Gemini) para leitura. O prompt manda ignorar instruções contidas na mídia, e a
+  transcrição volta como texto de cliente, que a triagem já trata como dado delimitado. O arquivo original só é
+  servido com a chave, com o tipo conferido e `Content-Security-Policy: sandbox`.
 - Painel protegido pela `API_KEY` (guardada só na aba do navegador); em produção a API recusa subir com segredos fracos.
 - Formulário público com limite de taxa por IP e global, honeypot e sem revelar a classificação.
 

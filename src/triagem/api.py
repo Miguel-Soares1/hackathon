@@ -10,12 +10,12 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
-from . import canais, corrections, incidents, metrics, pipeline, tickets
+from . import canais, corrections, incidents, metrics, midias, pipeline, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -37,10 +37,20 @@ def exigir_chave(x_api_key: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="chave de API ausente ou inválida")
 
 
+class MidiaIn(BaseModel):
+    tipo: str = Field(description="'audio' ou 'imagem'")
+    mime: str = Field(max_length=100, description="Ex.: audio/ogg, audio/webm, image/jpeg, image/png")
+    dados_base64: str = Field(description=f"Arquivo em base64 (até {midias.MAX_BYTES // (1024 * 1024)} MB)")
+
+
 class MensagemIn(BaseModel):
     canal: str = Field(min_length=2, max_length=CANAIS_MAX)
-    texto: str = Field(min_length=3, max_length=4000)
+    texto: str = Field(default="", max_length=4000, description="Obrigatório (3+ caracteres) se não houver mídia.")
     cliente: Optional[str] = Field(default=None, max_length=120)
+    midias: list[MidiaIn] = Field(
+        default_factory=list, max_length=midias.MAX_MIDIAS,
+        description="Opcional (ADR-015): áudios e fotos do cliente; a IA de mídia os transforma em texto.",
+    )
     external_id: Optional[str] = Field(
         default=None, max_length=190, description="Opcional: id da mensagem no canal; torna o envio idempotente."
     )
@@ -48,7 +58,7 @@ class MensagemIn(BaseModel):
         default=None, description="Opcional: data/hora original (importação ou simulação). Padrão: agora (UTC)."
     )
 
-    @field_validator("texto", "canal")
+    @field_validator("canal")
     @classmethod
     def _sem_espacos(cls, v: str) -> str:
         v = v.strip()
@@ -66,6 +76,13 @@ class MensagemIn(BaseModel):
         if v > utcnow() + timedelta(minutes=5):
             raise ValueError("received_at não pode estar no futuro")
         return v
+
+    @model_validator(mode="after")
+    def _texto_ou_midia(self):
+        self.texto = self.texto.strip()
+        if not self.midias and len(self.texto) < 3:
+            raise ValueError("envie um texto (3+ caracteres) ou pelo menos uma mídia")
+        return self
 
 
 class MensagemPublicaIn(BaseModel):
@@ -174,7 +191,12 @@ def create_app() -> FastAPI:
     @app.post("/webhook/mensagens", status_code=202, dependencies=[Depends(exigir_chave)])
     def webhook(msg: MensagemIn, background: BackgroundTasks):
         try:
-            ticket_id = tickets.criar_ticket(msg.canal, msg.texto, msg.cliente, msg.received_at, msg.external_id)
+            anexos = [midias.validar(m.tipo, m.mime, m.dados_base64) for m in msg.midias]
+        except midias.MidiaInvalida as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        try:
+            ticket_id = tickets.criar_ticket(msg.canal, msg.texto, msg.cliente, msg.received_at, msg.external_id,
+                                             anexos)
         except tickets.TicketDuplicado as dup:
             return {"ticket_id": dup.ticket_id, "status": "duplicado"}
         background.add_task(pipeline.processar_ticket, ticket_id)
@@ -226,6 +248,18 @@ def create_app() -> FastAPI:
             return tickets.obter(ticket_id)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
+
+    @app.get("/tickets/{ticket_id}/midias/{midia_id}", dependencies=[Depends(exigir_chave)])
+    def obter_midia(ticket_id: int, midia_id: int):
+        """Arquivo original (áudio/foto) para o atendente ouvir ou ver no painel."""
+        arquivo = midias.obter_arquivo(ticket_id, midia_id)
+        if arquivo is None:
+            raise HTTPException(status_code=404, detail="mídia não encontrada")
+        mime, dados = arquivo
+        # Arquivo enviado pelo cliente: nunca executa nada no navegador.
+        return Response(dados, media_type=mime, headers={
+            "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "private, max-age=300",
+        })
 
     @app.post("/tickets/{ticket_id}/resposta", dependencies=[Depends(exigir_chave)])
     def responder(ticket_id: int, corpo: Optional[RespostaIn] = None):

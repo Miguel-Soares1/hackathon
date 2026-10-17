@@ -24,6 +24,9 @@ const estado = {
   editando: false, // não redesenhar o formulário enquanto o atendente digita
   aba: "fila",
   timer: null,
+  anexos: [], // mídias a enviar na aba "Nova mensagem": { tipo, mime, dados_base64, nome, url }
+  gravador: null,
+  midiaUrls: {}, // id da mídia -> URL local (blob) já baixada, para não baixar a cada atualização
 };
 
 // ---------------------------------------------------------------- utilidades
@@ -79,7 +82,7 @@ async function carregar() {
     renderKpis();
     renderAlertas(incidentes.filter((g) => g.status === "incidente"));
     renderFila();
-    if (!estado.editando) renderDetalhe();
+    if (!estado.editando && !tocandoAudio()) renderDetalhe();
     renderIncidentes(incidentes);
     renderMetricas();
     if (estado.aba === "correcoes") renderCorrecoes(await api("/correcoes"));
@@ -137,7 +140,7 @@ function renderFila() {
       <td>${esc(t.sentimento || "—")}</td>
       <td>${esc(t.equipe || "—")}</td>
       <td>${esc(t.origem || "—")}${t.revisado ? " ✔" : ""}</td>
-      <td class="texto"><b>${esc(t.cliente || "")}</b> ${esc(t.texto)}</td>
+      <td class="texto"><b>${esc(t.cliente || "")}</b> ${iconesMidia(t)}${esc(t.texto)}</td>
       <td>${esc(hora(t.received_at))}</td>
     </tr>`;
   });
@@ -160,9 +163,11 @@ function renderDetalhe() {
   const s = t.sla;
   const cabecalho = `<div><h2>#${t.ticket_id} · ${esc(t.cliente || "Cliente")}</h2>
     <p class="muted">${esc(t.canal)} · ${esc(hora(t.received_at))}</p></div>
-    <p class="mensagem">${esc(t.texto)}</p>`;
+    <p class="mensagem">${esc(t.texto) || `<span class="muted">(sem texto)</span>`}</p>
+    ${renderMidias(t)}`;
   if (t.status !== "classificado") {
-    painel.innerHTML = `${cabecalho}<p class="muted">⏳ A IA ainda está classificando este ticket…</p>`;
+    painel.innerHTML = `${cabecalho}<p class="muted">⏳ A IA ainda está ${t.midias.length ? "lendo as mídias e " : ""}classificando este ticket…</p>`;
+    carregarMidias(t);
     return;
   }
   const d = estado.dominio;
@@ -188,6 +193,49 @@ function renderDetalhe() {
       <label>Resposta <textarea name="resposta_sugerida" rows="4" maxlength="2000">${esc(t.resposta_sugerida)}</textarea></label>
       <p><button type="submit" class="btn primario">Salvar correção</button> <span id="correcao-status" class="muted" aria-live="polite"></span></p>
     </form>`;
+  carregarMidias(t);
+}
+
+// ---------------------------------------------------------------- mídias do cliente (áudio e foto)
+const ESTADO_MIDIA = { pendente: "⏳ a IA está lendo…", lido: "✓ lido pela IA (o texto está na mensagem acima)", erro: "⚠ a IA não conseguiu ler" };
+
+// Redesenhar o detalhe interromperia o áudio que o atendente está ouvindo.
+function tocandoAudio() {
+  return [...document.querySelectorAll("#detalhe audio")].some((a) => !a.paused);
+}
+
+function iconesMidia(t) {
+  return (t.midias || []).map((m) => (m.tipo === "audio" ? "🎙 " : "📷 ")).join("");
+}
+
+function renderMidias(t) {
+  if (!t.midias || !t.midias.length) return "";
+  return `<div class="midias">${t.midias.map((m) => `
+    <div class="midia">
+      <div data-midia="${m.id}">${m.tipo === "audio" ? "🎙 Áudio" : "📷 Foto"} <span class="muted">carregando…</span></div>
+      <span class="estado-midia ${m.status === "erro" ? "erro" : "muted"}">${esc(ESTADO_MIDIA[m.status] || m.status)}</span>
+    </div>`).join("")}</div>`;
+}
+
+// <img>/<audio> não mandam o header X-API-Key: baixa com a chave e mostra a partir de uma URL local (blob).
+async function carregarMidias(t) {
+  for (const m of t.midias || []) {
+    try {
+      if (!estado.midiaUrls[m.id]) {
+        const resp = await fetch(`/tickets/${t.ticket_id}/midias/${m.id}`, { headers: { "X-API-Key": estado.chave } });
+        if (!resp.ok) throw new Error(`erro ${resp.status}`);
+        estado.midiaUrls[m.id] = URL.createObjectURL(await resp.blob());
+      }
+      const alvo = document.querySelector(`[data-midia="${m.id}"]`);
+      if (!alvo) continue; // o atendente trocou de ticket enquanto baixava
+      const url = estado.midiaUrls[m.id];
+      alvo.innerHTML = m.tipo === "audio" ? `<audio controls preload="metadata" src="${url}"></audio>`
+        : `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Foto enviada pelo cliente"></a>`;
+    } catch (e) {
+      const alvo = document.querySelector(`[data-midia="${m.id}"] .muted`);
+      if (alvo) alvo.textContent = `não foi possível carregar (${e.message})`;
+    }
+  }
 }
 
 // ---------------------------------------------------------------- render: incidentes, métricas, correções
@@ -287,14 +335,88 @@ async function enviarMensagem(form) {
   const dados = Object.fromEntries(new FormData(form));
   if (!dados.cliente) delete dados.cliente;
   const st = $("#nova-status");
+  if (estado.gravador) return void (st.textContent = "⚠ Pare a gravação antes de enviar.");
+  if (dados.texto.trim().length < 3 && !estado.anexos.length) {
+    return void (st.textContent = "⚠ Escreva uma mensagem (3+ caracteres) ou anexe uma foto ou áudio.");
+  }
+  dados.midias = estado.anexos.map(({ tipo, mime, dados_base64 }) => ({ tipo, mime, dados_base64 }));
+  st.textContent = "Enviando…";
   try {
     const r = await api("/webhook/mensagens", { method: "POST", body: JSON.stringify(dados) });
     st.textContent = `✅ Ticket #${r.ticket_id} recebido. Veja na fila em instantes.`;
     form.texto.value = "";
+    limparAnexos();
     setTimeout(carregar, 1500);
   } catch (e) {
     st.textContent = `⚠ ${e.message}`;
   }
+}
+
+// ---------------------------------------------------------------- anexos da nova mensagem
+const MAX_ANEXOS = 3;
+const MAX_MB = 8;
+
+function lerBase64(blob) {
+  return new Promise((ok, falha) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(",")[1] || "");
+    r.onerror = () => falha(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+async function adicionarAnexo(blob, nome) {
+  const st = $("#nova-status");
+  const mime = blob.type || "";
+  const tipo = mime.startsWith("image/") ? "imagem" : mime.startsWith("audio/") ? "audio" : null;
+  if (!tipo) return void (st.textContent = `⚠ ${nome}: envie uma foto (JPG, PNG, WebP) ou um áudio.`);
+  if (estado.anexos.length >= MAX_ANEXOS) return void (st.textContent = `⚠ No máximo ${MAX_ANEXOS} anexos por mensagem.`);
+  if (blob.size > MAX_MB * 1024 * 1024) return void (st.textContent = `⚠ ${nome}: maior que ${MAX_MB} MB.`);
+  estado.anexos.push({ tipo, mime, nome, dados_base64: await lerBase64(blob), url: URL.createObjectURL(blob) });
+  st.textContent = "";
+  renderAnexos();
+}
+
+function renderAnexos() {
+  $("#lista-anexos").innerHTML = estado.anexos.map((a, i) => `<li class="anexo">
+    ${a.tipo === "audio" ? `<audio controls src="${a.url}"></audio>` : `<img src="${a.url}" alt="">`}
+    <span class="muted">${esc(a.nome)}</span>
+    <button type="button" class="btn" data-remover="${i}" aria-label="Remover ${esc(a.nome)}">Remover</button>
+  </li>`).join("");
+}
+
+function limparAnexos() {
+  estado.anexos.forEach((a) => URL.revokeObjectURL(a.url));
+  estado.anexos = [];
+  renderAnexos();
+}
+
+async function alternarGravacao() {
+  const botao = $("#gravar");
+  const st = $("#nova-status");
+  if (estado.gravador) return estado.gravador.stop();
+  let fluxo;
+  try {
+    fluxo = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    return void (st.textContent = "⚠ Sem acesso ao microfone. Permita o uso no navegador e tente de novo.");
+  }
+  const gravador = new MediaRecorder(fluxo);
+  const pedacos = [];
+  gravador.ondataavailable = (ev) => { if (ev.data.size) pedacos.push(ev.data); };
+  gravador.onstop = () => {
+    fluxo.getTracks().forEach((faixa) => faixa.stop());
+    estado.gravador = null;
+    botao.setAttribute("aria-pressed", "false");
+    botao.textContent = "🎙 Gravar áudio";
+    const blob = new Blob(pedacos, { type: gravador.mimeType || "audio/webm" });
+    adicionarAnexo(blob, `gravação ${new Date().toLocaleTimeString("pt-BR")}`);
+  };
+  gravador.start();
+  estado.gravador = gravador;
+  botao.setAttribute("aria-pressed", "true");
+  botao.textContent = "⏹ Parar gravação";
+  st.textContent = "🔴 Gravando… clique em “Parar gravação” quando terminar.";
 }
 
 function trocarAba(aba) {
@@ -369,6 +491,26 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#form-nova").addEventListener("submit", (ev) => {
     ev.preventDefault();
     enviarMensagem(ev.target);
+  });
+  $("#anexar").addEventListener("click", () => $("#arquivo").click());
+  $("#arquivo").addEventListener("change", async (ev) => {
+    for (const f of ev.target.files) {
+      // Este botão é só para imagens; áudio entra pelo botão de gravar.
+      if (!(f.type || "").startsWith("image/")) {
+        $("#nova-status").textContent = `⚠ ${f.name}: anexe apenas imagens (JPG, PNG, WebP).`;
+        continue;
+      }
+      await adicionarAnexo(f, f.name);
+    }
+    ev.target.value = ""; // permite escolher o mesmo arquivo de novo
+  });
+  $("#gravar").addEventListener("click", alternarGravacao);
+  $("#lista-anexos").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-remover]");
+    if (!b) return;
+    const [a] = estado.anexos.splice(Number(b.dataset.remover), 1);
+    URL.revokeObjectURL(a.url);
+    renderAnexos();
   });
 
   if (estado.chave) entrar(); else sair();
