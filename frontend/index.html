@@ -33,6 +33,7 @@
         <button type="button" data-pagina="atendimento"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
         <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
+        <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
         <button type="button" data-pagina="nova"><span aria-hidden="true">✉️</span> Simular mensagem</button>
       </nav>
       <hr>
@@ -55,19 +56,38 @@
 
       <!-- Dashboard: indicadores, incidentes abertos e métricas -->
       <section id="pagina-dashboard" class="pagina">
-        <div id="kpis" class="kpis" aria-label="Indicadores"></div>
+        <header class="hero">
+          <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
+          <div class="hero-texto">
+            <h2 class="hero-titulo">Visão geral</h2>
+            <p>Acompanhe os indicadores em tempo real e fique por dentro dos avisos da equipe.</p>
+          </div>
+          <span id="hero-hora" class="hero-hora" aria-live="polite">Atualizando…</span>
+        </header>
+        <div id="cards-atendimento" class="cards" aria-label="Clientes por situação"></div>
+        <h2 class="secao">Indicadores da triagem</h2>
+        <div id="kpis" class="cards" aria-label="Indicadores da triagem"></div>
         <div id="alertas" aria-label="Incidentes abertos"></div>
         <div id="metricas" class="grade-2"></div>
       </section>
 
       <!-- Atendimento: fila estilo chat (em espera × respondidos) e conversa com a triagem -->
       <section id="pagina-atendimento" class="pagina" hidden>
-        <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente, canal ou mensagem…" aria-label="Buscar atendimento">
+        <div class="barra-filtros">
+          <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente ou mensagem…" aria-label="Buscar atendimento">
+          <div id="filtro-canal" class="filtro-canal" role="group" aria-label="Filtrar por canal">
+            <button type="button" data-canal="" aria-pressed="true">Todos</button>
+            <button type="button" data-canal="whatsapp" aria-pressed="false">WhatsApp</button>
+            <button type="button" data-canal="instagram" aria-pressed="false">Instagram</button>
+            <button type="button" data-canal="email" aria-pressed="false">E-mail</button>
+          </div>
+        </div>
         <div class="atendimento">
           <div class="coluna-lista">
             <div class="abas-lista" role="tablist">
               <button type="button" role="tab" data-lista="espera" aria-selected="true">Em espera (<span id="qtd-espera">0</span>)</button>
-              <button type="button" role="tab" data-lista="respondidos" aria-selected="false">Respondidos (<span id="qtd-respondidos">0</span>)</button>
+              <button type="button" role="tab" data-lista="atendimento" aria-selected="false">Em atendimento (<span id="qtd-atendimento">0</span>)</button>
+              <button type="button" role="tab" data-lista="finalizados" aria-selected="false">Finalizados (<span id="qtd-finalizados">0</span>)</button>
             </div>
             <div id="cartoes" class="cartoes"></div>
           </div>
@@ -86,6 +106,60 @@
         <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
       </section>
 
+      <!-- Atendimentos: relatório de controle (abertos e finalizados), filtros e exportação -->
+      <section id="pagina-atendimentos" class="pagina" hidden>
+        <header class="hero hero-curto">
+          <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/><path d="M9.5 9 8 11l1.5 2M12.5 9l1.5 2-1.5 2"/></svg>
+          <div class="hero-texto"><h2 class="hero-titulo">Gerenciar Atendimentos</h2></div>
+          <button type="button" id="rel-exportar" class="btn contorno"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Exportar relatório</button>
+        </header>
+
+        <div class="rel-topo">
+          <div class="card rel-filtros">
+            <div><b>Filtros secundários</b><p class="muted">Período, canal, time e urgência em uma janela só.</p></div>
+            <button type="button" id="rel-config" class="btn contorno destaque">Configurar filtros <span id="rel-qtd-filtros" class="contador">0</span></button>
+          </div>
+          <form id="rel-busca-form" class="card rel-busca" role="search">
+            <input id="rel-busca" type="search" placeholder="Pesquisa rápida por nome, telefone ou protocolo" aria-label="Pesquisa rápida">
+            <button type="submit" class="btn icone" aria-label="Pesquisar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+          </form>
+        </div>
+
+        <div class="rel-abas" role="tablist" aria-label="Status do atendimento">
+          <button type="button" role="tab" data-status="" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/></svg>Todos <span class="n"></span></button>
+          <button type="button" role="tab" data-status="espera" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Em Espera <span class="n"></span></button>
+          <button type="button" role="tab" data-status="atendimento" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/></svg>Em Atendimento <span class="n"></span></button>
+          <button type="button" role="tab" data-status="encerrado" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.5L16 9.5"/></svg>Finalizado <span class="n"></span></button>
+          <button type="button" role="tab" data-status="cancelado" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>Cancelado <span class="n"></span></button>
+          <button type="button" id="rel-limpar" class="btn icone" title="Limpar filtros" aria-label="Limpar filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
+        </div>
+
+        <div id="rel-chips" class="rel-chips" aria-label="Filtros ativos"></div>
+
+        <div class="card rel-lista">
+          <div class="rel-contagem"><span id="rel-contagem">Atendimentos: 0 de 0.</span></div>
+          <div id="rel-linhas"></div>
+        </div>
+
+        <dialog id="rel-modal" class="modal">
+          <form method="dialog" id="rel-modal-form">
+            <h2>Filtros secundários</h2>
+            <label>Período
+              <select name="periodo">
+                <option value="hoje">Hoje</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option>
+                <option value="tudo">Todo o período</option><option value="personalizado">Personalizado…</option>
+              </select>
+            </label>
+            <div class="linha rel-datas"><label>De <input type="date" name="de"></label><label>Até <input type="date" name="ate"></label></div>
+            <div class="linha">
+              <label>Canal <select name="canal"><option value="">Todos</option><option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option><option value="email">E-mail</option><option value="chat">Chat do site</option><option value="formulario">Formulário</option></select></label>
+              <label>Time <select name="equipe"><option value="">Todos</option></select></label>
+            </div>
+            <label>Urgência <select name="urgencia"><option value="">Todas</option><option value="critica">Crítica</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></label>
+            <div class="acoes-modal"><button type="button" class="btn" id="rel-modal-cancelar">Cancelar</button><button type="submit" class="btn primario" value="aplicar">Aplicar filtros</button></div>
+          </form>
+        </dialog>
+      </section>
       <section id="pagina-nova" class="pagina" hidden>
         <form id="form-nova" class="card form-nova">
           <h2>Simular mensagem de cliente</h2>
