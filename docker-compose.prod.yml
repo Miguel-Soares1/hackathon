@@ -1,4 +1,4 @@
-# Produção: MySQL (sem porta exposta) + API + painel + Caddy (HTTPS).
+# Produção: MySQL (sem porta exposta) + API (serve também o painel HTML) + Caddy (HTTPS).
 # Uso: cp .env.production.example .env.production  (preencha)  e depois
 #      docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 x-app: &app
@@ -15,7 +15,7 @@ x-app: &app
     DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?defina DASHBOARD_PASSWORD}
     DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
-    EMBEDDING_BACKEND: sbert
+    EMBEDDING_BACKEND: onnx
     HF_HUB_OFFLINE: "1"
     DOCS_ENABLED: "0"
     TRUST_PROXY: "1"
@@ -54,11 +54,6 @@ services:
       retries: 5
       start_period: 40s
 
-  dashboard:
-    <<: *app
-    command: ["python", "-m", "streamlit", "run", "dashboard/app.py", "--server.port", "8501", "--server.address", "0.0.0.0",
-              "--server.headless", "true", "--browser.gatherUsageStats", "false"]
-
   # Leitor de e-mail (opcional): docker compose -f docker-compose.prod.yml --env-file .env.production --profile email up -d
   email:
     <<: *app
@@ -76,7 +71,7 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
-    depends_on: [api, dashboard]
+    depends_on: [api]
     ports:
       - "80:80"
       - "443:443"

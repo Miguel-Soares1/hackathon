@@ -19,7 +19,7 @@ from sqlalchemy import text  # noqa: E402
 from triagem.db import get_engine  # noqa: E402
 
 # Ordem: filhas antes das mães (FKs).
-TABELAS = ("group_members", "incident_groups", "ticket_embeddings", "corrections", "reviews", "classifications", "tickets")
+TABELAS = ("group_members", "incident_groups", "ticket_embeddings", "corrections", "reviews", "classifications", "messages", "tickets")
 
 
 def main() -> int:
@@ -36,7 +36,7 @@ def main() -> int:
     with eng.begin() as conn:
         for t in TABELAS:
             n = conn.execute(text(f"DELETE FROM {t}")).rowcount  # nomes fixos acima, sem entrada do usuário
-            if t in ("tickets", "incident_groups", "corrections"):
+            if t in ("tickets", "incident_groups", "corrections", "messages"):
                 conn.execute(text(f"ALTER TABLE {t} AUTO_INCREMENT = 1"))
             print(f"  {t:<18} {n} linhas apagadas")
     print("Pronto. Configuração (sla_policy, app_config) preservada.")

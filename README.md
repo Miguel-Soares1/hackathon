@@ -60,6 +60,8 @@ Se o MySQL não estiver no ar, os testes **falham** com uma mensagem clara (não
 Guia completo em **[`docs/deploy.md`](docs/deploy.md)**: Docker Compose com MySQL, API, painel e HTTPS automático (Caddy),
 formulário público de entrada (`/enviar`), webhook com chave, backup e teste de carga (`scripts/teste_carga.py`).
 
+Canais reais (WhatsApp e e-mail): **[`docs/canais.md`](docs/canais.md)**. Chat de atendimento e integração com o chat do cliente: **[`docs/chat.md`](docs/chat.md)**.
+
 ## Calibrar o limiar de incidentes (faça antes da demo)
 
 O limiar de similaridade já vem calibrado em `0,60` (ver [`docs/calibracao_limiar.md`](docs/calibracao_limiar.md)). Se trocar o modelo ou as mensagens de demo, recalibre:
@@ -100,7 +102,8 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 
 | Método e rota | Função | Respostas |
 |---|---|---|
-| `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações) | 202, 400, 401 |
+| `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações); `conversa_id` agrupa na mesma conversa | 202, 400, 401 |
+| `GET/POST /tickets/{id}/mensagens` | lê a conversa / registra resposta do atendente | 200, 201, 400, 401, 404 |
 | `GET/POST /webhooks/whatsapp` · `/webhooks/instagram` | webhooks da Meta (assinatura `X-Hub-Signature-256`) | 200, 403, 503 |
 | `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
 | `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA) | 200, 404 |
@@ -120,7 +123,7 @@ db/            schema.sql (DDL versionado) e init do banco de testes
 scripts/       iniciar.ps1 (sobe tudo) · simular.py (canais) · calibrar_limiar.py · avaliar_triagem.py · resetar_demo.py · criar_banco.py · teste_carga.py · backup.sh
 data/          mensagens_demo.json (34 mensagens rotuladas)
 tests/         pytest (padrão AAA)
-docs/          risks.md · slo.md · threat-model.md · deploy.md · release_checklist_final.md
+docs/          risks.md · slo.md · threat-model.md · deploy.md · canais.md · chat.md · release_checklist_final.md
 management/    vision · arch · adr · roadmap · specs
 ```
 

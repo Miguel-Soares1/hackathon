@@ -55,6 +55,7 @@ def mensagens_whatsapp(payload: dict) -> list[dict]:
                 nome = nomes.get(de)
                 saida.append({
                     "external_id": str(mid)[:190],
+                    "conversa_id": str(de)[:190],
                     "cliente": (f"{nome} ({de})" if nome else str(de))[:120],
                     "texto": corpo[:TEXTO_MAX],
                     "received_at": recebido,
@@ -90,6 +91,7 @@ def mensagens_instagram(payload: dict) -> list[dict]:
                 recebido = None
             saida.append({
                 "external_id": str(mid)[:190],
+                "conversa_id": str(de)[:190],
                 "cliente": f"instagram:{de}"[:120],
                 "texto": corpo[:TEXTO_MAX],
                 "received_at": recebido,
@@ -152,4 +154,4 @@ def email_para_mensagem(bruto: bytes) -> Optional[dict]:
         recebido = recebido.astimezone(timezone.utc).replace(tzinfo=None) if recebido.tzinfo else recebido
     except (TypeError, ValueError):
         recebido = None
-    return {"external_id": mid[:190], "cliente": remetente[:120], "texto": texto[:TEXTO_MAX], "received_at": recebido}
+    return {"external_id": mid[:190], "conversa_id": remetente[:190], "cliente": remetente[:120], "texto": texto[:TEXTO_MAX], "received_at": recebido}

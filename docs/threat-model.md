@@ -26,6 +26,8 @@ Texto das solicitações dos clientes (pode conter dados pessoais), chave da API
 | T14 | Reenvio do provedor ou do leitor de e-mail duplica tickets (e infla a fila) | Tampering | Unicidade `(canal, external_id)` no banco; reenvio responde `duplicado` sem criar ticket | `test_post_assinado_cria_ticket_e_reenvio_nao_duplica` |
 | T15 | Loop de resposta automática / spam por e-mail enche a fila | Denial of service | Descarta `Auto-Submitted`, `Precedence: bulk`, listas e remetentes no-reply; o sistema nunca envia e-mail, então não há loop | `test_email_automatico_e_ignorado` |
 | T16 | Senha do e-mail vaza | Information disclosure | Usar senha de app (revogável) só em variável de ambiente; nunca no Git | checklist de release |
+| T17 | Texto do cliente injeta HTML/script nos balões do chat ou nos cartões da fila (XSS no painel) | Tampering / Information disclosure | Todo texto do cliente passa por `esc()` (`frontend/app.js`) antes de entrar no HTML do painel; o painel não usa `innerHTML` com texto cru | revisão de código (`bolha`, `renderFila`, `renderDetalhe`) |
+| T18 | Quem conhece o endpoint lê ou escreve conversas de qualquer ticket | Information disclosure / Spoofing | `GET/POST /tickets/{id}/mensagens` exigem `X-API-Key`; a chave do chat do cliente deve ficar no servidor dele, nunca no navegador do cliente | `test_endpoints_do_chat_exigem_chave` |
 
 ## Checklist de release seguro
 

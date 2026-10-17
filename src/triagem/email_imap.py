@@ -55,7 +55,8 @@ def criar_enviador(api_url: str, api_key: str, cliente_http: Optional[httpx.Clie
     http = cliente_http or httpx.Client(timeout=10)
 
     def enviar(msg: dict) -> bool:
-        corpo = {"canal": "email", "texto": msg["texto"], "cliente": msg["cliente"], "external_id": msg["external_id"]}
+        corpo = {"canal": "email", "texto": msg["texto"], "cliente": msg["cliente"], "external_id": msg["external_id"],
+                 "conversa_id": msg["conversa_id"]}
         if msg.get("received_at"):
             corpo["received_at"] = msg["received_at"].isoformat()
         try:
