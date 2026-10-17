@@ -105,8 +105,8 @@ No Atendimento, o botão **✔ Encerrar atendimento** pede o desfecho (resolvido
 encaminhado) e uma observação. Na hora sai o **relatório**: resumo da conversa escrito pela IA (ou automático, sem o
 LLM), próximos passos, duração, tempo da 1ª resposta, prazo (SLA), mensagens e triagem final. O ticket vai para a aba
 **Encerrados** e não aceita mais respostas; se o cliente escrever de novo, nasce outro atendimento. Encerrar sem
-responder conta como desfecho do prazo. **Banco criado antes desta versão:** rode `db/migrations/006_encerramento.sql`
-e depois `python scripts/criar_banco.py`.
+responder conta como desfecho do prazo. **Banco criado antes desta versão:** rode `python scripts/criar_banco.py`
+(aplica sozinho as migrações que faltam; o `scripts\iniciar.ps1` já faz isso).
 
 ## Scripts da demo
 

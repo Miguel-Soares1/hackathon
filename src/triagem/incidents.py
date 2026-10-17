@@ -3,7 +3,7 @@ import logging
 import threading
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Optional, Sequence
+from typing import Sequence
 
 import numpy as np
 from sqlalchemy import text
