@@ -106,13 +106,22 @@ _PAGINA = r"""<!doctype html>
   #aviso { font-size:12px; color:var(--er); padding:0 14px 6px; background:var(--fundo); min-height:4px; }
 
   .app > * { min-width:0; }
+  .no-cel { font-size:13px; font-weight:600; color:var(--acento); text-decoration:none; }
   @media (max-width: 820px) { .app { padding:0 16px 16px; } .topo { padding:12px 16px; } .celular { border-width:8px; } .celular { height:600px; } }
+  /* Aberta no próprio celular: a tela inteira vira o app de conversa, sem a moldura de aparelho. */
+  @media (max-width: 520px) {
+    .topo { padding:8px 10px; gap:8px; } .topo h1, .tag-demo, .no-cel { display:none; } .abas { width:100%; } .abas a { flex:1; text-align:center; }
+    .app { padding:0; max-width:none; } .quem { padding:0 10px; margin-bottom:6px; }
+    .celular { border:0; border-radius:0; box-shadow:none; min-height:0; height:calc(100dvh - 92px); }
+    textarea { font-size:16px; }  /* 16px evita o zoom automático do iPhone ao focar */
+  }
 </style>
 </head>
 <body>
 <div class="topo">
   <h1>Simulador de canais</h1>
   <nav class="abas"><a href="/demo/whatsapp" data-c="whatsapp">WhatsApp</a><a href="/demo/instagram" data-c="instagram">Instagram</a><a href="/demo/email" data-c="email">E-mail</a></nav>
+  <a class="no-cel" href="/demo/celular">📱 Abrir no celular</a>
   <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO</span>
 </div>
 <div class="app">

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
-from . import canais, corrections, demo_chat, demo_email, incidents, metrics, pipeline, tickets
+from . import canais, corrections, demo_celular, demo_chat, demo_email, incidents, metrics, pipeline, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -313,6 +313,12 @@ def create_app() -> FastAPI:
         @app.get("/demo", include_in_schema=False)
         def demo_inicio():
             return RedirectResponse("/demo/whatsapp")
+
+        @app.get("/demo/celular", response_class=HTMLResponse, include_in_schema=False)
+        def demo_celular_pagina(request: Request):
+            """QR codes para abrir as telas de demo no celular (mesma rede Wi-Fi; API com --host 0.0.0.0)."""
+            pagina = demo_celular.pagina(request.headers.get("host", "localhost"), request.url.port or 8000)
+            return HTMLResponse(pagina, headers={"Content-Security-Policy": csp_demo})
 
         @app.get("/demo/email", response_class=HTMLResponse, include_in_schema=False)
         def demo_email_pagina():

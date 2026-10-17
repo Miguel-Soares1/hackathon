@@ -43,6 +43,17 @@ powershell -ExecutionPolicy Bypass -File scripts\iniciar.ps1
 ```
 
 Para repetir a demo do zero: `python scripts/resetar_demo.py --sim` e depois `python scripts/simular.py`.
+
+**Demo no celular** (WhatsApp, Instagram e e-mail fictícios abertos no celular, como se fosse o cliente):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\iniciar.ps1 -Celular
+```
+
+A API passa a escutar na rede local e abre http://localhost:8000/demo/celular com um QR code por canal; aponte a câmera do celular.
+O celular precisa estar na mesma rede Wi-Fi do notebook (ou no hotspot do notebook, se o Wi-Fi do evento isolar os aparelhos).
+Na primeira vez, permita o Python no firewall do Windows em **redes privadas**. Use só em rede confiável: as telas `/demo` não pedem senha (o painel continua exigindo a `API_KEY`).
+Sem o script: `python -m uvicorn triagem.api:app --app-dir src --host 0.0.0.0 --port 8000`.
 O sistema roda só no notebook; a única chamada externa é ao LLM (DeepSeek). Sem internet, a triagem usa o plano B por regras.
 
 ## Testes
