@@ -27,3 +27,14 @@ Isso valida a lógica (limiar, janela, volume mínimo) de forma determinística.
 ## L4: `pkill -f` com o padrão na própria linha de comando mata o shell
 
 Ao parar o servidor em scripts, use arquivo de PID (`kill $(cat arquivo.pid)`) em vez de `pkill -f <padrão>`.
+
+## L5: `CREATE TABLE IF NOT EXISTS` não adiciona colunas novas
+
+Ao acrescentar `prompt_version` e `exemplos`, o banco de testes antigo continuou com a tabela velha e os testes quebraram
+com "Unknown column". **Regra:** o `conftest` recria as tabelas do banco `*_test` a cada sessão, e toda coluna nova ganha
+uma migração em `db/migrations/` para os bancos que já existem.
+
+## L6: Avaliar só nas mensagens de demo engana
+
+As regras acertam 80,4% nas 34 mensagens de demo, que foram usadas para escrever as próprias regras, mas só 58,3% em 60
+mensagens novas (`data/avaliacao.json`). **Regra:** ajustar prompt e regras olhando o demo e medir no conjunto separado.

@@ -26,7 +26,7 @@ Permitir que o atendente corrija a classificação automática e registrar essas
 
 ## Fora de Escopo (V1)
 
-- Retreino automático do modelo a partir das correções.
+- Retreino automático do modelo a partir das correções (as correções passam a orientar o LLM por few-shot na Spec 6).
 - Fluxo de aprovação/validação das correções.
 
 ## Dependências

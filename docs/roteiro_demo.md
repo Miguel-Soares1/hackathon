@@ -41,7 +41,8 @@ Três dores: **urgente misturado com simples**, **incidente invisível** e **sem
 | 2 | Abrir um ticket crítico do Pix e mostrar a **resposta sugerida** e a **equipe** | "O atendente não começa do zero: já recebe a equipe responsável e uma resposta pronta." |
 | 3 | **Momento principal.** No terminal 2, dar Enter em:<br>`python scripts/simular.py --arquivo data/rajada_demo.json --tempo-real --intervalo 2`<br>Ir para a aba **🚨 Incidentes** | "Agora quatro clientes, por quatro canais diferentes, escrevem com palavras diferentes que o app fecha sozinho depois da atualização…" → o alerta aparece. "Nenhuma palavra-chave: a IA entendeu que é o **mesmo problema** e abriu o incidente em segundos." |
 | 4 | Voltar à **Fila**, escolher um ticket e **corrigir a urgência** no formulário | "A IA pode errar. O atendente corrige com um clique, e cada correção vira medida de qualidade." |
-| 5 | Aba **📊 Métricas**: motivos de contato, prazos em risco, SLI e precisão | "O gestor vê os principais motivos de contato, os prazos prestes a estourar e a taxa de acerto da IA." |
+| 4b | Aba **✉️ Nova mensagem**: enviar uma mensagem parecida com a do ticket corrigido. Abrir o ticket novo na **Fila** | "E a IA aprende com isso: a mensagem nova já veio com a urgência que o atendente ensinou. Aqui embaixo ela mostra em quais tickets revisados se baseou." (linha 🧠) |
+| 5 | Aba **📊 Métricas**: motivos de contato, prazos em risco, SLI, precisão e evolução por versão do prompt | "O gestor vê os principais motivos de contato, os prazos prestes a estourar e a taxa de acerto da IA, inclusive antes e depois do aprendizado com as correções." |
 
 ## 4. Números e confiabilidade (40 s)
 
@@ -57,7 +58,7 @@ Medido com `scripts/avaliar_triagem.py` em 34 mensagens rotuladas:
 
 > "Casos urgentes saem da fila em minutos, incidentes são vistos antes de virarem crise, e a empresa passa a **medir** a qualidade da triagem."
 
-Próximos passos: conectar canais reais (WhatsApp Business, e-mail), usar as correções para melhorar o prompt automaticamente e contar horário comercial no SLA.
+Próximos passos: tirar o WhatsApp do número de teste da Meta, ponderar as correções pela confiabilidade de cada atendente (exige login por atendente) e contar horário comercial no SLA.
 
 ---
 
@@ -74,6 +75,7 @@ Próximos passos: conectar canais reais (WhatsApp Business, e-mail), usar as cor
 
 - **Por que não só palavras-chave?** O incidente da rajada usa "fecha sozinho", "trava", "crashando": palavras diferentes, mesmo problema. As regras acertam 80%; o LLM, 89%.
 - **E o custo?** Uma chamada ao LLM por mensagem (DeepSeek, frações de centavo). Os embeddings rodam localmente, sem custo.
+- **A IA aprende? Vocês treinaram o modelo?** Não há fine-tuning: cada ticket revisado vira exemplo para as próximas mensagens parecidas (few-shot). O painel mostra a taxa de acerto por versão do prompt, com e sem exemplos, e o conjunto de avaliação separado mede antes de cada mudança.
 - **E se a IA classificar errado algo crítico?** O atendente corrige, o prazo é recalculado na hora e o erro entra na taxa de acerto, que o painel mostra separada entre LLM e regras.
 - **Dados pessoais?** O texto vai para o provedor do LLM. Na demo usamos dados fictícios; em produção, mascarar CPF e telefone antes do envio.
 - **Escala?** O webhook responde 202 e processa em background. MySQL e embeddings locais aguentam o volume de um atendimento médio; para mais, há busca vetorial dedicada e filas.

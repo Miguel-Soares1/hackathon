@@ -13,6 +13,8 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [x] **Auditoria cruzada (ensaio):** clone limpo seguindo só o README, no Windows: ~3 min até a API rodar com 34 mensagens e 2 incidentes, com PyTorch e o modelo já em cache (numa máquina nova, some o download, de ~5 a 8 min). Achado corrigido: o README mandava `cd Hackathon`, uma pasta que não existe. **Pendente:** repetir com outra pessoa do grupo.
 - [x] **Teste com a chave real do LLM** (DeepSeek), 34 mensagens: 89,2% de acerto agregado (assunto 94,1%, urgência 82,4%, sentimento 91,2%), JSON válido 34/34, prompt injection resistido 3/3; plano B por regras: 80,4% (`scripts/avaliar_triagem.py`).
 - [x] **Ensaio com falha:** API do LLM inacessível → 2 tentativas → plano B (`origem = fallback`) em ~5 s.
+- [x] **Aprendizado com correções (Spec 6, ADR-014):** few-shot dinâmico com testes (`tests/test_exemplos.py`), versão do prompt gravada em cada triagem e conjunto de avaliação separado com 60 mensagens.
+- [ ] **Linha de base do prompt `v2` × `v2+fewshot`** com a chave real: `python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json`.
 - [ ] **Deploy em produção:** seguir `docs/deploy.md`; conferir HTTPS, 401 sem chave, formulário público e login do painel.
 - [ ] **Teste de carga no ambiente real:** `scripts/teste_carga.py` com a chave do LLM (medir tempo até classificar e proporção de `fallback`).
 - [ ] **Backup agendado** (`scripts/backup.sh` no cron) e testado com uma restauração.

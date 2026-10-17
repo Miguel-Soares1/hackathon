@@ -96,11 +96,12 @@ Roteiro da apresentação: [`docs/roteiro_demo.md`](docs/roteiro_demo.md).
 ## Como funciona
 
 ```
-Canais → POST /webhook/mensagens (202) → MySQL (ticket pendente)
-                                            └→ background: LLM (JSON validado) ──falha──▶ regras (fallback)
-                                                           └→ embedding local → grupo (centroide) → incidente (≥3 em 30 min)
-Atendente (painel/API): confirmar ou corrigir a triagem · marcar 1ª resposta
-Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error budget · precisão
+Canais (webhook, WhatsApp, e-mail, formulário público) → MySQL (ticket pendente, 202)
+   └→ background: busca tickets já revisados parecidos (few-shot, ADR-014)
+                  └→ LLM com os exemplos (JSON validado) ──falha──▶ regras (fallback)
+                  └→ embedding local → grupo (centroide) → incidente (≥3 em 30 min)
+Atendente (painel/API): confirmar ou corrigir a triagem · marcar 1ª resposta  → a correção vira exemplo
+Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error budget · precisão por versão do prompt
 ```
 
 | Regra | Valor (configurável em `app_config` / `sla_policy`) |
@@ -109,32 +110,36 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | Prazo "em risco" | ≥ 75% do prazo consumido sem resposta; "estourado" ≥ 100% |
 | Incidente | ≥ 3 mensagens no mesmo grupo em 30 min (cosseno com o centroide ≥ limiar) |
 | SLO | 95% das primeiras respostas dentro do prazo, janela de 7 dias |
-| Taxa de acerto | `1 − correções/revisados` por dimensão; agregado = 4 dimensões (assunto, urgência, sentimento, equipe). Tickets `fallback` ficam separados |
+| Taxa de acerto | `1 − correções/revisados` por dimensão; agregado = 4 dimensões (assunto, urgência, sentimento, equipe). Separada por origem (`llm`/`fallback`) e por versão do prompt (`v2`, `v2+fewshot`, `regras`) |
+| Few-shot | até `FEWSHOT_K` = 4 tickets revisados com similaridade ≥ `FEWSHOT_SIM_MIN` = 0,45 entram como exemplo |
 
 ### Endpoints (header `X-API-Key`, exceto `/health`)
 
 | Método e rota | Função | Respostas |
 |---|---|---|
 | `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações) | 202, 400, 401 |
+| `GET` · `POST /webhooks/whatsapp` | verificação e mensagens da WhatsApp Cloud API (token e assinatura HMAC, sem `X-API-Key`) | 200 · 200, 401, 503 |
 | `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
-| `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA) | 200, 404 |
+| `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA), versão do prompt e exemplos usados | 200, 404 |
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |
 | `POST /tickets/{id}/revisao` | confirma a triagem | 204, 404, 409 |
 | `POST /tickets/{id}/correcoes` | corrige assunto/urgência/sentimento/equipe/resposta | 201, 400, 404, 409 |
 | `GET /correcoes` | histórico de correções | 200 |
 | `GET /incidentes` | incidentes e justificativa | 200 |
-| `GET /metricas` | motivos, prazos em risco, SLI, precisão | 200 |
+| `GET /metricas` | motivos, prazos em risco, SLI, precisão (por origem e por versão do prompt) | 200 |
+| `GET /dominio` | valores permitidos de assunto, urgência, sentimento e equipe | 200 |
 
 ## Estrutura
 
 ```
-src/triagem/   api, pipeline, classifier (LLM), fallback (regras), embeddings, incidents, sla, corrections, metrics
+src/triagem/   api, pipeline, classifier (LLM), exemplos (few-shot), fallback (regras), embeddings, incidents, sla,
+               corrections, metrics, canais (WhatsApp), email_imap, pagina_envio (formulário), ratelimit
 frontend/      painel em HTML, CSS e JavaScript puros (servido pela própria API, sem build)
-db/            schema.sql (DDL versionado) e init do banco de testes
+db/            schema.sql (DDL versionado), migrations/ (bancos existentes) e init do banco de testes
 scripts/       iniciar.ps1 (sobe tudo) · simular.py (canais) · calibrar_limiar.py · avaliar_triagem.py · resetar_demo.py · criar_banco.py · teste_carga.py · backup.sh
-data/          mensagens_demo.json (34 mensagens rotuladas)
+data/          mensagens_demo.json (34 rotuladas) · rajada_demo.json · avaliacao.json (60 rotuladas, conjunto de avaliação)
 tests/         pytest (padrão AAA)
-docs/          risks.md · slo.md · threat-model.md · deploy.md · release_checklist_final.md
+docs/          risks.md · slo.md · threat-model.md · deploy.md · canais.md · calibracao_limiar.md · roteiro_demo.md · release_checklist_final.md
 management/    vision · arch · adr · roadmap · specs
 ```
 
@@ -143,6 +148,7 @@ management/    vision · arch · adr · roadmap · specs
 - Todas as consultas SQL são parametrizadas (`:param`); nenhuma concatenação.
 - Webhook e API exigem `X-API-Key`; segredos só em `.env` (ignorado pelo Git).
 - O texto do cliente é enviado ao LLM como dado delimitado e a saída é validada contra valores permitidos (prompt injection).
+  Os exemplos do few-shot (também texto de cliente) seguem a mesma regra, e versão do prompt e exemplos nunca vêm da resposta do LLM.
 - O texto da mensagem é enviado ao provedor do LLM (DeepSeek); não use dados pessoais reais na demo.
 - Painel protegido pela `API_KEY` (guardada só na aba do navegador); em produção a API recusa subir com segredos fracos.
 - Formulário público com limite de taxa por IP e global, honeypot e sem revelar a classificação.
@@ -151,5 +157,6 @@ management/    vision · arch · adr · roadmap · specs
 
 - O limiar de incidentes depende do modelo de embeddings e precisa ser calibrado (acima).
 - Prazos contam 24x7 (sem horário comercial) e não há notificação push.
-- Sem autenticação por atendente (senha única do painel): correções não registram autoria.
+- Sem autenticação por atendente (chave única do painel): correções não registram autoria.
+- O few-shot propaga as correções, inclusive as erradas: acompanhe a taxa de acerto por versão do prompt e rode `scripts/avaliar_triagem.py` antes de mudar o prompt.
 - Limitador de taxa em memória: rodar a API com 1 worker. Sem alta disponibilidade (servidor único).

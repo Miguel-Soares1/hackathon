@@ -96,7 +96,7 @@ Agendar o backup diário (`crontab -e`): `0 3 * * * cd /caminho/Hackathon && ./s
 **Restaurar:** `gunzip -c backups/ARQUIVO.sql.gz | docker compose -f docker-compose.prod.yml --env-file .env.production exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" hackathon'`.
 Copie os backups para fora do servidor.
 
-**Atualizar a versão:** `git pull` e rode de novo o comando `up -d --build`. O schema (`db/schema.sql`) só é aplicado na primeira criação do banco; mudanças de tabela exigem migração manual.
+**Atualizar a versão:** `git pull` e rode de novo o comando `up -d --build`. O schema (`db/schema.sql`) só é aplicado na primeira criação do banco; mudanças de tabela exigem rodar a migração correspondente em `db/migrations/` (ex.: `003_prompt_version.sql`).
 
 **Dados de demo:** não rode `simular.py` no banco de produção que receberá clientes reais; ele cria tickets fictícios.
 
