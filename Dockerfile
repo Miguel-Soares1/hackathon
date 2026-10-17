@@ -19,6 +19,7 @@ RUN python -c "from sentence_transformers import SentenceTransformer as S; S('${
 
 COPY src ./src
 COPY dashboard ./dashboard
+COPY .streamlit ./.streamlit
 COPY db ./db
 COPY scripts ./scripts
 COPY data ./data

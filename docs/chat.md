@@ -1,0 +1,22 @@
+# Chat do atendimento e integração com o chat do cliente
+
+A tela **Atendimento** do painel mostra a conversa de cada cliente (balões de cliente e atendente) e permite responder.
+Nesta versão o chat é **de demonstração**: a resposta do atendente fica gravada na conversa, mas **não é enviada** ao canal do cliente.
+A integração com o chat do cliente usa a API abaixo (todas as rotas exigem o header `X-API-Key`).
+
+## Como as mensagens viram conversa
+- `POST /webhook/mensagens` aceita `conversa_id` (opcional): identifica o cliente no canal (id da sessão do chat, telefone, e-mail).
+- Mensagens com o mesmo `canal` + `conversa_id` entram **na mesma conversa** enquanto ela está aberta ou foi respondida há menos de 24 h. Depois disso nasce um ticket novo.
+- Sem `conversa_id`, cada mensagem é um ticket (comportamento anterior). WhatsApp usa o número como `conversa_id`; e-mail usa o remetente.
+- Resposta: `{"status": "pendente"}` (ticket novo, vai para a IA), `"anexada"` (entrou numa conversa existente) ou `"duplicado"` (mesmo `external_id` já recebido).
+- Mensagens anexadas não são reclassificadas: a triagem e o SLA valem para a primeira mensagem do ticket.
+
+## Integrar o chat do cliente
+1. **Cliente → sistema:** `POST /webhook/mensagens` com `{"canal": "chat", "cliente": "Nome", "conversa_id": "<id da sessão>", "texto": "...", "external_id": "<id da mensagem>"}`.
+2. **Sistema → cliente (resposta do atendente):** o chat do cliente consulta `GET /tickets/{ticket_id}/mensagens?depois_de=<último id visto>` a cada poucos segundos e exibe as mensagens com `direcao = "saida"`. O `ticket_id` vem da resposta do passo 1.
+3. **Atendente por API (opcional):** `POST /tickets/{ticket_id}/mensagens` com `{"texto": "...", "autor": "Nome"}`.
+
+A primeira resposta do atendente (pelo chat do painel ou pela API) registra o prazo de resposta (SLA). Respostas seguintes não o alteram.
+
+## Banco de dados
+Bancos já existentes: rode `db/migrations/003_chat.sql` uma vez (depois da `002`).
