@@ -127,6 +127,7 @@ sem ela, a mídia fica guardada, o ticket é classificado só com o texto e o pa
 ```bash
 python scripts/avaliar_triagem.py      # taxa de acerto: regras × LLM × LLM+few-shot + teste de prompt injection
 python scripts/resetar_demo.py         # apaga tickets e incidentes para repetir a demo (mantém a configuração)
+python scripts/unificar_conversas.py   # junta tickets duplicados do mesmo cliente (--aplicar para unir)
 ```
 
 Roteiro da apresentação: [`docs/roteiro_demo.md`](docs/roteiro_demo.md).
