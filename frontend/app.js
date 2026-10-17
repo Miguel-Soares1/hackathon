@@ -124,7 +124,8 @@ function renderAlertas(incidentes) {
 function renderFila() {
   const soAbertos = $("#so-abertos").checked;
   const lista = estado.tickets
-    .filter((t) => !(soAbertos && t.first_response_at))
+    // Com o chat, o cliente pode voltar a escrever depois da 1ª resposta: "aguardando" diz quem falou por último.
+    .filter((t) => !soAbertos || (t.aguardando ?? !t.first_response_at))
     .sort((a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 4) - (ORDEM_URGENCIA[b.urgencia] ?? 4)
       || (b.sla.consumido_pct ?? 0) - (a.sla.consumido_pct ?? 0));
 

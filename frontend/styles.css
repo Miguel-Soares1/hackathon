@@ -188,7 +188,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-w
 .grupo li { margin-bottom: 4px; }
 
 /* ---------- métricas */
-.grade-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
+.grade-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; align-items: start; }
 /* tabelas largas rolam dentro do cartão em vez de vazar; a evolução por versão ocupa a linha toda */
 .grade-2 > .card { min-width: 0; overflow-x: auto; }
 .grade-2 > .largo { grid-column: 1 / -1; order: -1; }
