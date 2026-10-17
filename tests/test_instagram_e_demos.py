@@ -6,7 +6,7 @@ import json
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from triagem import canais, demo_chat
+from triagem import canais, cliente_simulado, demo_chat
 
 SEGREDO = "segredo-do-app"
 TOKEN = "token-ig"
@@ -119,29 +119,61 @@ def test_demo_whatsapp_e_instagram_criam_ticket_do_canal(client, db):
         assert c == canal and status == "classificado"
 
 
-def test_telas_de_conversa_nao_mostram_a_triagem_ao_cliente(client):
-    for canal in ("whatsapp", "instagram"):
-        html = client.get(f"/demo/{canal}").text.lower()
-        assert "triagem" not in html and "urgência" not in html and "/demo/tickets" not in html
+def test_rota_antiga_de_ticket_da_demo_nao_existe(client):
     r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "não consigo entrar na conta"})
     assert client.get(f"/demo/tickets/{r.json()['ticket_id']}").status_code == 404
 
 
-def test_conversa_devolve_so_a_resposta_para_quem_tem_a_senha(client):
-    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "meu pix não caiu, preciso hoje"}).json()
-    conversa = client.get(f"/demo/conversa/{r['ticket_id']}", params={"senha": r["senha"]})
-    assert conversa.status_code == 200
-    corpo = conversa.json()
-    assert corpo["respondida"] and corpo["resposta"]  # o TestClient já rodou a classificação em background
-    assert set(corpo) == {"respondida", "resposta", "equipe"}  # nada de urgência, sentimento ou confiança
+def test_cliente_simulado_abre_conversa_e_vira_ticket_do_canal(client, db):
+    # Act
+    r = client.post("/demo/whatsapp/conversas", json={"cenario": "pix"})
+    # Assert
+    assert r.status_code == 201
+    d = r.json()
+    assert d["cenario"] == "Pix não caiu" and d["cliente"]["nome"]
+    assert d["mensagem"]["texto"] == cliente_simulado.CENARIOS["pix"][2][0]  # roteiro: sem chave do LLM nos testes
+    with db.connect() as conn:
+        canal, status = conn.execute(text("SELECT canal, status FROM tickets WHERE id = :i"),
+                                     {"i": d["mensagem"]["ticket_id"]}).one()
+    assert canal == "whatsapp" and status == "classificado"
 
 
-def test_conversa_recusa_senha_errada_ou_de_outro_ticket(client):
-    a = client.post("/demo/instagram", json={"remetente": "mari.souza", "texto": "quero cancelar minha conta"}).json()
-    b = client.post("/demo/instagram", json={"remetente": "joaop", "texto": "o app não abre desde ontem"}).json()
-    assert client.get(f"/demo/conversa/{a['ticket_id']}").status_code == 404
-    assert client.get(f"/demo/conversa/{a['ticket_id']}", params={"senha": "x" * 32}).status_code == 404
-    assert client.get(f"/demo/conversa/{a['ticket_id']}", params={"senha": b["senha"]}).status_code == 404
+def test_resposta_do_atendente_registra_primeira_resposta_e_o_cliente_responde(client, db):
+    d = client.post("/demo/instagram/conversas", json={"cenario": "app"}).json()
+    primeiro = d["mensagem"]["ticket_id"]
+    # Act
+    r = client.post(f"/demo/conversas/{d['conversa']}/respostas", json={"texto": "Qual o modelo do seu celular?"})
+    # Assert
+    assert r.status_code == 200
+    seguinte = r.json()["mensagem"]
+    assert seguinte["texto"] == cliente_simulado.CENARIOS["app"][2][1]
+    assert seguinte["ticket_id"] is None  # uma conversa = um ticket: a continuação não abre outro
+    with db.connect() as conn:
+        respondido = conn.execute(text("SELECT first_response_at FROM tickets WHERE id = :i"), {"i": primeiro}).scalar()
+    assert respondido is not None
+
+
+def test_painel_da_demo_so_mostra_tickets_da_propria_conversa(client):
+    a = client.post("/demo/whatsapp/conversas", json={"cenario": "acesso"}).json()
+    b = client.post("/demo/whatsapp/conversas", json={"cenario": "cobranca"}).json()
+    t = client.get(f"/demo/conversas/{a['conversa']}/tickets/{a['mensagem']['ticket_id']}")
+    assert t.status_code == 200 and t.json()["resposta_sugerida"] and t.json()["sla"]["prazo_minutos"]
+    assert client.get(f"/demo/conversas/{a['conversa']}/tickets/{b['mensagem']['ticket_id']}").status_code == 404
+    assert client.get(f"/demo/conversas/nao-existe/tickets/{a['mensagem']['ticket_id']}").status_code == 404
+    assert client.post("/demo/conversas/nao-existe/respostas", json={"texto": "oi"}).status_code == 404
+    assert client.post("/demo/telegram/conversas").status_code == 404
+
+
+def test_cliente_encerra_a_conversa_e_nao_aceita_mais_respostas(client):
+    d = client.post("/demo/whatsapp/conversas", json={"cenario": "elogio"}).json()
+    falas = []
+    for _ in range(5):
+        r = client.post(f"/demo/conversas/{d['conversa']}/respostas", json={"texto": "Que bom! Obrigado pelo retorno."})
+        if r.status_code != 200:
+            break
+        falas.append(r.json()["mensagem"])
+    assert falas[-1]["encerrou"] and falas[-1]["texto"] == cliente_simulado.DESPEDIDA
+    assert r.status_code == 409
 
 
 def test_demo_valida_remetente_por_canal(client):

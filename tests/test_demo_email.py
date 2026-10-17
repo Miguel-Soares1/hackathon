@@ -19,7 +19,7 @@ def test_email_demo_passa_pelo_mesmo_conversor_do_imap():
 
 def test_pagina_demo_disponivel_em_desenvolvimento(client):
     r = client.get("/demo/email")
-    assert r.status_code == 200 and "Nova mensagem" in r.text
+    assert r.status_code == 200 and "Receber e-mail de cliente" in r.text
     assert "connect-src 'self'" in r.headers["content-security-policy"]
 
 
@@ -33,10 +33,24 @@ def test_envio_demo_cria_ticket_do_canal_email(client, db):
     assert canal == "email" and status == "classificado"  # o TestClient roda a tarefa em background antes de devolver
 
 
-def test_tela_do_cliente_nao_expoe_a_triagem(client):
+def test_rota_antiga_de_ticket_da_demo_nao_existe(client):
     r = client.post("/demo/email", json=EMAIL)
     assert client.get(f"/demo/email/tickets/{r.json()['ticket_id']}").status_code == 404
-    assert "triagem" not in client.get("/demo/email").text.lower()
+
+
+def test_conversa_por_email_com_cliente_simulado(client, db):
+    # Arrange: sem chave do LLM, o cliente segue o roteiro da situação
+    inicio = client.post("/demo/email/conversas", json={"cenario": "nota_fiscal"}).json()
+    # Act
+    seguinte = client.post(f"/demo/conversas/{inicio['conversa']}/respostas",
+                           json={"texto": "Claro! Envio hoje. Pode ser neste e-mail?"}).json()["mensagem"]
+    # Assert
+    assert inicio["mensagem"]["assunto"] == "Nota fiscal"
+    assert seguinte["texto"] and seguinte["ticket_id"] is None  # o fio continua no mesmo ticket
+    with db.connect() as conn:
+        canal, texto, respondido = conn.execute(text("SELECT canal, texto, first_response_at FROM tickets WHERE id = :i"),
+                                                {"i": inicio["mensagem"]["ticket_id"]}).one()
+    assert canal == "email" and texto.startswith("Nota fiscal") and respondido is not None
 
 
 def test_envio_demo_respeita_filtro_de_remetente_automatico(client):

@@ -47,20 +47,19 @@ Com a API rodando, abra **http://localhost:8000/demo** (abas WhatsApp · Instagr
 | `/demo/email` | webmail | e-mail RFC 5322 → `canais.email_para_mensagem` (o mesmo do IMAP) |
 
 Ou seja: do conversor em diante (ticket, triagem, incidentes, prazos, painel) é exatamente o caminho real.
-As telas são **só a visão do cliente**: ele manda a mensagem e não vê nenhuma classificação. A triagem aparece apenas no
-**painel do atendimento** (http://localhost:8000, com a `API_KEY`) — deixe as duas janelas lado a lado na apresentação.
+Nas telas, **o apresentador é o atendente e a IA faz o papel do cliente** (`src/triagem/cliente_simulado.py`):
+- Escolha a situação (Pix não caiu, cobrança duplicada, conta bloqueada, app fechando, cancelamento, nota fiscal, elogio)
+  ou deixe sortear, e clique em **Novo cliente** (WhatsApp/Instagram) ou **Receber e-mail de cliente** (e-mail).
+- A IA escreve como cliente, no estilo do canal, e **reage ao que você responde**: responde às suas perguntas, insiste
+  se a resposta for vaga, negocia, agradece e encerra a conversa quando o caso se resolve.
+- Ao lado, o **Assistente de IA** mostra a triagem do ticket (assunto, urgência, sentimento, equipe e prazo) e a
+  resposta sugerida, com o botão **Usar sugestão**. O mesmo ticket aparece no painel (http://localhost:8000).
+- **Uma conversa = um ticket:** a primeira mensagem do cliente passa pelo conversor do canal e abre o ticket; o resto
+  da conversa continua nele. A sua primeira resposta registra a 1ª resposta do ticket (conta para o prazo de SLA).
+- Sem `DEEPSEEK_API_KEY` (ou se o LLM falhar), o cliente segue um roteiro fixo da situação e a demo continua.
 
-Para parecer uma conversa real, a empresa **responde** na própria tela do cliente:
-- **WhatsApp/Instagram:** na primeira mensagem chega uma confirmação automática com o protocolo. Depois de
-  "digitando…", chega a resposta do atendimento (a `resposta_sugerida` gerada a partir do que o cliente escreveu) e,
-  quando muda o time responsável, um aviso de encaminhamento. Cada cliente simulado tem a própria conversa (fica
-  guardada na aba do navegador), com tiques de entregue/lido e "Visto" no Instagram.
-- **E-mail:** a confirmação com protocolo e a resposta (`Re: assunto`, assinada pelo time) chegam na
-  **Caixa de entrada**; o botão **Responder** continua a conversa no mesmo assunto.
-
-Cada mensagem do cliente vira um ticket próprio, como no webhook real. A tela só recebe o texto da resposta pela rota
-`/demo/conversa/{id}`, que exige a senha devolvida no envio (HMAC com um segredo que muda a cada subida da API):
-ninguém lê a conversa de outro ticket e a classificação nunca sai por ali.
+As conversas ficam na memória da API (somem ao reiniciá-la). O id aleatório da conversa é a credencial: a tela só vê
+o ticket da própria conversa (`/demo/conversas/{id}/tickets/{ticket}`).
 
 - **Cliente:** escolha na lista ou clique em **Outro cliente**. Mandar "Conta bloqueada" com 3 clientes diferentes gera um **incidente**.
 - Ligadas por padrão em desenvolvimento; **sempre desligadas** com `ENVIRONMENT=production`. Para desligar no dev: `DEMO=0`.

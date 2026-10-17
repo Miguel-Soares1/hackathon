@@ -1,8 +1,9 @@
 """Tela de demonstração do canal e-mail (só em desenvolvimento).
 
-Simula um webmail: o apresentador escreve um e-mail fictício e clica em Enviar. O servidor monta um e-mail
-de verdade (RFC 5322) e passa pelo MESMO conversor do leitor IMAP (`canais.email_para_mensagem`), então o
-ticket nasce exatamente como nasceria de um e-mail real: canal `email`, cliente = remetente, texto = assunto + corpo.
+Simula a caixa do atendimento: a IA faz o papel do cliente (`cliente_simulado`) e escreve os e-mails; o
+apresentador, como atendente, responde. Cada e-mail do cliente vira um e-mail de verdade (RFC 5322) e passa pelo MESMO
+conversor do leitor IMAP (`canais.email_para_mensagem`), então o ticket nasce exatamente como nasceria de um e-mail
+real: canal `email`, cliente = remetente, texto = assunto + corpo.
 """
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
@@ -40,213 +41,207 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
           --bd:#2b3648; --pr:#8ab4f8; --prs:#26385a; --ok:#81c995; --oks:#1e3527; --wa:#fdd663; --was:#3a3220; --er:#f28b82; --ers:#3d2322; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
-  header { display:flex; align-items:center; gap:12px; padding:10px 16px; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; flex-wrap:wrap; }
   .logo { display:flex; align-items:center; gap:8px; font-size:20px; font-weight:600; }
   .logo svg { width:28px; height:28px; }
-  .busca { flex:1; max-width:640px; margin-left:24px; background:var(--side); border-radius:24px; padding:10px 18px; color:var(--mu); font-size:14px; }
-  .abas { display:flex; gap:4px; background:var(--card); border:1px solid var(--bd); border-radius:20px; padding:3px; }
+  .logo small { font-size:13px; font-weight:400; color:var(--mu); }
+  .abas { display:flex; gap:4px; background:var(--card); border:1px solid var(--bd); border-radius:20px; padding:3px; margin-left:16px; }
   .abas a { padding:5px 14px; border-radius:16px; color:var(--mu); text-decoration:none; font-size:13px; font-weight:600; }
   .abas a.on { background:var(--pr); color:#fff; }
   .tag-demo { margin-left:auto; font-size:12px; font-weight:600; color:var(--wa); background:var(--was); padding:4px 10px; border-radius:12px; }
-  .app { display:grid; grid-template-columns:220px 1fr 380px; gap:12px; padding:0 12px 12px; height:calc(100vh - 60px); }
-  nav { padding:4px 0; }
-  .escrever { display:inline-flex; align-items:center; gap:10px; background:var(--prs); color:var(--tx); border:0; border-radius:16px;
-              padding:16px 22px; font:inherit; font-weight:600; cursor:pointer; margin-bottom:12px; }
-  nav a { display:flex; justify-content:space-between; padding:6px 16px; border-radius:0 16px 16px 0; color:var(--tx); text-decoration:none; font-size:14px; }
-  nav a.on { background:var(--prs); font-weight:600; }
-  .painel { background:var(--card); border-radius:16px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--bd); }
-  .painel h2 { font-size:15px; margin:0; padding:12px 16px; border-bottom:1px solid var(--bd); background:var(--side); font-weight:600; }
-  .campo { display:flex; align-items:center; border-bottom:1px solid var(--bd); padding:0 16px; }
-  .campo span { color:var(--mu); font-size:14px; width:64px; flex:none; }
-  .campo input { flex:1; border:0; background:transparent; color:inherit; font:inherit; padding:11px 0; outline:none; }
-  textarea { flex:1; border:0; resize:none; background:transparent; color:inherit; font:inherit; padding:14px 16px; outline:none; min-height:180px; }
-  .rodape { display:flex; align-items:center; gap:10px; padding:12px 16px; border-top:1px solid var(--bd); flex-wrap:wrap; }
-  .enviar { background:var(--pr); color:#fff; border:0; border-radius:20px; padding:10px 26px; font:inherit; font-weight:600; cursor:pointer; }
-  @media (prefers-color-scheme: dark) { .enviar { color:#0b1a33; } }
-  .enviar:disabled { opacity:.55; cursor:default; }
-  .modelos { display:flex; gap:6px; flex-wrap:wrap; margin-left:auto; }
-  .modelos button { border:1px solid var(--bd); background:transparent; color:var(--mu); border-radius:14px; padding:5px 10px; font:inherit; font-size:12px; cursor:pointer; }
-  .modelos button:hover { color:var(--tx); border-color:var(--mu); }
-  #aviso { padding:0 16px 10px; font-size:13px; min-height:18px; }
-  .er { color:var(--er); } .okt { color:var(--ok); }
-  .lista { overflow:auto; flex:1; }
-  .vazio { color:var(--mu); padding:24px 16px; font-size:14px; text-align:center; }
-  .item { padding:12px 16px; border-bottom:1px solid var(--bd); animation:entra .35s ease-out; }
-  @keyframes entra { from { background:var(--prs); } to { background:transparent; } }
-  .item .l1 { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--mu); }
-  .item .as { font-weight:600; margin:2px 0 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .prev { font-size:13px; color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .item.novo { background:var(--prs); }
-  .item.novo .as { font-weight:700; }
-  .item { cursor:pointer; }
-  .item.aberto .prev { white-space:pre-wrap; overflow:visible; color:var(--tx); font-size:14px; margin-top:6px; }
-  .item .acoes { display:none; margin-top:10px; }
-  .item.aberto .acoes { display:block; }
-  .item .acoes button { font:inherit; font-size:13px; border:1px solid var(--bd); background:var(--card); color:var(--tx); border-radius:16px; padding:5px 14px; cursor:pointer; }
-  .chegando { color:var(--mu); font-size:13px; padding:10px 16px; border-bottom:1px solid var(--bd); }
-  @media (max-width: 980px) { .app { grid-template-columns:1fr; height:auto; } nav, .busca { display:none; } .painel { min-height:340px; } }
+  .app { display:grid; grid-template-columns:270px minmax(0,1fr) 340px; gap:12px; padding:0 12px 12px; height:calc(100vh - 60px); }
+  .app > * { min-width:0; }
+  .app > nav { display:flex; flex-direction:column; gap:8px; min-height:0; }
+  .chamar { display:flex; flex-direction:column; gap:6px; background:var(--card); border:1px solid var(--bd); border-radius:16px; padding:12px; }
+  .chamar label { font-size:12px; color:var(--mu); }
+  .chamar select { font:inherit; font-size:14px; color:var(--tx); background:var(--bg); border:1px solid var(--bd); border-radius:8px; padding:6px; }
+  .btn { font:inherit; font-size:14px; font-weight:600; border:0; background:var(--pr); color:#fff; border-radius:18px; padding:8px 16px; cursor:pointer; }
+  .btn.sec { background:var(--card); color:var(--tx); border:1px solid var(--bd); font-weight:500; font-size:13px; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .pasta { font-size:13px; font-weight:600; color:var(--mu); padding:4px 6px 0; display:flex; justify-content:space-between; }
+  .caixa { overflow:auto; display:flex; flex-direction:column; gap:4px; }
+  .fio { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:8px 10px; cursor:pointer; }
+  .fio.on { outline:2px solid var(--pr); }
+  .fio.novo b { font-weight:800; } .fio.novo { background:var(--prs); }
+  .fio .l1 { display:flex; justify-content:space-between; gap:6px; font-size:12px; color:var(--mu); }
+  .fio b { display:block; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fio .prev { font-size:12.5px; color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .vazio { color:var(--mu); padding:20px 12px; font-size:14px; text-align:center; }
+  .painel { background:var(--card); border-radius:16px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--bd); min-height:0; }
+  .painel h2 { font-size:15px; margin:0; padding:12px 16px; border-bottom:1px solid var(--bd); background:var(--side); font-weight:600;
+               overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .leitura { flex:1; overflow:auto; padding:12px 16px; display:flex; flex-direction:column; gap:10px; }
+  .msg { border:1px solid var(--bd); border-radius:12px; padding:10px 14px; }
+  .msg.eu { background:var(--side); }
+  .msg .de { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--mu); margin-bottom:6px; }
+  .msg .de b { color:var(--tx); }
+  .msg .tx { white-space:pre-wrap; font-size:14.5px; }
+  .sistema { align-self:center; font-size:12px; color:var(--mu); background:var(--side); padding:3px 10px; border-radius:8px; }
+  .escrevendo { color:var(--mu); font-size:13px; }
+  .resposta { border-top:1px solid var(--bd); padding:10px 16px 12px; display:flex; flex-direction:column; gap:8px; }
+  .resposta textarea { font:inherit; font-size:14.5px; color:var(--tx); background:var(--card); border:1px solid var(--bd); border-radius:10px;
+                       padding:10px; min-height:110px; resize:vertical; outline:none; }
+  .resposta .linha { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #aviso { font-size:13px; color:var(--er); }
+  .ia .corpo { padding:14px 16px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
+  .ia .s { color:var(--mu); font-size:13px; margin:0; }
+  .rot { font-size:12px; color:var(--mu); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+  .tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { font-size:12.5px; padding:3px 9px; border-radius:10px; background:var(--side); }
+  .chip.u-critica, .chip.u-alta, .chip.s-negativo { background:var(--ers); color:var(--er); }
+  .chip.u-media { background:var(--was); color:var(--wa); }
+  .chip.u-baixa, .chip.s-positivo { background:var(--oks); color:var(--ok); }
+  .sugestao { border-left:3px solid var(--pr); background:var(--side); padding:10px 12px; border-radius:0 10px 10px 0; white-space:pre-wrap; font-size:14px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--pr); margin-right:6px; animation:pp 1s infinite; }
+  @keyframes pp { 50% { opacity:.25; } }
+  .ia a { color:var(--pr); font-size:13px; }
+  @media (max-width: 1100px) { .app { grid-template-columns:minmax(0,1fr); height:auto; } .painel { min-height:360px; } .caixa { max-height:260px; } }
 </style>
 </head>
 <body>
 <header>
-  <div class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3" fill="#0b57d0"/><path d="M3.5 6.5 12 13l8.5-6.5" stroke="#fff" stroke-width="2" fill="none"/></svg>Correio</div>
-  <div class="busca">Pesquisar e-mails</div>
+  <div class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3" fill="#0b57d0"/><path d="M3.5 6.5 12 13l8.5-6.5" stroke="#fff" stroke-width="2" fill="none"/></svg>Correio <small>atendimento@suaempresa.com.br</small></div>
   <nav class="abas" aria-label="Canais"><a href="/demo/whatsapp">WhatsApp</a><a href="/demo/instagram">Instagram</a><a href="/demo/email" class="on">E-mail</a></nav>
-  <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO</span>
+  <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO · VOCÊ É O ATENDENTE</span>
 </header>
 <div class="app">
-  <nav>
-    <button class="escrever" id="novo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>Escrever</button>
-    <a href="#" data-pasta="entrada">Caixa de entrada <span id="qtd-entrada"></span></a>
-    <a href="#" data-pasta="enviados" class="on">Enviados <span id="qtd">0</span></a>
-    <a href="#">Rascunhos <span></span></a>
+  <nav aria-label="Caixa de entrada">
+    <div class="chamar">
+      <label for="cenario">Situação do cliente (a IA escreve o e-mail)</label>
+      <select id="cenario"><option value="">Sorteada</option></select>
+      <button class="btn" type="button" id="novo">Receber e-mail de cliente</button>
+    </div>
+    <div class="pasta"><span>Caixa de entrada</span><span id="qtd"></span></div>
+    <div class="caixa" id="caixa"><div class="vazio" id="caixa-vazia">Nenhum e-mail ainda.</div></div>
   </nav>
 
-  <section class="painel" aria-label="Nova mensagem">
-    <h2>Nova mensagem</h2>
-    <form id="f" novalidate style="display:flex;flex-direction:column;flex:1">
-      <label class="campo"><span>De</span><input id="nome" placeholder="Nome do cliente" maxlength="80" style="max-width:40%"><input id="de" type="email" placeholder="cliente@exemplo.com" maxlength="120"></label>
-      <label class="campo"><span>Para</span><input id="para" value="atendimento@suaempresa.com.br" maxlength="120"></label>
-      <label class="campo"><span>Assunto</span><input id="assunto" maxlength="200"></label>
-      <textarea id="corpo" maxlength="3500" placeholder="Escreva a mensagem do cliente…"></textarea>
-      <div id="aviso" role="status" aria-live="polite"></div>
-      <div class="rodape">
-        <button class="enviar" id="b" type="submit">Enviar</button>
-        <div class="modelos" aria-label="Exemplos prontos">
-          <button type="button" data-m="0">Cobrança duplicada</button>
-          <button type="button" data-m="1">Pix não caiu</button>
-          <button type="button" data-m="2">Conta bloqueada</button>
-          <button type="button" data-m="3">Elogio</button>
-        </div>
-      </div>
+  <section class="painel" aria-label="Conversa">
+    <h2 id="titulo">Selecione um e-mail</h2>
+    <div class="leitura" id="leitura"><div class="vazio">Clique em <b>Receber e-mail de cliente</b>: a IA faz o papel do cliente e você responde como atendente.</div></div>
+    <form class="resposta" id="f">
+      <textarea id="corpo" maxlength="2000" placeholder="Responder ao cliente…" disabled></textarea>
+      <div class="linha"><button class="btn" id="b" type="submit" disabled>Enviar resposta</button><span id="aviso" role="status"></span></div>
     </form>
   </section>
 
-  <section class="painel" aria-label="Pasta">
-    <h2 id="titulo-pasta">Enviados</h2>
-    <div class="lista" id="lista"></div>
+  <section class="painel ia" aria-label="Assistente de IA">
+    <h2>Assistente de IA</h2>
+    <div class="corpo" id="ia"><p class="s">Abra um e-mail: a IA mostra o assunto, a urgência, o prazo e uma resposta sugerida.</p></div>
   </section>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
-const PESSOAS = [["Mariana Souza","mariana.souza"],["Carlos Lima","carlos.lima"],["Ana Ribeiro","ana.ribeiro"],["João Pereira","joao.pereira"],
-                 ["Beatriz Costa","bia.costa"],["Rafael Gomes","rafael.gomes"],["Luana Martins","luana.m"],["Pedro Alves","pedro.alves"]];
-const MODELOS = [
-  ["Cobrança duplicada", "Olá,\n\nFui cobrado duas vezes na fatura deste mês, o mesmo valor de R$ 89,90 aparece em duplicidade. Já é a segunda vez que isso acontece e estou bem insatisfeito. Quero o estorno o quanto antes.\n\nAguardo retorno."],
-  ["Pix não caiu", "Bom dia,\n\nFiz um Pix ontem às 15h e até agora o dinheiro não caiu na conta de destino. Preciso desse valor hoje para pagar um boleto que vence. Por favor, me ajudem com urgência."],
-  ["Não consigo entrar - conta bloqueada", "Olá, desde hoje cedo não consigo entrar no aplicativo. Aparece a mensagem de conta bloqueada e não recebo o código de verificação. O que está acontecendo?"],
-  ["Parabéns pelo atendimento", "Oi! Só queria agradecer pelo atendimento de ontem, a atendente resolveu meu problema rapidinho. Muito obrigado!"],
-];
-let ultimo = -1;
-function novaPessoa() { let i; do { i = Math.floor(Math.random() * PESSOAS.length); } while (i === ultimo); ultimo = i;
-  $('nome').value = PESSOAS[i][0]; $('de').value = PESSOAS[i][1] + '@exemplo.com'; }
-function limpar() { $('assunto').value = ''; $('corpo').value = ''; $('aviso').textContent = ''; novaPessoa(); $('assunto').focus(); }
-document.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click', () => {
-  const m = MODELOS[+b.dataset.m]; novaPessoa(); $('assunto').value = m[0]; $('corpo').value = m[1]; }));
-$('novo').addEventListener('click', limpar);
-novaPessoa();
-
+const ROT = { cobranca:'Cobrança', pagamento:'Pagamento', acesso:'Acesso', instabilidade:'Instabilidade', cancelamento:'Cancelamento',
+  reclamacao:'Reclamação', duvida:'Dúvida', elogio:'Elogio', baixa:'baixa', media:'média', alta:'alta', critica:'crítica',
+  positivo:'positivo', neutro:'neutro', negativo:'negativo', financeiro:'Financeiro', suporte_tecnico:'Suporte técnico',
+  engenharia:'Engenharia', retencao:'Retenção', atendimento:'Atendimento' };
+const r = (v) => ROT[v] || v || '—';
+const prazo = (min) => min == null ? '' : min < 60 ? min + ' min' : (min / 60) + ' h';
 function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 const hora = () => new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
-const EQUIPES = { financeiro:'Financeiro', suporte_tecnico:'Suporte Técnico', engenharia:'Engenharia', retencao:'Retenção', atendimento:'Atendimento' };
-const REMETENTE = 'Atendimento Sua Empresa';
 
-// O webmail é a caixa do cliente: o que ele envia vai para "Enviados" e as respostas da empresa chegam na "Caixa de entrada".
-const caixa = { entrada: [], enviados: [] };
-let pasta = 'enviados'; let chegando = 0;
+fetch('/demo/cenarios').then((x) => x.json()).then((lista) => lista.forEach((c) => {
+  const o = el('option', null, c.titulo); o.value = c.chave; $('cenario').append(o); })).catch(() => {});
 
-function abrirPasta(nome) {
-  pasta = nome;
-  document.querySelectorAll('nav a[data-pasta]').forEach((a) => a.classList.toggle('on', a.dataset.pasta === nome));
-  $('titulo-pasta').textContent = nome === 'entrada' ? 'Caixa de entrada' : 'Enviados';
-  desenhar();
-}
-document.querySelectorAll('nav a[data-pasta]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); abrirPasta(a.dataset.pasta); }));
+// Cada fio é uma conversa com um cliente simulado: { conversa, cliente, assunto, mensagens, encerrada, ticket, triagem, novo, esperando }
+const fios = []; let aberto = null;
 
-function desenhar() {
-  const l = $('lista'); l.textContent = '';
-  if (pasta === 'entrada' && chegando > 0) l.append(el('div', 'chegando', 'Sincronizando… novas mensagens a caminho'));
-  const itens = caixa[pasta];
-  if (!itens.length) l.append(el('div', 'vazio', pasta === 'entrada' ? 'Nenhuma mensagem recebida ainda.' : 'Nenhum e-mail enviado ainda.'));
-  itens.forEach((m) => {
-    const it = el('div', 'item' + (m.novo ? ' novo' : '') + (m.aberto ? ' aberto' : ''));
-    const l1 = el('div', 'l1'); l1.append(el('span', null, pasta === 'entrada' ? m.de : 'Para: ' + m.para), el('span', null, m.hora));
-    it.append(l1, el('div', 'as', m.assunto || '(sem assunto)'), el('div', 'prev', m.corpo));
-    if (pasta === 'entrada' && m.responder) {
-      const ac = el('div', 'acoes'); const b = el('button', null, '↩ Responder'); b.type = 'button';
-      b.addEventListener('click', (e) => { e.stopPropagation(); responderEmail(m); }); ac.append(b); it.append(ac);
-    }
-    it.addEventListener('click', () => { m.aberto = !m.aberto; m.novo = false; desenhar(); });
-    l.append(it);
+function desenharCaixa() {
+  const c = $('caixa'); c.textContent = '';
+  if (!fios.length) c.append(el('div', 'vazio', 'Nenhum e-mail ainda.'));
+  fios.forEach((f) => {
+    const ultima = f.mensagens[f.mensagens.length - 1];
+    const it = el('div', 'fio' + (f.novo ? ' novo' : '') + (f === aberto ? ' on' : ''));
+    const l1 = el('div', 'l1'); l1.append(el('span', null, f.cliente.nome), el('span', null, ultima ? ultima.hora : ''));
+    it.append(l1, el('b', null, f.assunto), el('div', 'prev', f.esperando ? 'escrevendo…' : (ultima ? ultima.texto.replace(/\s+/g, ' ') : '')));
+    it.addEventListener('click', () => abrir(f)); c.append(it);
   });
-  const naoLidas = caixa.entrada.filter((m) => m.novo).length;
-  $('qtd-entrada').textContent = naoLidas || ''; $('qtd').textContent = caixa.enviados.length;
+  const n = fios.filter((f) => f.novo).length; $('qtd').textContent = n ? n + ' não lido' + (n > 1 ? 's' : '') : '';
 }
 
-function receber(m) {
-  caixa.entrada.unshift({ ...m, de: REMETENTE, hora: hora(), novo: true });
-  const a = $('aviso'); a.className = 'okt'; a.textContent = 'Nova mensagem na Caixa de entrada: ' + m.assunto;
-  desenhar();
+function abrir(f) {
+  aberto = f; f.novo = false; $('aviso').textContent = '';
+  $('titulo').textContent = f.assunto + ' — ' + f.cliente.nome;
+  const l = $('leitura'); l.textContent = '';
+  f.mensagens.forEach((m) => {
+    const d = el('div', 'msg' + (m.de === 'eu' ? ' eu' : ''));
+    const de = el('div', 'de'); const quem = el('span');
+    quem.append(el('b', null, m.de === 'eu' ? 'Você (atendimento)' : f.cliente.nome), ' ' + (m.de === 'eu' ? '' : '<' + f.cliente.contato + '>'));
+    de.append(quem, el('span', null, m.hora)); d.append(de, el('div', 'tx', m.texto)); l.append(d);
+  });
+  if (f.esperando) l.append(el('div', 'escrevendo', f.cliente.nome + ' está escrevendo uma resposta…'));
+  if (f.encerrada) l.append(el('div', 'sistema', 'O cliente encerrou a conversa.'));
+  l.scrollTop = l.scrollHeight;
+  const pode = !f.encerrada && !f.esperando;
+  $('corpo').disabled = !pode; $('b').disabled = !pode;
+  painel(f); desenharCaixa();
 }
 
-// A conversa continua no mesmo fio: "Re:" no assunto e o mesmo cliente como remetente.
-function responderEmail(m) {
-  $('nome').value = m.responder.nome || ''; $('de').value = m.responder.email;
-  $('assunto').value = /^re:/i.test(m.responder.assunto) ? m.responder.assunto : 'Re: ' + m.responder.assunto;
-  $('corpo').value = ''; $('aviso').textContent = ''; $('corpo').focus();
+function painel(f) {
+  const c = $('ia'); c.textContent = '';
+  if (!f.ticket) { c.append(el('p', 's', 'Esperando o cliente escrever…')); return; }
+  const t = f.triagem;
+  if (!t) { const a = el('div', 's'); a.append(el('span', 'dot'), 'Analisando o e-mail…'); c.append(a); return; }
+  const bloco = (rot, conteudo) => { const d = el('div'); d.append(el('div', 'rot', rot), conteudo); c.append(d); };
+  const tags = el('div', 'tags');
+  tags.append(el('span', 'chip', r(t.assunto)), el('span', 'chip u-' + t.urgencia, 'urgência ' + r(t.urgencia)),
+              el('span', 'chip s-' + t.sentimento, r(t.sentimento)), el('span', 'chip', '→ ' + r(t.equipe)));
+  if (t.origem === 'fallback') tags.append(el('span', 'chip', 'plano B (regras)'));
+  bloco('Ticket #' + t.ticket_id + ' · prazo da 1ª resposta: ' + prazo(t.sla.prazo_minutos), tags);
+  if (t.resposta_sugerida) {
+    const usar = el('button', 'btn sec', 'Usar sugestão'); usar.type = 'button'; usar.style.marginTop = '8px';
+    usar.addEventListener('click', () => { if (!$('corpo').disabled) { $('corpo').value = t.resposta_sugerida; $('corpo').focus(); } });
+    const d = el('div'); d.append(el('div', 'sugestao', t.resposta_sugerida), usar); bloco('Resposta sugerida (revise antes de enviar)', d);
+  }
+  if (t.exemplos) c.append(el('p', 's', '🧠 A IA aprendeu com tickets revisados parecidos: #' + t.exemplos.split(',').join(', #')));
+  const link = el('a', null, 'Abrir o painel do atendimento ↗'); link.href = '/'; link.target = '_blank'; link.rel = 'noopener'; c.append(link);
 }
 
-// A empresa responde como na vida real: confirmação automática com protocolo e, em seguida,
-// a resposta do atendimento, escrita a partir do que o cliente escreveu.
-async function acompanhar(d, dados) {
-  const fio = { nome: dados.de_nome, email: dados.de_email, assunto: dados.assunto || '(sem assunto)' };
-  const base = fio.assunto.replace(/^(re:\s*)+/i, '');
-  const nome = (dados.de_nome || '').split(' ')[0];
-  chegando += 1; desenhar();
-  const inicio = Date.now();
+async function acompanhar(f, ticket, n) {
+  if (f.ticket !== ticket) return;
   try {
-    if (!/^re:/i.test(dados.assunto)) {
-      await pausa(1500);
-      receber({ assunto: '[Protocolo #' + d.ticket_id + '] Recebemos sua solicitação', responder: fio,
-        corpo: 'Olá' + (nome ? ', ' + nome : '') + '!\n\nRecebemos sua mensagem sobre "' + base + '" e abrimos o protocolo #' + d.ticket_id +
-               '. Um atendente vai responder por este e-mail.\n\nEsta é uma resposta automática.\n' + REMETENTE });
-    }
-    let r = null;
-    for (let n = 0; n < 60 && !(r && r.respondida); n++) {
-      try { r = await (await fetch('/demo/conversa/' + d.ticket_id + '?senha=' + encodeURIComponent(d.senha))).json(); } catch (_) {}
-      if (!(r && r.respondida)) await pausa(1000);
-    }
-    await pausa(Math.max(0, 3000 - (Date.now() - inicio)));
-    if (r && r.respondida) {
-      const time = EQUIPES[r.equipe] ? '\n\nAtenciosamente,\nTime ' + EQUIPES[r.equipe] + ' · ' + REMETENTE : '\n\n' + REMETENTE;
-      receber({ assunto: 'Re: ' + base + ' [Protocolo #' + d.ticket_id + ']', corpo: r.resposta + time, responder: fio });
-    }
-  } finally { chegando -= 1; desenhar(); }
+    const t = await (await fetch('/demo/conversas/' + f.conversa + '/tickets/' + ticket)).json();
+    if (t.status && t.status !== 'pendente') { f.triagem = t; if (f === aberto) painel(f); return; }
+  } catch (_) {}
+  if (n < 40) setTimeout(() => acompanhar(f, ticket, n + 1), 1000);
 }
+
+function chegou(f, m) {
+  f.esperando = false; f.mensagens.push({ de:'cliente', texto:m.texto, hora:hora() }); f.encerrada = m.encerrou;
+  if (m.ticket_id) { f.ticket = m.ticket_id; f.triagem = null; acompanhar(f, m.ticket_id, 0); }
+  if (f !== aberto) f.novo = true;
+  // o fio com a mensagem mais nova sobe para o topo da caixa
+  fios.splice(fios.indexOf(f), 1); fios.unshift(f);
+  if (f === aberto) abrir(f); else desenharCaixa();
+}
+
+$('novo').addEventListener('click', async () => {
+  $('novo').disabled = true; $('aviso').textContent = '';
+  try {
+    const resp = await fetch('/demo/email/conversas', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ cenario: $('cenario').value || null }) });
+    const d = await resp.json();
+    if (resp.status !== 201) throw new Error(d.detail || 'falha');
+    const f = { conversa:d.conversa, cliente:d.cliente, assunto:d.mensagem.assunto || d.cenario, mensagens:[], encerrada:false,
+                ticket:null, triagem:null, novo:true, esperando:false };
+    fios.unshift(f); chegou(f, d.mensagem); if (!aberto) abrir(f);
+  } catch (e) { $('aviso').textContent = 'Não foi possível receber um e-mail: ' + (e.message || 'API fora do ar?'); }
+  finally { $('novo').disabled = false; }
+});
 
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const a = $('aviso'); a.className = ''; a.textContent = '';
-  const dados = { de_nome: $('nome').value.trim() || null, de_email: $('de').value.trim(), para: $('para').value.trim(),
-                  assunto: $('assunto').value.trim(), corpo: $('corpo').value.trim() };
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dados.de_email)) { a.className = 'er'; a.textContent = 'Informe um remetente válido.'; return; }
-  if ((dados.assunto + dados.corpo).length < 10) { a.className = 'er'; a.textContent = 'Escreva o assunto e a mensagem.'; return; }
-  $('b').disabled = true;
+  const f = aberto; const texto = $('corpo').value.trim(); $('aviso').textContent = '';
+  if (!f || !texto || f.esperando || f.encerrada) return;
+  f.mensagens.push({ de:'eu', texto, hora:hora() }); f.esperando = true; $('corpo').value = ''; abrir(f);
   try {
-    const resp = await fetch('/demo/email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(dados) });
-    const d = await resp.json().catch(() => ({}));
-    if (resp.status === 202) {
-      a.className = 'okt'; a.textContent = 'Mensagem enviada.';
-      caixa.enviados.unshift({ para: dados.para, assunto: dados.assunto, corpo: dados.corpo, hora: hora() });
-      desenhar(); acompanhar(d, dados);
-      $('assunto').value = ''; $('corpo').value = '';  // mesmo cliente: a conversa continua com ele ("Escrever" troca)
-    }
-    else { a.className = 'er'; a.textContent = d.detail || 'Não foi possível enviar.'; }
-  } catch (_) { a.className = 'er'; a.textContent = 'API fora do ar? Confira o terminal do uvicorn.'; }
-  finally { $('b').disabled = false; }
+    const resp = await fetch('/demo/conversas/' + f.conversa + '/respostas', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ texto }) });
+    const d = await resp.json();
+    if (resp.status !== 200) throw new Error(d.detail || 'falha');
+    chegou(f, d.mensagem);
+  } catch (e) { f.esperando = false; if (f === aberto) abrir(f); $('aviso').textContent = 'Não foi possível enviar: ' + (e.message || 'API fora do ar?'); }
 });
-desenhar();
 </script>
 </body>
 </html>
