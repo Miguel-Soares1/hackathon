@@ -6,7 +6,7 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [x] **Produto mínimo:** API sobe conectada ao MySQL; webhook, classificação, SLA, correções, incidentes e painel operam de ponta a ponta (validado com o simulador e as 34 mensagens de demo).
 - [x] **Evidência de qualidade:** SQL 100% parametrizado; `pytest` com testes unitários e de integração passando.
 - [x] **Decisões documentadas:** 14 ADRs em `management/adr.md` (mínimo exigido: 2).
-- [x] **Evidência de requisitos:** specs 1 a 5 com critérios de aceitação mapeados para rotas e testes.
+- [x] **Evidência de requisitos:** specs 1 a 8 com critérios de aceitação mapeados para rotas e testes (pendências da Spec 8 abaixo).
 - [x] **Governança:** matriz de riscos (`risks.md`), SLO e política de error budget (`slo.md`).
 - [x] **Segurança:** sem segredos no código; schema versionado em `db/`; threat modeling (`threat-model.md`).
 - [x] **Limiar de similaridade calibrado com o modelo de embeddings real:** 0,60, com 2/2 incidentes e 0 falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).

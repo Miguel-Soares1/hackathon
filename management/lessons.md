@@ -16,7 +16,7 @@ usam `com_retry_deadlock` como rede de segurança.
 ## L2: O embedder `hash` não serve para validar o agrupamento
 
 O `HashEmbedder` é lexical: não reconhece paráfrases ("Pix fora do ar" vs "o Pix não está passando"). Serve para testes e
-para rodar offline, mas o limiar de incidente só pode ser calibrado com o modelo real (`sbert`). Use
+para rodar offline, mas o limiar de incidente só pode ser calibrado com o modelo real (`onnx`, ou `sbert`, que dá o mesmo resultado). Use
 `scripts/calibrar_limiar.py` com o modelo antes da demo.
 
 ## L3: Testes com vetores controlados

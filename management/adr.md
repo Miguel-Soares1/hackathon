@@ -20,7 +20,7 @@ Consequências: ...
 
 ## ADR-001: FastAPI como backend com webhook único e simulador de canais
 
-**Status:** accepted
+**Status:** accepted (canais reais acrescentados pelo ADR-013)
 
 **Contexto:** precisamos receber mensagens de múltiplos canais (tickets, mensagens, chamados), mas os canais reais não estão disponíveis no hackathon.
 
@@ -68,7 +68,7 @@ Consequências: ...
 
 **Contexto:** agrupar mensagens semelhantes para detectar possíveis incidentes.
 
-**Decisão:** gerar embeddings das mensagens (modelo local, ADR-008) e compará-las por similaridade de cosseno com o centroide dos grupos abertos. Um incidente é aberto quando um grupo atinge 3 ou mais mensagens dentro de uma janela de 30 minutos. O limiar inicial é 0,70 e deve ser calibrado com mensagens de demo rotuladas.
+**Decisão:** gerar embeddings das mensagens (modelo local, ADR-008) e compará-las por similaridade de cosseno com o centroide dos grupos abertos. Um incidente é aberto quando um grupo atinge 3 ou mais mensagens dentro de uma janela de 30 minutos. O limiar inicial era 0,70; calibrado com as mensagens de demo rotuladas, passou a 0,60 (`docs/calibracao_limiar.md`).
 
 **Consequências:**
 - Detecção semântica (não apenas por palavras-chave).

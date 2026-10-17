@@ -1,6 +1,6 @@
 ---
 name: Agrupamento de Mensagens e Detecção de Incidentes
-status: in-progress
+status: implemented
 references: [1]
 ---
 
@@ -16,7 +16,7 @@ Agrupar mensagens semelhantes por embeddings + similaridade de cosseno e abrir u
 - **Processamento (ADR-004, ADR-008):**
   - Gerar embeddings localmente (ADR-008), guardados em coluna BLOB.
   - A cada novo ticket, comparar com o centroide dos grupos abertos na janela; se o maior cosseno passar do limiar, o ticket entra no grupo e o centroide é atualizado; senão, abre-se um novo grupo.
-  - Limiar inicial `0,70`, a ser calibrado com o conjunto de mensagens de demo rotuladas.
+  - Limiar calibrado em `0,60` com o conjunto de demo rotulado (valor inicial era `0,70`; ver `docs/calibracao_limiar.md`).
   - Janela temporal de agregação: 30 minutos.
 - **Regra de incidente:** 3 ou mais mensagens no mesmo grupo dentro da janela de 30 minutos → abrir incidente.
 - **Saída:** grupos de mensagens semelhantes e alertas de incidente (com grupo associado e justificativa).
@@ -24,7 +24,7 @@ Agrupar mensagens semelhantes por embeddings + similaridade de cosseno e abrir u
 ## Critérios de Aceitação
 
 - [x] Mensagens com similaridade de cosseno acima do limiar configurado são agrupadas.
-- [ ] O limiar padrão foi calibrado com o conjunto de demo rotulado e o resultado está registrado em `docs/`.
+- [x] O limiar padrão foi calibrado com o conjunto de demo rotulado e o resultado está registrado em `docs/calibracao_limiar.md` (2/2 incidentes, 0 falsos).
 - [x] Um incidente é aberto quando 3+ mensagens de um grupo ultrapassam o limiar dentro de 30 minutos.
 - [x] Limiar, janela e volume mínimo são configuráveis.
 - [x] Cada alerta inclui o grupo associado e uma justificativa/evidência.

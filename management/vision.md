@@ -11,3 +11,21 @@ O produto classifica automaticamente cada solicitação de cliente por **assunto
 **Problema resolvido:** a triagem manual de solicitações é lenta, inconsistente e sem visibilidade sobre incidentes, prazos de resposta e qualidade da própria triagem.
 
 **Entregue por:** Spec 1 (Classificação), Spec 2 (Agrupamento/Incidentes), Spec 3 (Correções/Taxa de Acerto), Spec 5 (Prazos de Resposta) e Spec 4 (Painel).
+
+**Status:** entregue.
+
+---
+
+## V2: Demanda real e IA que aprende com o atendente
+
+O produto passa a receber mensagens de **canais reais** (WhatsApp, e-mail e um formulário web público com limite de uso),
+pode ser **colocado no ar** em um servidor com HTTPS, e a triagem **melhora com o uso**: cada ticket revisado pelo
+atendente vira exemplo para as próximas mensagens parecidas, e a melhora é medida por versão do prompt e num conjunto de
+avaliação separado.
+
+**Problema resolvido:** na V1 a demanda era simulada, o sistema só rodava em uma máquina e as correções do atendente
+apenas mediam a qualidade, sem melhorar a IA.
+
+**Entregue por:** Spec 6 (Aprendizado com correções), Spec 7 (Canais reais e entrada pública) e Spec 8 (Deploy em produção).
+
+**Status:** entregue; pendentes a linha de base `v2` × `v2+fewshot` com a chave real e o deploy em um servidor (ver `docs/release_checklist_final.md`).
