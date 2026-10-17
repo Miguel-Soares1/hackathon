@@ -18,7 +18,7 @@ os.environ["EMBEDDING_BACKEND"] = "hash"
 SCHEMA = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 LIMPEZA = [
     "TRUNCATE TABLE group_members", "TRUNCATE TABLE incident_groups", "TRUNCATE TABLE ticket_embeddings",
-    "TRUNCATE TABLE reviews", "TRUNCATE TABLE corrections", "TRUNCATE TABLE classifications",
+    "TRUNCATE TABLE reviews", "TRUNCATE TABLE messages", "TRUNCATE TABLE corrections", "TRUNCATE TABLE classifications",
     "TRUNCATE TABLE tickets",
 ]
 CHAVE = {"X-API-Key": "chave-de-teste"}

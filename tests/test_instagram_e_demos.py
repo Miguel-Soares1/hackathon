@@ -150,7 +150,11 @@ def test_resposta_do_atendente_registra_primeira_resposta_e_o_cliente_responde(c
     assert seguinte["ticket_id"] is None  # uma conversa = um ticket: a continuação não abre outro
     with db.connect() as conn:
         respondido = conn.execute(text("SELECT first_response_at FROM tickets WHERE id = :i"), {"i": primeiro}).scalar()
+        conversa = conn.execute(text("SELECT direcao, texto FROM messages WHERE ticket_id = :i ORDER BY id"),
+                                {"i": primeiro}).all()
     assert respondido is not None
+    assert [m.direcao for m in conversa] == ["entrada", "saida", "entrada"]
+    assert conversa[1].texto == "Qual o modelo do seu celular?" and conversa[2].texto == seguinte["texto"]
 
 
 def test_painel_da_demo_so_mostra_tickets_da_propria_conversa(client):

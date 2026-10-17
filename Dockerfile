@@ -21,6 +21,9 @@ COPY db ./db
 COPY scripts ./scripts
 COPY data ./data
 
+# Baixa o modelo de embeddings na construção da imagem: o container não depende da internet para isso.
+RUN python -c "import sys; sys.path.insert(0, 'src'); from triagem.embeddings import OnnxEmbedder; OnnxEmbedder('m')"
+
 RUN useradd --create-home --uid 10001 app && chown -R app:app /app /opt/hf
 USER app
 

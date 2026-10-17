@@ -161,9 +161,16 @@ function renderDetalhe() {
     return;
   }
   const s = t.sla;
+  // Conversa (ADR-016): a primeira mensagem do cliente aparece até a conversa carregar.
   const cabecalho = `<div><h2>#${t.ticket_id} · ${esc(t.cliente || "Cliente")}</h2>
     <p class="muted">${esc(t.canal)} · ${esc(hora(t.received_at))}</p></div>
-    <p class="mensagem">${esc(t.texto)}</p>`;
+    <div id="conversa" class="conversa" aria-live="polite">${bolha({ direcao: "entrada", autor: t.cliente, texto: t.texto, created_at: t.received_at })}</div>
+    <form id="form-chat" class="form-chat">
+      <textarea name="texto" rows="2" maxlength="2000" required placeholder="Responder ao cliente…" aria-label="Resposta ao cliente"></textarea>
+      <button type="submit" class="btn primario">Enviar</button>
+    </form>
+    <p class="muted nota-chat">Demonstração: a resposta fica na conversa e conta como 1ª resposta (SLA), mas não é enviada ao canal do cliente.</p>`;
+  carregarConversa(t.ticket_id);
   if (t.status !== "classificado") {
     painel.innerHTML = `${cabecalho}<p class="muted">⏳ A IA ainda está classificando este ticket…</p>`;
     return;
@@ -192,6 +199,41 @@ function renderDetalhe() {
       <label>Resposta <textarea name="resposta_sugerida" rows="4" maxlength="2000">${esc(t.resposta_sugerida)}</textarea></label>
       <p><button type="submit" class="btn primario">Salvar correção</button> <span id="correcao-status" class="muted" aria-live="polite"></span></p>
     </form>`;
+}
+
+// ---------------------------------------------------------------- conversa (chat do atendimento)
+// O texto vem do cliente (não confiável): sempre passa por esc() (threat model T19).
+function bolha(m) {
+  const lado = m.direcao === "saida" ? "saida" : "entrada";
+  return `<div class="bolha ${lado}"><div class="bolha-autor">${esc(m.autor || (lado === "saida" ? "Atendente" : "Cliente"))}
+    · ${esc(hora(m.created_at))}</div>${esc(m.texto)}</div>`;
+}
+
+async function carregarConversa(id) {
+  try {
+    const msgs = await api(`/tickets/${id}/mensagens`);
+    const caixa = $("#conversa");
+    if (estado.selecionado !== id || !caixa || !msgs.length) return; // trocou de ticket enquanto carregava
+    caixa.innerHTML = msgs.map(bolha).join("");
+    caixa.scrollTop = caixa.scrollHeight;
+  } catch (e) {
+    if (e instanceof NaoAutorizado) return sair("Chave inválida ou expirada.");
+    alertaStatus(e.message);
+  }
+}
+
+async function enviarChat(form) {
+  const id = estado.selecionado;
+  const texto = form.texto.value.trim();
+  if (!texto) return;
+  try {
+    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, autor: "Atendente" }) });
+    form.texto.value = "";
+    estado.editando = false;
+    await carregar(); // a 1ª resposta muda o prazo (SLA) na fila
+  } catch (e) {
+    alertaStatus(e.message);
+  }
 }
 
 // ---------------------------------------------------------------- render: incidentes, métricas, correções
@@ -374,9 +416,20 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   detalhe.addEventListener("input", () => { estado.editando = true; });
   detalhe.addEventListener("submit", (ev) => {
-    if (ev.target.id !== "form-correcao") return;
-    ev.preventDefault();
-    salvarCorrecao(ev.target);
+    if (ev.target.id === "form-chat") {
+      ev.preventDefault();
+      enviarChat(ev.target);
+    } else if (ev.target.id === "form-correcao") {
+      ev.preventDefault();
+      salvarCorrecao(ev.target);
+    }
+  });
+  // Enter envia a resposta do chat; Shift+Enter quebra a linha.
+  detalhe.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey && ev.target.closest("#form-chat")) {
+      ev.preventDefault();
+      ev.target.form.requestSubmit();
+    }
   });
 
   $("#form-nova").addEventListener("submit", (ev) => {

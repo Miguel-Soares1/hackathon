@@ -250,3 +250,21 @@ Consequências: ...
 - O prompt cresce ~140 tokens (~740 sem exemplos, ~1.130 com 4 exemplos).
 - As palavras-chave do plano B em outros idiomas são poucas: a classificação por regras fora do português é fraca (65% de acerto agregado em `data/avaliacao_idiomas.json`, contra o idioma detectado em 24/24).
 - Migração de bancos existentes: `db/migrations/004_idioma.sql`.
+---
+
+## ADR-016: Chat de atendimento com conversa por cliente e integração por API
+
+**Status:** accepted
+
+**Contexto:** o atendente precisa conversar com o cliente na própria tela de atendimento, e o chat do cliente já existe fora deste sistema e será integrado depois. Até lá o chat roda local, de demonstração.
+
+**Decisão:** tabela `messages` (entrada/saída) ligada ao ticket; mensagens do mesmo `canal` + `conversa_id` entram no mesmo ticket por até 24 h após a última resposta. A resposta do atendente é gravada e conta como primeira resposta para o SLA, mas não é enviada a nenhum canal. A integração futura usa `GET/POST /tickets/{id}/mensagens`, com polling por `depois_de`. Ver `docs/chat.md`.
+
+**Alternativas descartadas:** WebSocket entre painel e chat do cliente (mais complexo e não necessário para a demo); enviar por WhatsApp/SMTP agora (exige credenciais e só vale com o canal real); um ticket novo por mensagem (quebra o fluxo de conversa e infla a fila).
+
+**Consequências:**
+- O polling basta para o volume esperado; pode virar push depois sem mudar o modelo de dados.
+- Mensagens anexadas não são reclassificadas nem entram no agrupamento de incidentes.
+- No painel HTML (ADR-010), a conversa aparece no detalhe do ticket e atualiza a cada ciclo de atualização automática, não em tempo real.
+- WhatsApp, Instagram e e-mail usam o remetente como `conversa_id`, inclusive nas telas `/demo/*`.
+

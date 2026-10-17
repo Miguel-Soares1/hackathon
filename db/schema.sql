@@ -7,13 +7,29 @@ CREATE TABLE IF NOT EXISTS tickets (
   cliente VARCHAR(120) NULL,
   texto TEXT NOT NULL,
   external_id VARCHAR(190) NULL,
+  conversa_id VARCHAR(190) NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pendente',
   received_at DATETIME NOT NULL,
   first_response_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
   INDEX idx_tickets_status (status),
-  UNIQUE KEY uq_tickets_canal_externo (canal, external_id)
+  UNIQUE KEY uq_tickets_canal_externo (canal, external_id),
+  INDEX idx_tickets_conversa (canal, conversa_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Conversa (chat do atendimento): mensagens do cliente (entrada) e respostas do atendente (saida).
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ticket_id BIGINT UNSIGNED NOT NULL,
+  direcao VARCHAR(10) NOT NULL,
+  autor VARCHAR(120) NULL,
+  texto TEXT NOT NULL,
+  external_id VARCHAR(220) NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_msg_ticket (ticket_id, id),
+  UNIQUE KEY uq_msg_externo (external_id),
+  CONSTRAINT fk_msg_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS classifications (

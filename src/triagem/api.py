@@ -46,6 +46,11 @@ class MensagemIn(BaseModel):
     external_id: Optional[str] = Field(
         default=None, max_length=190, description="Opcional: id da mensagem no canal; torna o envio idempotente."
     )
+    conversa_id: Optional[str] = Field(
+        default=None, max_length=190,
+        description="Opcional: identifica o cliente/conversa no canal (telefone, e-mail, id do chat). "
+                    "Mensagens com o mesmo conversa_id entram na mesma conversa.",
+    )
     received_at: Optional[datetime] = Field(
         default=None, description="Opcional: data/hora original (importação ou simulação). Padrão: agora (UTC)."
     )
@@ -118,6 +123,11 @@ class ConversaDemoIn(BaseModel):
 
 class RespostaDemoIn(BaseModel):
     texto: str = Field(min_length=1, max_length=2000)
+
+
+class MensagemChatIn(BaseModel):
+    texto: str = Field(min_length=1, max_length=2000)
+    autor: Optional[str] = Field(default=None, max_length=120)
 
 
 class RespostaIn(BaseModel):
@@ -203,9 +213,13 @@ def create_app() -> FastAPI:
     @app.post("/webhook/mensagens", status_code=202, dependencies=[Depends(exigir_chave)])
     def webhook(msg: MensagemIn, background: BackgroundTasks):
         try:
-            ticket_id = tickets.criar_ticket(msg.canal, msg.texto, msg.cliente, msg.received_at, msg.external_id)
+            ticket_id, novo = tickets.receber_mensagem(
+                msg.canal, msg.texto, msg.cliente, msg.received_at, msg.external_id, msg.conversa_id
+            )
         except tickets.TicketDuplicado as dup:
             return {"ticket_id": dup.ticket_id, "status": "duplicado"}
+        if not novo:
+            return {"ticket_id": ticket_id, "status": "anexada"}
         background.add_task(pipeline.processar_ticket, ticket_id)
         return {"ticket_id": ticket_id, "status": "pendente"}
 
@@ -237,10 +251,13 @@ def create_app() -> FastAPI:
             if recebido and recebido > utcnow():
                 recebido = None
             try:
-                ticket_id = tickets.criar_ticket(canal, m["texto"], m["cliente"], recebido, m["external_id"])
+                ticket_id, novo = tickets.receber_mensagem(
+                    canal, m["texto"], m["cliente"], recebido, m["external_id"], m.get("conversa_id")
+                )
             except tickets.TicketDuplicado:
                 continue  # a Meta reenvia quando não recebe 200 a tempo
-            background.add_task(pipeline.processar_ticket, ticket_id)
+            if novo:
+                background.add_task(pipeline.processar_ticket, ticket_id)
             novas += 1
         return {"recebidas": novas}  # 200 sempre que a assinatura é válida, para a Meta não reenviar em loop
 
@@ -270,28 +287,34 @@ def create_app() -> FastAPI:
     if settings.demo_enabled:
         csp_demo = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
                     "connect-src 'self'; base-uri 'none'; form-action 'none'")
-        # O apresentador é o atendente e a IA faz o papel do cliente (cliente_simulado). A primeira fala do cliente passa
-        # pelo mesmo conversor do canal real e abre o ticket; o resto da conversa continua nele, como numa central de
-        # atendimento (uma conversa = um ticket). A resposta do atendente registra a 1ª resposta (SLA).
+        # O apresentador é o atendente e a IA faz o papel do cliente (cliente_simulado). Cada fala do cliente passa pelo
+        # mesmo conversor do canal real e entra na conversa do chat (ADR-016): a primeira abre o ticket e é classificada,
+        # as seguintes são anexadas a ele. A resposta do atendente vai para a mesma conversa e registra a 1ª resposta.
         conversas = cliente_simulado.Conversas()
 
-        def _fala_do_cliente(conv: cliente_simulado.Conversa, background: BackgroundTasks) -> dict:
+        def _fala_do_cliente(cid: str, conv: cliente_simulado.Conversa, background: BackgroundTasks) -> dict:
             fala = cliente_simulado.proxima_fala(conv)
             if fala["assunto"]:
                 conv.assunto = fala["assunto"]
             conv.historico.append(("cliente", fala["mensagem"]))
             conv.encerrada = fala["encerrou"]
-            ticket_id, m = None, None
-            if not conv.tickets and conv.canal == "email":
+            if conv.canal == "email":
+                assunto = conv.assunto or ""
                 m = demo_email.email_demo_para_mensagem(conv.contato, conv.nome, "atendimento@suaempresa.com.br",
-                                                        conv.assunto or "", fala["mensagem"])
-            elif not conv.tickets:
+                                                        assunto if conv.falas_cliente == 1 else "Re: " + assunto,
+                                                        fala["mensagem"])
+            else:
                 m = demo_chat.mensagem_demo(conv.canal, conv.contato, conv.nome if conv.canal == "whatsapp" else None,
                                             fala["mensagem"])
-            if m is not None:  # texto que o canal real ignoraria (curto demais) não vira ticket
-                ticket_id = tickets.criar_ticket(conv.canal, m["texto"], m["cliente"], m["received_at"], m["external_id"])
-                conv.tickets.append(ticket_id)
-                background.add_task(pipeline.processar_ticket, ticket_id)
+            ticket_id = None
+            if m is not None:  # texto que o canal real ignoraria (curto demais) não entra
+                # Cada "Novo cliente" é uma conversa nova, mesmo que a persona sorteada se repita.
+                tid, novo = tickets.receber_mensagem(conv.canal, m["texto"], m["cliente"], m["received_at"],
+                                                     m["external_id"], f"demo:{cid}")
+                if novo:
+                    conv.tickets.append(tid)
+                    ticket_id = tid
+                    background.add_task(pipeline.processar_ticket, tid)
             return {"texto": fala["mensagem"], "ticket_id": ticket_id, "encerrou": conv.encerrada,
                     "assunto": conv.assunto if conv.canal == "email" else None}
 
@@ -310,7 +333,7 @@ def create_app() -> FastAPI:
             if canal not in cliente_simulado.CANAIS:
                 raise HTTPException(status_code=404, detail="canal de demonstração inexistente")
             cid, conv = conversas.nova(canal, corpo.cenario if corpo else None)
-            mensagem = _fala_do_cliente(conv, background)
+            mensagem = _fala_do_cliente(cid, conv, background)
             return {"conversa": cid, "cliente": {"nome": conv.nome, "contato": conv.contato},
                     "cenario": cliente_simulado.CENARIOS[conv.cenario][0], "mensagem": mensagem}
 
@@ -320,15 +343,12 @@ def create_app() -> FastAPI:
             if conv.encerrada:
                 raise HTTPException(status_code=409, detail="o cliente já encerrou a conversa")
             conv.historico.append(("atendente", corpo.texto.strip()))
-            for ticket_id in conv.tickets:  # idempotente: só a primeira resposta de cada ticket conta para o prazo
+            if conv.tickets:  # grava na conversa do ticket; a 1ª resposta conta para o prazo (SLA)
                 try:
-                    tickets.marcar_respondido(ticket_id)
-                except tickets.RespostaAnteriorAoRecebimento:
-                    # resposta no mesmo segundo da chegada: o MySQL arredonda o horário de chegada para cima
-                    tickets.marcar_respondido(ticket_id, tickets.obter(ticket_id)["received_at"])
+                    tickets.responder_chat(conv.tickets[0], corpo.texto, "Atendente (demo)")
                 except tickets.TicketNaoEncontrado:
                     pass  # a demo foi zerada no meio da conversa
-            return {"mensagem": _fala_do_cliente(conv, background)}
+            return {"mensagem": _fala_do_cliente(cid, conv, background)}
 
         @app.get("/demo/conversas/{cid}/tickets/{ticket_id}", include_in_schema=False)
         def demo_ticket_da_conversa(cid: str, ticket_id: int):
@@ -355,8 +375,11 @@ def create_app() -> FastAPI:
             convertida = demo_email.email_demo_para_mensagem(msg.de_email, msg.de_nome, msg.para, msg.assunto, msg.corpo)
             if convertida is None:  # remetente no-reply, texto vazio etc.: o leitor IMAP também ignoraria
                 return JSONResponse(status_code=400, content={"detail": "e-mail ignorado pelo filtro (remetente automático ou texto vazio)"})
-            ticket_id = tickets.criar_ticket("email", convertida["texto"], convertida["cliente"],
-                                             convertida["received_at"], convertida["external_id"])
+            ticket_id, novo = tickets.receber_mensagem("email", convertida["texto"], convertida["cliente"],
+                                                       convertida["received_at"], convertida["external_id"],
+                                                       convertida.get("conversa_id"))
+            if not novo:
+                return {"ticket_id": ticket_id, "status": "anexada"}
             background.add_task(pipeline.processar_ticket, ticket_id)
             return {"ticket_id": ticket_id, "status": "pendente"}
 
@@ -377,7 +400,10 @@ def create_app() -> FastAPI:
             m = demo_chat.mensagem_demo(canal, msg.remetente, msg.nome, msg.texto)
             if m is None:
                 return JSONResponse(status_code=400, content={"detail": "mensagem ignorada pelo canal (texto curto demais)"})
-            ticket_id = tickets.criar_ticket(canal, m["texto"], m["cliente"], m["received_at"], m["external_id"])
+            ticket_id, novo = tickets.receber_mensagem(canal, m["texto"], m["cliente"], m["received_at"],
+                                                       m["external_id"], m.get("conversa_id"))
+            if not novo:
+                return {"ticket_id": ticket_id, "status": "anexada"}
             background.add_task(pipeline.processar_ticket, ticket_id)
             return {"ticket_id": ticket_id, "status": "pendente"}
 
@@ -402,6 +428,24 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
         except tickets.RespostaAnteriorAoRecebimento:
             raise HTTPException(status_code=400, detail="respondido_em anterior ao recebimento do ticket")
+
+    @app.get("/tickets/{ticket_id}/mensagens", dependencies=[Depends(exigir_chave)])
+    def listar_mensagens(ticket_id: int, depois_de: int = Query(0, ge=0)):
+        """Conversa do ticket. Use `depois_de=<último id visto>` para buscar só as novas (polling do chat do cliente)."""
+        try:
+            return tickets.mensagens(ticket_id, depois_de)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
+
+    @app.post("/tickets/{ticket_id}/mensagens", status_code=201, dependencies=[Depends(exigir_chave)])
+    def enviar_mensagem(ticket_id: int, corpo: MensagemChatIn):
+        """Resposta do atendente na conversa (chat). Registra a 1ª resposta para o SLA."""
+        if not corpo.texto.strip():
+            raise HTTPException(status_code=400, detail="mensagem vazia")
+        try:
+            return tickets.responder_chat(ticket_id, corpo.texto, corpo.autor)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
 
     @app.post("/tickets/{ticket_id}/revisao", status_code=204, dependencies=[Depends(exigir_chave)])
     def confirmar(ticket_id: int):
