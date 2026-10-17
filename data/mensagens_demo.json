@@ -1,0 +1,424 @@
+[
+  {
+    "texto": "Meu Pix não funciona, dá erro na hora de pagar. Estou perdendo vendas!",
+    "canal": "WhatsApp",
+    "cliente": "Loja Aurora",
+    "idade_min": 20,
+    "esperado": {
+      "assunto": "pagamento",
+      "urgencia": "critica",
+      "sentimento": "negativo"
+    },
+    "grupo": "pix_fora"
+  },
+  {
+    "texto": "Pagamento por Pix falhando desde cedo, não consigo receber dos clientes.",
+    "canal": "E-mail",
+    "cliente": "Mercado Sol",
+    "idade_min": 16,
+    "esperado": {
+      "assunto": "pagamento",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "pix_fora"
+  },
+  {
+    "texto": "Pix fora do ar? Tentei pagar três vezes e deu erro.",
+    "canal": "Chat",
+    "cliente": "Carlos M.",
+    "idade_min": 12,
+    "esperado": {
+      "assunto": "pagamento",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "pix_fora"
+  },
+  {
+    "texto": "Pagamento via Pix travou aqui, urgente!",
+    "canal": "Instagram",
+    "cliente": "Padaria Bom Pão",
+    "idade_min": 8,
+    "esperado": {
+      "assunto": "pagamento",
+      "urgencia": "critica",
+      "sentimento": "negativo"
+    },
+    "grupo": "pix_fora"
+  },
+  {
+    "texto": "O Pix não está passando, aparece erro ao confirmar a transação.",
+    "canal": "Chat",
+    "cliente": "Studio Lume",
+    "idade_min": 3,
+    "esperado": {
+      "assunto": "pagamento",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "pix_fora"
+  },
+  {
+    "texto": "Não consigo fazer login, minha senha não funciona.",
+    "canal": "Chat",
+    "cliente": "João V.",
+    "idade_min": 25,
+    "esperado": {
+      "assunto": "acesso",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "login_bloqueado"
+  },
+  {
+    "texto": "Acesso bloqueado após trocar a senha, não consigo entrar.",
+    "canal": "Chat",
+    "cliente": "Clínica Vida",
+    "idade_min": 18,
+    "esperado": {
+      "assunto": "acesso",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "login_bloqueado"
+  },
+  {
+    "texto": "Tento entrar na minha conta e aparece que o usuário está bloqueado.",
+    "canal": "E-mail",
+    "cliente": "Marcos T.",
+    "idade_min": 11,
+    "esperado": {
+      "assunto": "acesso",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "login_bloqueado"
+  },
+  {
+    "texto": "Depois da atualização não consigo mais acessar o sistema com meu login.",
+    "canal": "WhatsApp",
+    "cliente": "Oficina Rápida",
+    "idade_min": 6,
+    "esperado": {
+      "assunto": "acesso",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": "login_bloqueado"
+  },
+  {
+    "texto": "Meu usuário foi bloqueado por tentativas de senha, preciso liberar agora para fechar o caixa!",
+    "canal": "Telefone",
+    "cliente": "Mercadinho União",
+    "idade_min": 5,
+    "esperado": {
+      "assunto": "acesso",
+      "urgencia": "critica",
+      "sentimento": "negativo"
+    },
+    "grupo": "login_bloqueado"
+  },
+  {
+    "texto": "Fui cobrado duas vezes na fatura deste mês, um absurdo.",
+    "canal": "E-mail",
+    "cliente": "Renata Alves",
+    "idade_min": 160,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": "cobranca_dupla"
+  },
+  {
+    "texto": "A fatura veio com cobrança em duplicidade, preciso do estorno.",
+    "canal": "Chat",
+    "cliente": "Bruno C.",
+    "idade_min": 150,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": "cobranca_dupla"
+  },
+  {
+    "texto": "Gostaria da segunda via da fatura de setembro.",
+    "canal": "E-mail",
+    "cliente": "Ana Paula",
+    "idade_min": 300,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null,
+    "respondido_apos_min": 250
+  },
+  {
+    "texto": "Como altero o e-mail do cadastro?",
+    "canal": "Chat",
+    "cliente": "Ricardo",
+    "idade_min": 90,
+    "esperado": {
+      "assunto": "duvida",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null,
+    "respondido_apos_min": 20
+  },
+  {
+    "texto": "Quero cancelar meu plano, estou cansado do atendimento.",
+    "canal": "WhatsApp",
+    "cliente": "Fernanda L.",
+    "idade_min": 200,
+    "esperado": {
+      "assunto": "cancelamento",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 100
+  },
+  {
+    "texto": "Obrigado pela ajuda ontem, tudo certo!",
+    "canal": "WhatsApp",
+    "cliente": "Pedro H.",
+    "idade_min": 45,
+    "esperado": {
+      "assunto": "elogio",
+      "urgencia": "baixa",
+      "sentimento": "positivo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 5
+  },
+  {
+    "texto": "Onde encontro o relatório mensal? Dúvida simples.",
+    "canal": "Telefone",
+    "cliente": "Marta S.",
+    "idade_min": 400,
+    "esperado": {
+      "assunto": "duvida",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null,
+    "respondido_apos_min": 300
+  },
+  {
+    "texto": "O aplicativo está muito lento para carregar as telas hoje.",
+    "canal": "Chat",
+    "cliente": "Camila R.",
+    "idade_min": 70,
+    "esperado": {
+      "assunto": "instabilidade",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "Vocês demoraram 10 dias para responder meu chamado, isso é inaceitável.",
+    "canal": "E-mail",
+    "cliente": "Eduardo P.",
+    "idade_min": 500,
+    "esperado": {
+      "assunto": "reclamacao",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 90
+  },
+  {
+    "texto": "Excelente atendimento, parabéns à equipe!",
+    "canal": "Instagram",
+    "cliente": "Júlia M.",
+    "idade_min": 35,
+    "esperado": {
+      "assunto": "elogio",
+      "urgencia": "baixa",
+      "sentimento": "positivo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 10
+  },
+  {
+    "texto": "Preciso emitir a nota fiscal do último pedido, qual o passo a passo?",
+    "canal": "E-mail",
+    "cliente": "Loja Delta",
+    "idade_min": 120,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null,
+    "respondido_apos_min": 60
+  },
+  {
+    "texto": "Quero encerrar minha conta, o serviço não atende mais minha empresa.",
+    "canal": "E-mail",
+    "cliente": "Grupo Norte",
+    "idade_min": 60,
+    "esperado": {
+      "assunto": "cancelamento",
+      "urgencia": "media",
+      "sentimento": "neutro"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "O sistema caiu completamente aqui, ninguém da equipe consegue usar.",
+    "canal": "Telefone",
+    "cliente": "Transportes Beta",
+    "idade_min": 14,
+    "esperado": {
+      "assunto": "instabilidade",
+      "urgencia": "critica",
+      "sentimento": "negativo"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "Não recebi o código de verificação por SMS para ativar minha conta.",
+    "canal": "Chat",
+    "cliente": "Lucas F.",
+    "idade_min": 9,
+    "esperado": {
+      "assunto": "acesso",
+      "urgencia": "media",
+      "sentimento": "neutro"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "O boleto que gerei ontem não está sendo aceito pelo banco.",
+    "canal": "WhatsApp",
+    "cliente": "Padaria Sabor",
+    "idade_min": 80,
+    "esperado": {
+      "assunto": "pagamento",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "Vocês têm integração com planilhas? Queria exportar os dados.",
+    "canal": "Chat",
+    "cliente": "Tiago G.",
+    "idade_min": 30,
+    "esperado": {
+      "assunto": "duvida",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "Meu plano foi renovado sem eu autorizar, quero meu dinheiro de volta.",
+    "canal": "E-mail",
+    "cliente": "Sônia K.",
+    "idade_min": 140,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 50
+  },
+  {
+    "texto": "Parabéns pela nova versão, ficou muito mais rápida.",
+    "canal": "Instagram",
+    "cliente": "Alan B.",
+    "idade_min": 55,
+    "esperado": {
+      "assunto": "elogio",
+      "urgencia": "baixa",
+      "sentimento": "positivo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 10
+  },
+  {
+    "texto": "Quero cancelar a assinatura antes da próxima cobrança, como faço?",
+    "canal": "Chat",
+    "cliente": "Vera L.",
+    "idade_min": 25,
+    "esperado": {
+      "assunto": "cancelamento",
+      "urgencia": "media",
+      "sentimento": "neutro"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "O relatório exportado está saindo com os valores errados nos impostos.",
+    "canal": "E-mail",
+    "cliente": "Contábil Sigma",
+    "idade_min": 95,
+    "esperado": {
+      "assunto": "instabilidade",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 80
+  },
+  {
+    "texto": "Já é a terceira vez que pedem para eu repetir meus dados no atendimento, estou irritado.",
+    "canal": "Telefone",
+    "cliente": "Gabriel S.",
+    "idade_min": 180,
+    "esperado": {
+      "assunto": "reclamacao",
+      "urgencia": "media",
+      "sentimento": "negativo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 150
+  },
+  {
+    "texto": "Bom dia, vocês atendem aos sábados?",
+    "canal": "Chat",
+    "cliente": "Helena",
+    "idade_min": 40,
+    "esperado": {
+      "assunto": "duvida",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null,
+    "respondido_apos_min": 10
+  },
+  {
+    "texto": "Quero mudar o vencimento da minha fatura para o dia 15.",
+    "canal": "WhatsApp",
+    "cliente": "Rafael D.",
+    "idade_min": 65,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "baixa",
+      "sentimento": "neutro"
+    },
+    "grupo": null
+  },
+  {
+    "texto": "Cobrança indevida de R$ 89 no meu cartão, não reconheço essa compra.",
+    "canal": "E-mail",
+    "cliente": "Diego M.",
+    "idade_min": 110,
+    "esperado": {
+      "assunto": "cobranca",
+      "urgencia": "alta",
+      "sentimento": "negativo"
+    },
+    "grupo": null,
+    "respondido_apos_min": 90
+  }
+]

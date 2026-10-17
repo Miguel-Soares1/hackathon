@@ -1,6 +1,6 @@
 ---
 name: Registro de Correções e Medição da Taxa de Acerto
-status: created
+status: implemented
 references: [1]
 ---
 
@@ -19,10 +19,10 @@ Permitir que o atendente corrija a classificação automática e registrar essas
 
 ## Critérios de Aceitação
 
-- [ ] O atendente consegue registrar uma correção para assunto, urgência, sentimento, equipe e/ou resposta sugerida.
-- [ ] A correção é associada ao ticket e à predição original.
-- [ ] A taxa de acerto é calculada por dimensão e no agregado.
-- [ ] O histórico de correções é persistido em MySQL e exposto ao painel (Spec 4).
+- [x] O atendente consegue registrar uma correção para assunto, urgência, sentimento, equipe e/ou resposta sugerida.
+- [x] A correção é associada ao ticket e à predição original.
+- [x] A taxa de acerto é calculada por dimensão e no agregado.
+- [x] O histórico de correções é persistido em MySQL e exposto ao painel (Spec 4).
 
 ## Fora de Escopo (V1)
 

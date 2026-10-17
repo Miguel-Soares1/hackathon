@@ -6,11 +6,11 @@
 
 | # | Nome | Status | Referências |
 |---|------|--------|-------------|
-| 1 | Classificação de Solicitações (assunto, urgência, sentimento) | created | — |
-| 2 | Agrupamento de Mensagens e Detecção de Incidentes | created | 1 |
-| 3 | Registro de Correções e Taxa de Acerto | created | 1 |
-| 4 | Painel de Monitoramento e Métricas | created | 1, 2, 3, 5 |
-| 5 | Prazos de Resposta (SLA) e Primeira Resposta | created | 1 |
+| 1 | Classificação de Solicitações (assunto, urgência, sentimento) | implemented | — |
+| 2 | Agrupamento de Mensagens e Detecção de Incidentes | in-progress (calibrar limiar com o modelo real) | 1 |
+| 3 | Registro de Correções e Taxa de Acerto | implemented | 1 |
+| 4 | Painel de Monitoramento e Métricas | implemented | 1, 2, 3, 5 |
+| 5 | Prazos de Resposta (SLA) e Primeira Resposta | implemented | 1 |
 
 ## Status
 

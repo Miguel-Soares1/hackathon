@@ -1,0 +1,25 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: hackathon-mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root-local}
+      MYSQL_DATABASE: hackathon
+      MYSQL_USER: hackathon
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hackathon}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Executados na primeira inicialização, em ordem alfabética:
+      - ./db/init/00_test_database.sql:/docker-entrypoint-initdb.d/00_test_database.sql:ro
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root-local}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql_data:
