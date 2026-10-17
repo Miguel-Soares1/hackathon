@@ -57,6 +57,7 @@ def test_demo_desligada_em_producao(db, monkeypatch):
 
 
 def test_demo_pode_ser_desligada_por_variavel(db, monkeypatch):
+    monkeypatch.delenv("DEMO", raising=False)  # DEMO, se existir no .env, tem prioridade sobre DEMO_EMAIL
     monkeypatch.setenv("DEMO_EMAIL", "0")
     from triagem.api import create_app
     assert TestClient(create_app()).get("/demo/email").status_code == 404

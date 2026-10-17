@@ -235,8 +235,10 @@ function renderMetricas() {
 
   $("#metricas").innerHTML = `
     <div class="card"><h2>Principais motivos de contato</h2>${motivos}</div>
-    <div class="card"><h2>Precisão da triagem</h2>${precisao}</div>
-    <div class="card"><h2>Evolução da IA por versão do prompt</h2>${evolucao}</div>
+    <div class="card largo"><div class="lado-a-lado">
+      <div><h2>Precisão da triagem</h2>${precisao}</div>
+      <div><h2>Evolução da IA por versão do prompt</h2>${evolucao}</div>
+    </div></div>
     <div class="card"><h2>SLI e error budget</h2>
       <div class="politica ${esc(sli.politica)}">${esc(POLITICA_TEXTO[sli.politica])}</div>
       <p>SLI (janela ${sli.janela_dias} dias): <b>${pct(sli.sli_pct)}</b> · meta ${sli.alvo_pct.toFixed(0)}%</p>

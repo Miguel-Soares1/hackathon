@@ -25,14 +25,26 @@ conjunto de ajuste e é preciso escrever outro.
 | Plano B (regras), agregado | 80,4% | **48,3%** |
 | Plano B, urgência | 70,6% | 36,7% |
 | Plano B, urgência subestimada | 8/34 | **17/30** |
-| LLM (DeepSeek), agregado | 89,2% (1 rodada) | pendente |
+| LLM (DeepSeek, prompt v2), agregado | 89,2% (1 rodada) | **81,4%** (3 rodadas: 80,8–81,7%) |
+| LLM, urgência subestimada | — | 6 a 7/30 |
+| LLM + few-shot (`v2+fewshot`), agregado | — | **86,4%** (3 rodadas: 85,8–86,7%; 1,2 exemplo por mensagem) |
+| LLM + few-shot, urgência subestimada | — | 4 a 5/30 |
+| JSON válido · prompt injection | 34/34 · 3/3 | 30/30 em todas as rodadas · **6/6** |
 
 No holdout, o plano B classifica como `duvida` muitas mensagens sem palavra-chave conhecida e cai em urgência `baixa`.
 Esse é o erro mais grave para o SLA. Isso não muda a decisão do ADR-009 (o plano B só entra quando o LLM falha),
 mas mostra que, nesse modo, a urgência precisa de revisão humana.
 
-**Pendente:** rodar o LLM no holdout com 3 rodadas e gravar o relatório:
-`python scripts/avaliar_triagem.py --arquivo data/mensagens_holdout.json --rodadas 3 --saida docs/avaliacao_holdout.json`
+Medido em 17/10/2026 com a versão integrada (todas as branches), relatório em `data/avaliacoes/holdout_v2.json`:
+`python scripts/avaliar_triagem.py --arquivo data/mensagens_holdout.json --rodadas 3 --saida data/avaliacoes/holdout_v2.json`
+
+No modo few-shot, os exemplos vêm do próprio holdout (deixando de fora a mensagem avaliada), simulando correções
+já feitas pelo atendente. Os rótulos são da mesma pessoa que rotulou o conjunto, então o ganho de 5 pontos é um
+limite superior do que se espera com correções reais.
+
+Erros que se repetem nas 3 rodadas do LLM: a `equipe` de problemas de sistema (erro 500, lentidão, notificação) sai
+`suporte_tecnico` e o rótulo diz `engenharia`. É uma divergência de definição, porque a spec não define o mapa
+assunto → equipe; o grupo precisa decidir qual está certo.
 
 ## Limitações
 

@@ -84,7 +84,11 @@ mensagens de demo (inclui ironia e prompt injection). Ao mudar o texto do prompt
 python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json   # regras × LLM × LLM+few-shot + injection
 ```
 
-**Banco criado antes desta versão:** rode `db/migrations/003_prompt_version.sql` e depois `python scripts/criar_banco.py`.
+**Banco criado antes desta versão:** aplique as migrações em ordem e recrie a visão:
+```powershell
+Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
+python scripts/criar_banco.py
+```
 
 ## Scripts da demo
 
