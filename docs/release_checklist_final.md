@@ -15,7 +15,8 @@ Estado verificado no desenvolvimento. Itens abertos estão desmarcados.
 - [x] **Ensaio com falha:** API do LLM inacessível → 2 tentativas → plano B (`origem = fallback`) em ~5 s.
 - [x] **Aprendizado com correções (Spec 6, ADR-014):** few-shot dinâmico com testes (`tests/test_exemplos.py`), versão do prompt gravada em cada triagem e conjunto de avaliação separado com 60 mensagens.
 - [ ] **Linha de base do prompt `v2` × `v2+fewshot`** com a chave real: `python scripts/avaliar_triagem.py --saida data/avaliacoes/v2.json`.
-- [ ] **Deploy em produção:** seguir `docs/deploy.md`; conferir HTTPS, 401 sem chave, formulário público e login do painel.
-- [ ] **Teste de carga no ambiente real:** `scripts/teste_carga.py` com a chave do LLM (medir tempo até classificar e proporção de `fallback`).
-- [ ] **Backup agendado** (`scripts/backup.sh` no cron) e testado com uma restauração.
+- [ ] **Canais de demonstração:** WhatsApp, Instagram e e-mail fictícios em `/demo` criam tickets pelo mesmo conversor do canal real (`docs/canais.md`).
+- [ ] **Deploy em produção (opcional; a demo roda local):** seguir `docs/deploy.md`; conferir HTTPS, 401 sem chave, formulário público e login do painel.
+- [ ] **Teste de carga no ambiente real (opcional):** `scripts/teste_carga.py` com a chave do LLM (medir tempo até classificar e proporção de `fallback`).
+- [ ] **Backup agendado (opcional, só com deploy):** `scripts/backup.sh` no cron, testado com uma restauração.
 

@@ -17,8 +17,11 @@
 		reverse_proxy api:8000
 	}
 
-	# WhatsApp Cloud API (Meta): autenticado por token de verificação e assinatura HMAC na aplicação.
+	# WhatsApp e Instagram (Meta): autenticados por token de verificação e assinatura HMAC na aplicação.
 	handle /webhooks/whatsapp {
+		reverse_proxy api:8000
+	}
+	handle /webhooks/instagram {
 		reverse_proxy api:8000
 	}
 

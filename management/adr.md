@@ -186,7 +186,7 @@ Consequências: ...
 
 ## ADR-012: Deploy em produção com Docker Compose, HTTPS automático e entrada pública limitada
 
-**Status:** accepted
+**Status:** accepted (opcional: a demo roda localmente; os arquivos de deploy ficam para uso futuro)
 
 **Contexto:** o sistema será exposto na web e precisa receber demanda real, mas os canais reais (WhatsApp, e-mail) ainda não estão integrados. O painel mostra texto de clientes e o LLM tem custo por chamada.
 
@@ -212,6 +212,8 @@ Consequências: ...
 - Sem custo e sem domínio próprio de e-mail; o número de teste da Meta limita destinatários (R15) e o token temporário expira (R14).
 - IMAP é por varredura (30 s): latência de até 30 s para e-mail, aceitável frente ao menor prazo de SLA (15 min).
 - Migração de bancos existentes: `db/migrations/002_external_id.sql`.
+- Instagram Direct entrou depois pelo mesmo caminho (`/webhooks/instagram`, mesma assinatura HMAC da Meta).
+- Telas `/demo/*` simulam os três canais na apresentação passando pelo mesmo conversor do canal real; ficam desligadas em produção.
 
 ## ADR-014: A triagem aprende com as correções por few-shot dinâmico (sem fine-tuning)
 

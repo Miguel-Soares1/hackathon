@@ -1,0 +1,62 @@
+"""Tela de demonstração do canal e-mail (/demo/email)."""
+from fastapi.testclient import TestClient
+
+from triagem.demo_email import email_demo_para_mensagem
+
+EMAIL = {"de_email": "mariana@exemplo.com", "de_nome": "Mariana Souza", "assunto": "Cobrança duplicada",
+         "corpo": "Fui cobrada duas vezes na fatura deste mês. Quero o estorno."}
+
+
+def test_email_demo_passa_pelo_mesmo_conversor_do_imap():
+    # Act
+    m = email_demo_para_mensagem("Mariana@Exemplo.com", "Mariana", "atendimento@x.com", "Assunto", "Corpo da mensagem")
+    # Assert
+    assert m["cliente"] == "mariana@exemplo.com"
+    assert m["texto"] == "Assunto\n\nCorpo da mensagem"
+    assert m["external_id"].endswith("@demo.local>")
+
+
+def test_pagina_demo_disponivel_em_desenvolvimento(client):
+    r = client.get("/demo/email")
+    assert r.status_code == 200 and "Nova mensagem" in r.text
+    assert "connect-src 'self'" in r.headers["content-security-policy"]
+
+
+def test_envio_demo_cria_ticket_do_canal_email(client):
+    # Act
+    r = client.post("/demo/email", json=EMAIL)
+    # Assert
+    assert r.status_code == 202
+    t = client.get(f"/demo/email/tickets/{r.json()['ticket_id']}").json()
+    assert t["canal"] == "email"
+    assert t["status"] == "classificado"  # o TestClient roda a tarefa em background antes de devolver
+    assert t["assunto"] is not None
+
+
+def test_envio_demo_respeita_filtro_de_remetente_automatico(client):
+    r = client.post("/demo/email", json={**EMAIL, "de_email": "no-reply@exemplo.com"})
+    assert r.status_code == 400
+
+
+def test_envio_demo_valida_remetente(client):
+    assert client.post("/demo/email", json={**EMAIL, "de_email": "sem-arroba"}).status_code == 400
+
+
+def test_demo_desligada_em_producao(db, monkeypatch):
+    # Arrange
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("API_KEY", "x" * 32)
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "senha-forte-123")
+    monkeypatch.setenv("DATABASE_URL", "mysql+pymysql://u:p@127.0.0.1:3306/hackathon_test")
+    from triagem.api import create_app
+    # Act
+    c = TestClient(create_app())
+    # Assert
+    assert c.get("/demo/email").status_code == 404
+    assert c.post("/demo/email", json=EMAIL).status_code in (404, 405)
+
+
+def test_demo_pode_ser_desligada_por_variavel(db, monkeypatch):
+    monkeypatch.setenv("DEMO_EMAIL", "0")
+    from triagem.api import create_app
+    assert TestClient(create_app()).get("/demo/email").status_code == 404

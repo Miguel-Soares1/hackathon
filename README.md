@@ -28,6 +28,8 @@ python scripts/simular.py                                       # 2) envia as 34
 
 Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
+Simulador de canais para a apresentação (WhatsApp, Instagram e e-mail fictícios): http://localhost:8000/demo (veja `docs/canais.md`).
+
 > **Windows:** troque `source .venv/bin/activate` por `.venv\Scripts\activate`.
 > **Sem Docker:** crie o banco `hackathon` num MySQL 8 local, rode `db/schema.sql` nele e ajuste `DATABASE_URL`.
 > **Sem chave do LLM:** funciona mesmo assim; a triagem usa o plano B por regras (`origem = fallback`).
@@ -118,7 +120,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | Método e rota | Função | Respostas |
 |---|---|---|
 | `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações) | 202, 400, 401 |
-| `GET` · `POST /webhooks/whatsapp` | verificação e mensagens da WhatsApp Cloud API (token e assinatura HMAC, sem `X-API-Key`) | 200 · 200, 401, 503 |
+| `GET/POST /webhooks/whatsapp` · `/webhooks/instagram` | webhooks da Meta (assinatura `X-Hub-Signature-256`) | 200, 403, 503 |
 | `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
 | `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA), versão do prompt e exemplos usados | 200, 404 |
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |
@@ -133,7 +135,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 
 ```
 src/triagem/   api, pipeline, classifier (LLM), exemplos (few-shot), fallback (regras), embeddings, incidents, sla,
-               corrections, metrics, canais (WhatsApp), email_imap, pagina_envio (formulário), ratelimit
+               corrections, metrics, canais (WhatsApp, Instagram), demo_chat/demo_email (telas /demo), email_imap, pagina_envio (formulário), ratelimit
 frontend/      painel em HTML, CSS e JavaScript puros (servido pela própria API, sem build)
 db/            schema.sql (DDL versionado), migrations/ (bancos existentes) e init do banco de testes
 scripts/       iniciar.ps1 (sobe tudo) · simular.py (canais) · calibrar_limiar.py · avaliar_triagem.py · resetar_demo.py · criar_banco.py · teste_carga.py · backup.sh

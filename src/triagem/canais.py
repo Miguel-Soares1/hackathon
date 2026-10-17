@@ -62,6 +62,41 @@ def mensagens_whatsapp(payload: dict) -> list[dict]:
     return saida
 
 
+# ---------------- Instagram (Direct, via Meta) ----------------
+def mensagens_instagram(payload: dict) -> list[dict]:
+    """Extrai mensagens de TEXTO do webhook do Instagram (object='instagram', entry[].messaging[]).
+
+    Ignora ecos (mensagens enviadas pela própria empresa), reações, leituras e anexos.
+    Retorna [{external_id, cliente, texto, received_at}]. Tolera payloads malformados (retorna []).
+    """
+    saida: list[dict] = []
+    if not isinstance(payload, dict) or payload.get("object") not in (None, "instagram"):
+        return saida
+    for entry in _lista(payload.get("entry")):
+        for ev in _lista(entry.get("messaging") if isinstance(entry, dict) else None):
+            if not isinstance(ev, dict):
+                continue
+            m = ev.get("message")
+            if not isinstance(m, dict) or m.get("is_echo") or m.get("is_deleted"):
+                continue
+            corpo = (m.get("text") or "").strip() if isinstance(m.get("text"), str) else ""
+            mid = m.get("mid")
+            de = (ev.get("sender") or {}).get("id") if isinstance(ev.get("sender"), dict) else None
+            if len(corpo) < 3 or not mid or not de:
+                continue
+            try:
+                recebido = datetime.fromtimestamp(int(ev["timestamp"]) / 1000, tz=timezone.utc).replace(tzinfo=None)
+            except (KeyError, ValueError, TypeError, OverflowError, OSError):
+                recebido = None
+            saida.append({
+                "external_id": str(mid)[:190],
+                "cliente": f"instagram:{de}"[:120],
+                "texto": corpo[:TEXTO_MAX],
+                "received_at": recebido,
+            })
+    return saida
+
+
 # ---------------- E-mail ----------------
 _REMETENTE_AUTOMATICO = re.compile(r"(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer-daemon|postmaster|notifications?@|bounce)", re.I)
 _CITACAO = re.compile(r"^(>|On .+ wrote:|Em .+ escreveu:|-{2,}\s*(Original Message|Mensagem original))", re.I)
