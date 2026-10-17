@@ -78,7 +78,13 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
   .item.resposta { cursor:pointer; } .item.resposta.novo { background:var(--prs); } .item.resposta.novo .as { font-weight:800; }
   .item.resposta .prev { white-space:pre-wrap; color:var(--tx); }
   .prev { font-size:13px; color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  @media (max-width: 980px) { .app { grid-template-columns:1fr; height:auto; } nav, .busca { display:none; } .painel { min-height:340px; } }
+  .no-cel { font-size:13px; font-weight:600; color:var(--pr); text-decoration:none; }
+  @media (max-width: 980px) { .app { grid-template-columns:1fr; height:auto; } nav:not(.abas), .busca { display:none; } .painel { min-height:340px; } }
+  /* Aberta no próprio celular */
+  @media (max-width: 520px) {
+    header { flex-wrap:wrap; padding:8px 10px; gap:8px; } .tag-demo, .no-cel { display:none; } .abas { width:100%; } .abas a { flex:1; text-align:center; }
+    .app { padding:0 8px 8px; } .campo input, textarea { font-size:16px; } .modelos { margin-left:0; }
+  }
 </style>
 </head>
 <body>
@@ -86,6 +92,7 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
   <div class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3" fill="#0b57d0"/><path d="M3.5 6.5 12 13l8.5-6.5" stroke="#fff" stroke-width="2" fill="none"/></svg>Correio</div>
   <div class="busca">Pesquisar e-mails</div>
   <nav class="abas" aria-label="Canais"><a href="/demo/whatsapp">WhatsApp</a><a href="/demo/instagram">Instagram</a><a href="/demo/email" class="on">E-mail</a></nav>
+  <a class="no-cel" href="/demo/celular">📱 Abrir no celular</a>
   <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO</span>
 </header>
 <div class="app">
