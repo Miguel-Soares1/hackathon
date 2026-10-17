@@ -28,7 +28,7 @@ Classificar automaticamente cada solicitação de cliente e devolver, além das 
 - [ ] A saída do LLM é um JSON válido e estruturado.
 - [ ] É feita uma única chamada ao LLM por ticket.
 - [ ] Cada predição inclui um score de confiança.
-- [ ] O resultado é persistido em SQLite (ADR-002) associado ao identificador do ticket.
+- [ ] O resultado é persistido em MySQL (ADR-002) associado ao identificador do ticket.
 
 ## Fora de Escopo (V1)
 

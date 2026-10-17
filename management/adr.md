@@ -32,18 +32,18 @@ Consequências: ...
 
 ---
 
-## ADR-002: SQLite como banco de dados
+## ADR-002: MySQL como banco de dados
 
 **Status:** accepted
 
-**Contexto:** precisamos persistir tickets, correções e métricas sem custo de infraestrutura nem instalação de servidor.
+**Contexto:** precisamos persistir tickets, correções e métricas com um banco relacional robusto e suporte a acesso concorrente.
 
-**Decisão:** usar SQLite (arquivo único). Guarda tickets, correções e métricas.
+**Decisão:** usar MySQL (banco SQL relacional). Guarda tickets, correções e métricas.
 
 **Consequências:**
-- Zero instalação/servidor; portátil e simples.
-- Adequado a volume baixo/médio.
-- Concorrência de escrita limitada (aceitável no escopo do hackathon).
+- Banco relacional maduro e adequado a produção.
+- Requer servidor de banco (instalação/conexão), diferente de um arquivo embutido.
+- Suporta concorrência de escrita.
 
 ---
 

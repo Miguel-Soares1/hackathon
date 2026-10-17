@@ -12,7 +12,7 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 
 ## Escopo
 
-- **Tecnologia:** painel Streamlit (ADR-005) consumindo dados do SQLite (ADR-002).
+- **Tecnologia:** painel Streamlit (ADR-005) consumindo dados do MySQL (ADR-002).
 - **Fontes de dados:** classificação (Spec 1), incidentes (Spec 2), correções/precisão (Spec 3) e prazos/SLA das solicitações.
 - **Visualizações:**
   - Fila de atendimento (tickets pendentes).
