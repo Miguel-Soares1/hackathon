@@ -27,6 +27,8 @@ streamlit run dashboard/app.py                                  # 2) painel em h
 python scripts/simular.py                                       # 3) envia as 34 mensagens de demo
 ```
 
+Simulador de canais para a apresentação (WhatsApp, Instagram e e-mail fictícios): http://localhost:8000/demo (veja `docs/canais.md`).
+
 Documentação interativa da API: http://localhost:8000/docs (use o header `X-API-Key`).
 
 > **Windows:** troque `source .venv/bin/activate` por `.venv\Scripts\activate`.
@@ -80,6 +82,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | Método e rota | Função | Respostas |
 |---|---|---|
 | `POST /webhook/mensagens` | recebe uma solicitação (canais/integrações) | 202, 400, 401 |
+| `GET/POST /webhooks/whatsapp` · `/webhooks/instagram` | webhooks da Meta (assinatura `X-Hub-Signature-256`) | 200, 403, 503 |
 | `GET /enviar` · `POST /public/mensagens` | formulário web público (sem chave, com limite de taxa) | 200 · 202, 400, 429 |
 | `GET /tickets`, `GET /tickets/{id}` | fila com prazo (SLA) | 200, 404 |
 | `POST /tickets/{id}/resposta` | registra a 1ª resposta | 200, 404 |

@@ -25,6 +25,9 @@ class Settings:
     dashboard_password: str
     whatsapp_verify_token: str
     whatsapp_app_secret: str
+    instagram_verify_token: str
+    instagram_app_secret: str
+    demo_enabled: bool
 
 
 def _bool(nome: str, padrao: bool) -> bool:
@@ -54,6 +57,11 @@ def get_settings() -> Settings:
         dashboard_password=os.getenv("DASHBOARD_PASSWORD", ""),
         whatsapp_verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", ""),
         whatsapp_app_secret=os.getenv("WHATSAPP_APP_SECRET", ""),
+        instagram_verify_token=os.getenv("INSTAGRAM_VERIFY_TOKEN", ""),
+        # O Instagram costuma estar no mesmo app da Meta que o WhatsApp: sem segredo próprio, usa o do app.
+        instagram_app_secret=os.getenv("INSTAGRAM_APP_SECRET", "") or os.getenv("WHATSAPP_APP_SECRET", ""),
+        # Telas /demo/*: ligadas por padrão em desenvolvimento, sempre desligadas em produção.
+        demo_enabled=_bool("DEMO", _bool("DEMO_EMAIL", True)) and os.getenv("ENVIRONMENT", "development").lower() != "production",
     )
 
 
