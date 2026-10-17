@@ -124,7 +124,7 @@ def test_producao_recusa_segredos_fracos(db, monkeypatch):
 
     monkeypatch.setenv("ENVIRONMENT", "production")
     with pytest.raises(RuntimeError, match="insegura"):
-        create_app()  # API_KEY de teste é curta e DASHBOARD_PASSWORD está vazia
+        create_app()  # API_KEY de teste é curta e de exemplo
 
 
 def test_producao_aceita_segredos_fortes(db, monkeypatch):
@@ -132,6 +132,5 @@ def test_producao_aceita_segredos_fortes(db, monkeypatch):
 
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("API_KEY", "k" * 32)
-    monkeypatch.setenv("DASHBOARD_PASSWORD", "senha-forte-de-12+")
     monkeypatch.setenv("DATABASE_URL", "mysql+pymysql://app:Segredo-Forte@127.0.0.1:3306/hackathon_test")
     assert create_app() is not None

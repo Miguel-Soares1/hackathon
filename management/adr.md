@@ -79,7 +79,7 @@ Consequências: ...
 
 ## ADR-005: Streamlit para o painel
 
-**Status:** accepted
+**Status:** superseded por ADR-010
 
 **Contexto:** entregar fila, alertas e métricas em poucas horas.
 
@@ -124,7 +124,7 @@ Consequências: ...
 
 ## ADR-008: Embeddings locais com modelo multilíngue
 
-**Status:** accepted
+**Status:** accepted (execução alterada pelo ADR-011)
 
 **Contexto:** o ADR-004 não definia o provedor de embeddings, e a API do LLM escolhida (DeepSeek) é usada para chat/classificação.
 
@@ -152,21 +152,53 @@ Consequências: ...
 
 ---
 
-## ADR-010: Deploy em produção com Docker Compose, HTTPS automático e entrada pública limitada
+## ADR-010: Painel em HTML, CSS e JavaScript puros, servido pela API
+
+**Status:** accepted
+
+**Contexto:** o projeto precisaria ser publicado em hospedagem gratuita (depois, a equipe decidiu rodar tudo localmente; a decisão continua valendo porque reduz o consumo do notebook da demo). O Streamlit é um segundo serviço Python, com servidor próprio, dependências pesadas (pandas, pyarrow) e acesso direto ao banco. Em planos gratuitos, isso dobra o consumo de memória e o número de serviços.
+
+**Decisão:** reescrever o painel como arquivos estáticos (`frontend/`: HTML, CSS e JavaScript, sem framework, sem build e sem dependências externas). A própria API FastAPI serve esses arquivos na raiz (`/`) e o painel consome os mesmos endpoints públicos da API, com a chave no header `X-API-Key` (guardada só na aba, em `sessionStorage`). O endpoint `GET /dominio` expõe os valores permitidos para os formulários.
+
+**Consequências:**
+- Um único serviço para subir; o painel pesa alguns KB e carrega instantaneamente.
+- O painel deixa de acessar o banco direto: tudo passa pela API autenticada (reduz T7 do threat model).
+- Os arquivos estáticos podem ir para qualquer CDN gratuita se um dia o backend ficar separado.
+- Sem gráficos de biblioteca: as barras são feitas em CSS.
+
+---
+
+## ADR-011: Embeddings em ONNX int8 com SentencePiece, sem PyTorch
+
+**Status:** accepted
+
+**Contexto:** a hospedagem gratuita avaliada (Render free) oferecia 512 MB de RAM. A equipe depois decidiu rodar tudo localmente, mas a decisão se mantém: o notebook da demo tem 8 GB, e o processo antigo chegou a ser encerrado por falta de memória. O Hugging Face Spaces passou a exigir plano pago para Docker. Com `sentence-transformers` + PyTorch, o modelo do ADR-008 ocupa ~800 MB e o processo é morto por falta de memória. Mesmo em ONNX, o `tokenizer.json` do modelo (vocabulário de 250 mil tokens) consome ~320 MB ao carregar.
+
+**Decisão:** manter o mesmo modelo (`paraphrase-multilingual-MiniLM-L12-v2`), mas executá-lo pela versão ONNX quantizada em int8 (`Xenova/paraphrase-multilingual-MiniLM-L12-v2`, `onnx/model_quantized.onnx`) com `onnxruntime`. A tokenização usa o `sentencepiece.bpe.model` original, com a convenção de ids do XLM-RoBERTa. Cada texto é codificado sozinho, porque na quantização dinâmica a escala depende do lote. O backend `sbert` continua disponível como opção (instalando `sentence-transformers`).
+
+**Consequências:**
+- Pico de memória do serviço completo: 365 MB, medido num container de 512 MB processando 38 mensagens com o LLM real. A instalação deixa de baixar o PyTorch (~550 MB).
+- Fidelidade: similaridade média de 0,995 (mínima 0,988) entre os vetores ONNX e os do modelo original. Os tokens são idênticos em 41 de 42 textos de teste, inclusive acentos, emoji e prompt injection.
+- O limiar calibrado (0,60) se manteve: 2/2 incidentes, zero falsos em 200 ordens aleatórias (`docs/calibracao_limiar.md`).
+- O modelo (~120 MB) é baixado do Hugging Face no primeiro uso e fica em cache; depois a API funciona sem acessar o Hugging Face.
+
+---
+
+## ADR-012: Deploy em produção com Docker Compose, HTTPS automático e entrada pública limitada
 
 **Status:** accepted
 
 **Contexto:** o sistema será exposto na web e precisa receber demanda real, mas os canais reais (WhatsApp, e-mail) ainda não estão integrados. O painel mostra texto de clientes e o LLM tem custo por chamada.
 
-**Decisão:** empacotar em uma imagem Docker (API e painel) e subir com `docker-compose.prod.yml` (MySQL, API, painel e Caddy). O Caddy faz HTTPS automático e é o único serviço com portas publicadas. A entrada de demanda se dá por (1) um formulário web público em `/enviar`, protegido por limite de taxa por IP e global, honeypot e limite de tamanho, e (2) o webhook autenticado por `X-API-Key` para integrações. O painel exige senha. Em produção, a API recusa subir com segredos fracos.
+**Decisão:** empacotar em uma imagem Docker e subir com `docker-compose.prod.yml` (MySQL, API e Caddy; a API serve também o painel, ADR-010). O Caddy faz HTTPS automático e é o único serviço com portas publicadas. A entrada de demanda se dá por (1) um formulário web público em `/enviar`, protegido por limite de taxa por IP e global, honeypot e limite de tamanho, e (2) o webhook autenticado por `X-API-Key` para integrações. O painel exige a `API_KEY`. Em produção, a API recusa subir com segredos fracos.
 
 **Consequências:**
-- Um único servidor com 2 vCPU/4 GB roda tudo; simples de operar e de reproduzir.
+- Um único servidor com 1 vCPU/2 GB roda tudo (embeddings em ONNX, ADR-011); simples de operar e de reproduzir.
 - O formulário público abre uma superfície de abuso, mitigada por limites (ver `docs/threat-model.md`, T9 e T10).
 - O limitador de taxa é em memória: a API deve rodar com um único worker.
 - Não há alta disponibilidade; backup diário do MySQL via `scripts/backup.sh`.
 
-## ADR-011: Canais reais — WhatsApp Cloud API (webhook) e e-mail por IMAP (leitor separado)
+## ADR-013: Canais reais — WhatsApp Cloud API (webhook) e e-mail por IMAP (leitor separado)
 
 **Status:** accepted
 

@@ -5,23 +5,27 @@ import secrets
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 from . import canais, corrections, incidents, metrics, pipeline, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
+from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
 from .pagina_envio import PAGINA_ENVIO
 from .ratelimit import LimitadorJanela
 
 logger = logging.getLogger(__name__)
 
 CANAIS_MAX = 30
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
 def exigir_chave(x_api_key: Optional[str] = Header(default=None)) -> None:
@@ -266,6 +270,16 @@ def create_app() -> FastAPI:
     @app.get("/metricas", dependencies=[Depends(exigir_chave)])
     def resumo():
         return metrics.resumo()
+
+    @app.get("/dominio", dependencies=[Depends(exigir_chave)])
+    def dominio():
+        """Valores permitidos na triagem, para o painel montar os formulários de correção."""
+        return {"assuntos": ASSUNTOS, "urgencias": URGENCIAS, "sentimentos": SENTIMENTOS, "equipes": EQUIPES}
+
+    # Painel (HTML/CSS/JS estáticos) servido pela própria API: um único serviço para subir.
+    # Montado por último para não sombrear as rotas acima.
+    if FRONTEND.is_dir():
+        app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="painel")
 
     return app
 

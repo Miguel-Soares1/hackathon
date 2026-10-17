@@ -11,27 +11,37 @@ Documentação: [`management/`](management/) (visão, arquitetura, ADRs, specs) 
 Pré-requisitos: Python 3.11+ e Docker.
 
 ```bash
-cd Hackathon
+git clone https://github.com/Miguel-Soares1/hackathon.git && cd hackathon
 cp .env.example .env                 # edite API_KEY (e DEEPSEEK_API_KEY, se tiver)
 docker compose up -d                 # sobe o MySQL 8 e aplica db/schema.sql
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt      # inclui o PyTorch (download grande na 1ª vez) e o pytest
-python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"   # baixa o modelo de embeddings (1ª vez)
+pip install -r requirements.txt          # leve: sem PyTorch (embeddings em ONNX, ADR-011)
+python -c "import sys; sys.path.insert(0,'src'); from triagem.embeddings import OnnxEmbedder; OnnxEmbedder('m')"   # baixa o modelo de embeddings (~120 MB, 1ª vez)
 ```
 
-Em três terminais (todos dentro de `Hackathon/`, com o venv ativo):
+Em dois terminais (na raiz do repositório, com o venv ativo):
 
 ```bash
-python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + webhook
-streamlit run dashboard/app.py                                  # 2) painel em http://localhost:8501
-python scripts/simular.py                                       # 3) envia as 34 mensagens de demo
+python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + painel em http://localhost:8000
+python scripts/simular.py                                       # 2) envia as 34 mensagens de demo
 ```
 
-Documentação interativa da API: http://localhost:8000/docs (use o header `X-API-Key`).
+Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
 > **Windows:** troque `source .venv/bin/activate` por `.venv\Scripts\activate`.
 > **Sem Docker:** crie o banco `hackathon` num MySQL 8 local, rode `db/schema.sql` nele e ajuste `DATABASE_URL`.
 > **Sem chave do LLM:** funciona mesmo assim; a triagem usa o plano B por regras (`origem = fallback`).
+
+## Dia da apresentação (Windows, tudo local)
+
+Com o Docker Desktop aberto, um comando sobe o banco, a API e abre o painel:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\iniciar.ps1
+```
+
+Para repetir a demo do zero: `python scripts/resetar_demo.py --sim` e depois `python scripts/simular.py`.
+O sistema roda só no notebook; a única chamada externa é ao LLM (DeepSeek). Sem internet, a triagem usa o plano B por regras.
 
 ## Testes
 
@@ -50,12 +60,21 @@ formulário público de entrada (`/enviar`), webhook com chave, backup e teste d
 
 ## Calibrar o limiar de incidentes (faça antes da demo)
 
-O limiar de similaridade (`0,70`) é um valor inicial. Calibre com o modelo real:
+O limiar de similaridade já vem calibrado em `0,60` (ver [`docs/calibracao_limiar.md`](docs/calibracao_limiar.md)). Se trocar o modelo ou as mensagens de demo, recalibre:
 
 ```bash
 python scripts/calibrar_limiar.py        # mostra precisão/revocação por limiar e sugere o melhor
 mysql -h127.0.0.1 -uhackathon -phackathon hackathon -e "UPDATE app_config SET valor='0.xx' WHERE chave='similarity_threshold';"
 ```
+
+## Scripts da demo
+
+```bash
+python scripts/avaliar_triagem.py      # taxa de acerto do LLM e das regras contra os rótulos + teste de prompt injection
+python scripts/resetar_demo.py         # apaga tickets e incidentes para repetir a demo (mantém a configuração)
+```
+
+Roteiro da apresentação: [`docs/roteiro_demo.md`](docs/roteiro_demo.md).
 
 ## Como funciona
 
@@ -93,9 +112,9 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 
 ```
 src/triagem/   api, pipeline, classifier (LLM), fallback (regras), embeddings, incidents, sla, corrections, metrics
-dashboard/     painel Streamlit
+frontend/      painel em HTML, CSS e JavaScript puros (servido pela própria API, sem build)
 db/            schema.sql (DDL versionado) e init do banco de testes
-scripts/       simular.py · calibrar_limiar.py · teste_carga.py · backup.sh
+scripts/       iniciar.ps1 (sobe tudo) · simular.py (canais) · calibrar_limiar.py · avaliar_triagem.py · resetar_demo.py · criar_banco.py · teste_carga.py · backup.sh
 data/          mensagens_demo.json (34 mensagens rotuladas)
 tests/         pytest (padrão AAA)
 docs/          risks.md · slo.md · threat-model.md · deploy.md · release_checklist_final.md
@@ -108,7 +127,7 @@ management/    vision · arch · adr · roadmap · specs
 - Webhook e API exigem `X-API-Key`; segredos só em `.env` (ignorado pelo Git).
 - O texto do cliente é enviado ao LLM como dado delimitado e a saída é validada contra valores permitidos (prompt injection).
 - O texto da mensagem é enviado ao provedor do LLM (DeepSeek); não use dados pessoais reais na demo.
-- Painel com senha (`DASHBOARD_PASSWORD`); em produção a API recusa subir com segredos fracos.
+- Painel protegido pela `API_KEY` (guardada só na aba do navegador); em produção a API recusa subir com segredos fracos.
 - Formulário público com limite de taxa por IP e global, honeypot e sem revelar a classificação.
 
 ## Limitações conhecidas

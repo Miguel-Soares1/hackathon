@@ -1,18 +1,18 @@
 # Guia de deploy (produção)
 
-Sobe o sistema inteiro em **um servidor** com Docker Compose: MySQL, API, painel e Caddy (HTTPS automático).
+Sobe o sistema inteiro em **um servidor** com Docker Compose: MySQL, API (que serve também o painel) e Caddy (HTTPS automático).
 Só as portas 80 e 443 ficam abertas; o MySQL e os serviços internos não são publicados.
 
 ```
 Internet ─► Caddy (80/443, HTTPS) ─┬─ /enviar, /public/*  ─► API  (formulário público, com limite de uso)
                                    ├─ /api/*              ─► API  (X-API-Key: webhook dos canais, /tickets, /metricas)
-                                   └─ tudo o mais         ─► Painel (senha)
-                                  API ─► MySQL ◄─ Painel
+                                   └─ tudo o mais         ─► API  (painel HTML; pede a API_KEY no navegador)
+                                  API ─► MySQL
 ```
 
 ## O que você precisa
 
-- Um servidor Linux (VPS) com **2 vCPU e 4 GB de RAM** no mínimo (o modelo de embeddings usa memória) e ~10 GB de disco.
+- Um servidor Linux (VPS) com **1 vCPU e 2 GB de RAM** no mínimo (embeddings em ONNX, sem PyTorch) e ~5 GB de disco.
 - Docker e Docker Compose instalados.
 - Um domínio com um registro **A** apontando para o IP do servidor (ex.: `triagem.seudominio.com`). O HTTPS depende disso.
 - Firewall liberando só **80** e **443** (e 22 para você).
@@ -31,19 +31,18 @@ Preencha o `.env.production`. Gere cada segredo com `openssl rand -hex 24` (só 
 |---|---|
 | `DOMAIN` | domínio do passo anterior |
 | `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD` | senhas do banco (diferentes entre si) |
-| `API_KEY` | chave dos canais/integrações (mínimo 24 caracteres) |
-| `DASHBOARD_PASSWORD` | senha do painel (mínimo 12 caracteres) |
+| `API_KEY` | chave dos canais/integrações e de acesso ao painel (mínimo 24 caracteres) |
 | `DEEPSEEK_API_KEY` | chave do LLM (opcional) |
 | `PUBLIC_RATE_PER_IP_MIN` / `PUBLIC_RATE_GLOBAL_MIN` | limites do formulário público (padrão 5 por IP e 60 no total, por minuto) |
 
-Suba tudo (a primeira construção demora: baixa o PyTorch e o modelo de embeddings):
+Suba tudo (a primeira construção baixa o modelo de embeddings, ~120 MB):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env.production ps     # todos "running"/"healthy"
 ```
 
-A API **recusa subir** em produção se `API_KEY`, `DASHBOARD_PASSWORD` ou a senha do banco forem fracos ou de exemplo.
+A API **recusa subir** em produção se a `API_KEY` ou a senha do banco forem fracas ou de exemplo.
 
 ## Conferir que está funcionando
 
@@ -58,7 +57,7 @@ curl -s -X POST https://SEU_DOMINIO/api/webhook/mensagens \
 ```
 
 No navegador:
-1. `https://SEU_DOMINIO/` → pede a senha do painel; depois mostra a fila com o ticket de teste.
+1. `https://SEU_DOMINIO/` → pede a `API_KEY`; depois mostra a fila com o ticket de teste.
 2. `https://SEU_DOMINIO/enviar` → formulário público; envie uma mensagem e veja o ticket aparecer no painel.
 3. Cadeado (HTTPS válido) no navegador. Se o certificado falhar, confira o DNS e as portas 80/443.
 
@@ -104,7 +103,7 @@ Copie os backups para fora do servidor.
 ## Segurança em produção
 
 - HTTPS com HSTS; MySQL e serviços internos sem porta exposta; container sem root; documentação interativa da API desligada.
-- `API_KEY` protege tudo, exceto `/health` e o formulário público; painel com senha.
+- `API_KEY` protege tudo, exceto `/health` e o formulário público; o painel pede a mesma chave (guardada só na aba do navegador).
 - Formulário público: limite por IP e global (protege o custo do LLM), campo-armadilha contra robôs, texto limitado a 1000 caracteres, e a resposta não revela a classificação.
 - O texto das mensagens é enviado ao provedor do LLM (DeepSeek). Avise os usuários e não colete dados sensíveis (o formulário já traz o aviso).
 - O limitador de taxa é em memória, por processo: vale para 1 worker/container. Não aumente os workers sem trocá-lo por um limitador compartilhado.
@@ -112,4 +111,4 @@ Copie os backups para fora do servidor.
 
 ## Hospedagem gerenciada (Render, Railway, Fly.io etc.)
 
-O mesmo `Dockerfile` serve. Crie dois serviços (API e painel, com os comandos do `docker-compose.prod.yml`), um MySQL gerenciado (aplique `db/schema.sql`) e defina as mesmas variáveis de ambiente (`ENVIRONMENT=production`, `TRUST_PROXY=1`, `DOCS_ENABLED=0`, `DATABASE_URL`, `API_KEY`, `DASHBOARD_PASSWORD`, `DEEPSEEK_API_KEY`). A plataforma faz o HTTPS; as rotas `/enviar`, `/public/*` e `/api/*` precisam apontar para o serviço da API e o restante para o painel (ou use dois domínios). Esse caminho não foi testado aqui.
+O mesmo `Dockerfile` serve. Crie um serviço com a imagem, um MySQL gerenciado (aplique `db/schema.sql`) e defina as mesmas variáveis de ambiente (`ENVIRONMENT=production`, `TRUST_PROXY=1`, `DOCS_ENABLED=0`, `DATABASE_URL`, `API_KEY`, `DEEPSEEK_API_KEY`, `EMBEDDING_BACKEND=onnx`). A plataforma faz o HTTPS; como a API serve o painel, basta um domínio. Esse caminho não foi testado aqui.

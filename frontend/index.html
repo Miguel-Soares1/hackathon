@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Triagem IA</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <!-- Tela de acesso: a chave fica só nesta aba (sessionStorage) -->
+  <main id="login" class="login" hidden>
+    <form id="form-login" class="card login-card">
+      <h1>🎯 Triagem IA</h1>
+      <p class="muted">Painel de atendimento. Informe a chave de API do servidor.</p>
+      <label>Chave de API
+        <input id="chave" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-erro" class="erro" hidden></p>
+      <button type="submit" class="btn primario">Entrar</button>
+    </form>
+  </main>
+
+  <div id="app" hidden>
+    <header class="topo">
+      <h1>🎯 Triagem IA <span class="muted">painel de atendimento</span></h1>
+      <div class="topo-acoes">
+        <span id="status" class="muted" aria-live="polite"></span>
+        <label class="muted">Atualizar a cada
+          <select id="intervalo">
+            <option value="5">5 s</option>
+            <option value="10" selected>10 s</option>
+            <option value="30">30 s</option>
+            <option value="0">pausado</option>
+          </select>
+        </label>
+        <button id="sair" class="btn">Sair</button>
+      </div>
+    </header>
+
+    <section id="kpis" class="kpis" aria-label="Indicadores"></section>
+    <section id="alertas" aria-label="Incidentes abertos"></section>
+
+    <nav class="abas" role="tablist">
+      <button role="tab" data-aba="fila" aria-selected="true">📋 Fila</button>
+      <button role="tab" data-aba="incidentes">🚨 Incidentes</button>
+      <button role="tab" data-aba="metricas">📊 Métricas</button>
+      <button role="tab" data-aba="correcoes">📝 Correções</button>
+      <button role="tab" data-aba="nova">✉️ Nova mensagem</button>
+    </nav>
+
+    <section id="aba-fila" class="aba">
+      <div class="fila-layout">
+        <div>
+          <label class="toggle"><input type="checkbox" id="so-abertos" checked> Somente sem resposta</label>
+          <div class="tabela-wrap"><table id="tabela-fila" class="tabela"></table></div>
+        </div>
+        <aside id="detalhe" class="card detalhe">
+          <p class="muted">Clique em um ticket para atender.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="aba-incidentes" class="aba" hidden>
+      <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
+      <div id="lista-incidentes"></div>
+    </section>
+
+    <section id="aba-metricas" class="aba" hidden>
+      <div id="metricas" class="grade-2"></div>
+    </section>
+
+    <section id="aba-correcoes" class="aba" hidden>
+      <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
+    </section>
+
+    <section id="aba-nova" class="aba" hidden>
+      <form id="form-nova" class="card form-nova">
+        <h2>Simular mensagem de cliente</h2>
+        <p class="muted">Envia para o webhook, como faria um canal real. A IA classifica em segundos.</p>
+        <div class="linha">
+          <label>Canal
+            <select name="canal">
+              <option>WhatsApp</option><option>E-mail</option><option>Chat</option><option>Instagram</option>
+            </select>
+          </label>
+          <label>Cliente <input name="cliente" maxlength="120" placeholder="Ex.: Loja Aurora"></label>
+        </div>
+        <label>Mensagem <textarea name="texto" rows="4" minlength="3" maxlength="4000" required></textarea></label>
+        <button type="submit" class="btn primario">Enviar</button>
+        <p id="nova-status" class="muted" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

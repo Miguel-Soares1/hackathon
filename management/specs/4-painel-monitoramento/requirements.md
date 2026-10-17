@@ -12,7 +12,7 @@ Reunir em um painel a fila de atendimento, os incidentes detectados e as métric
 
 ## Escopo
 
-- **Tecnologia:** painel Streamlit (ADR-005) consumindo dados do MySQL (ADR-006).
+- **Tecnologia:** painel em HTML, CSS e JavaScript puros (ADR-010), servido pela API e consumindo seus endpoints.
 - **Fontes de dados:** classificação (Spec 1), incidentes (Spec 2), correções/precisão (Spec 3) e prazos/SLA (Spec 5).
 - **Visualizações:**
   - Fila de atendimento (tickets pendentes).

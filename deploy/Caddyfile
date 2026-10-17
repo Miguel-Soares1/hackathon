@@ -27,8 +27,8 @@
 		reverse_proxy api:8000
 	}
 
-	# Todo o resto é o painel (protegido por senha). Websockets funcionam automaticamente.
+	# Todo o resto é o painel (HTML servido pela API; pede a API_KEY no navegador) e a própria API.
 	handle {
-		reverse_proxy dashboard:8501
+		reverse_proxy api:8000
 	}
 }
