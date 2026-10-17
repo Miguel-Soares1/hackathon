@@ -160,7 +160,7 @@ def create_app() -> FastAPI:
     validar_producao(settings)
     docs = settings.docs_enabled
     app = FastAPI(
-        title="Triagem IA", version="1.0.0", lifespan=lifespan,
+        title="NEXUS", version="1.0.0", lifespan=lifespan,
         docs_url="/docs" if docs else None, redoc_url=None, openapi_url="/openapi.json" if docs else None,
     )
 

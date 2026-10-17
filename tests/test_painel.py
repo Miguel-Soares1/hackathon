@@ -6,7 +6,7 @@ def test_raiz_entrega_o_painel_sem_exigir_chave(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "Triagem IA" in r.text
+    assert "NEXUS" in r.text
 
 
 def test_arquivos_estaticos_do_painel(client):

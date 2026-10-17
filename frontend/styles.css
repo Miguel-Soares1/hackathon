@@ -122,6 +122,8 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-w
   width: 34px; height: 34px; border-radius: 10px; background: var(--destaque); color: var(--destaque-escuro);
   display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;
 }
+img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139, 92, 246, .35); }
+.logo-nexus { display: block; width: 100%; height: auto; border-radius: 12px; }
 .marca .nome { font-size: 20px; font-weight: 600; color: var(--texto); letter-spacing: .2px; }
 .menu-titulo { color: var(--muted); font-size: 13px; margin: 8px 0 -4px 4px; }
 .menu { display: flex; flex-direction: column; gap: 4px; }

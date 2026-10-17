@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Triagem IA</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+  <title>NEXUS</title>
+  <link rel="icon" type="image/png" href="img/nexus-icone.png">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
@@ -12,7 +12,8 @@
   <!-- Tela de acesso: a chave fica só nesta aba (sessionStorage) -->
   <main id="login" class="login" hidden>
     <form id="form-login" class="card login-card">
-      <div class="marca"><div class="logo">T</div><div class="nome">Triagem IA</div></div>
+      <img class="logo-nexus" src="img/nexus-logo.webp" alt="Nexus — Conexão e Inovação" width="660" height="240">
+      <div class="marca"><img class="logo" src="img/nexus-icone.png" alt=""><div class="nome">NEXUS</div></div>
       <p class="muted">Painel de atendimento. Informe a chave de API do servidor.</p>
       <label>Chave de API
         <input id="chave" type="password" autocomplete="current-password" required>
@@ -25,7 +26,7 @@
   <div id="app" class="app" hidden>
     <!-- Menu lateral (layout da dashboard do chat de atendimento, ADR-016) -->
     <aside class="lateral">
-      <div class="marca"><div class="logo">T</div><div class="nome">Triagem IA</div></div>
+      <div class="marca"><img class="logo" src="img/nexus-icone.png" alt="Nexus"><div class="nome">NEXUS</div></div>
       <div class="menu-titulo">Menu</div>
       <nav class="menu" aria-label="Páginas">
         <button type="button" data-pagina="dashboard" aria-current="page"><span aria-hidden="true">📊</span> Dashboard</button>
