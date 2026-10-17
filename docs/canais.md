@@ -50,6 +50,18 @@ Ou seja: do conversor em diante (ticket, triagem, incidentes, prazos, painel) é
 As telas são **só a visão do cliente**: ele manda a mensagem e não vê nenhuma classificação. A triagem aparece apenas no
 **painel do atendimento** (http://localhost:8000, com a `API_KEY`) — deixe as duas janelas lado a lado na apresentação.
 
+Para parecer uma conversa real, a empresa **responde** na própria tela do cliente:
+- **WhatsApp/Instagram:** na primeira mensagem chega uma confirmação automática com o protocolo. Depois de
+  "digitando…", chega a resposta do atendimento (a `resposta_sugerida` gerada a partir do que o cliente escreveu) e,
+  quando muda o time responsável, um aviso de encaminhamento. Cada cliente simulado tem a própria conversa (fica
+  guardada na aba do navegador), com tiques de entregue/lido e "Visto" no Instagram.
+- **E-mail:** a confirmação com protocolo e a resposta (`Re: assunto`, assinada pelo time) chegam na
+  **Caixa de entrada**; o botão **Responder** continua a conversa no mesmo assunto.
+
+Cada mensagem do cliente vira um ticket próprio, como no webhook real. A tela só recebe o texto da resposta pela rota
+`/demo/conversa/{id}`, que exige a senha devolvida no envio (HMAC com um segredo que muda a cada subida da API):
+ninguém lê a conversa de outro ticket e a classificação nunca sai por ali.
+
 - **Cliente:** escolha na lista ou clique em **Outro cliente**. Mandar "Conta bloqueada" com 3 clientes diferentes gera um **incidente**.
 - Ligadas por padrão em desenvolvimento; **sempre desligadas** com `ENVIRONMENT=production`. Para desligar no dev: `DEMO=0`.
 

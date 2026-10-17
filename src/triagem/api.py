@@ -1,4 +1,6 @@
 """API HTTP (FastAPI). Webhook único (ADR-001), responde 202 e processa em background (ADR-009)."""
+import hashlib
+import hmac
 import json
 import re
 import logging
@@ -261,6 +263,26 @@ def create_app() -> FastAPI:
     if settings.demo_enabled:
         csp_demo = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
                     "connect-src 'self'; base-uri 'none'; form-action 'none'")
+        # A tela do cliente recebe a resposta do atendimento para simular a conversa. Só quem enviou a mensagem tem a
+        # senha do ticket (HMAC com um segredo que muda a cada subida da API); a classificação nunca sai por aqui.
+        segredo_demo = secrets.token_bytes(32)
+
+        def _senha_conversa(ticket_id: int) -> str:
+            return hmac.new(segredo_demo, str(ticket_id).encode(), hashlib.sha256).hexdigest()[:32]
+
+        def _enviado(ticket_id: int) -> dict:
+            return {"ticket_id": ticket_id, "status": "pendente", "senha": _senha_conversa(ticket_id)}
+
+        @app.get("/demo/conversa/{ticket_id}", include_in_schema=False)
+        def demo_conversa(ticket_id: int, senha: str = Query("", max_length=64)):
+            if not hmac.compare_digest(senha, _senha_conversa(ticket_id)):
+                raise HTTPException(status_code=404, detail="conversa não encontrada")
+            try:
+                t = tickets.obter(ticket_id)
+            except tickets.TicketNaoEncontrado:
+                raise HTTPException(status_code=404, detail="conversa não encontrada")
+            resposta = t.get("resposta_sugerida") if t.get("status") != "pendente" else None
+            return {"respondida": bool(resposta), "resposta": resposta, "equipe": t.get("equipe") if resposta else None}
 
         @app.get("/demo", include_in_schema=False)
         def demo_inicio():
@@ -278,7 +300,7 @@ def create_app() -> FastAPI:
             ticket_id = tickets.criar_ticket("email", convertida["texto"], convertida["cliente"],
                                              convertida["received_at"], convertida["external_id"])
             background.add_task(pipeline.processar_ticket, ticket_id)
-            return {"ticket_id": ticket_id, "status": "pendente"}
+            return _enviado(ticket_id)
 
         @app.get("/demo/{canal}", response_class=HTMLResponse, include_in_schema=False)
         def demo_chat_pagina(canal: str):
@@ -299,7 +321,7 @@ def create_app() -> FastAPI:
                 return JSONResponse(status_code=400, content={"detail": "mensagem ignorada pelo canal (texto curto demais)"})
             ticket_id = tickets.criar_ticket(canal, m["texto"], m["cliente"], m["received_at"], m["external_id"])
             background.add_task(pipeline.processar_ticket, ticket_id)
-            return {"ticket_id": ticket_id, "status": "pendente"}
+            return _enviado(ticket_id)
 
 
     @app.get("/tickets", dependencies=[Depends(exigir_chave)])

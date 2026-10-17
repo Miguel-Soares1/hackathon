@@ -127,6 +127,23 @@ def test_telas_de_conversa_nao_mostram_a_triagem_ao_cliente(client):
     assert client.get(f"/demo/tickets/{r.json()['ticket_id']}").status_code == 404
 
 
+def test_conversa_devolve_so_a_resposta_para_quem_tem_a_senha(client):
+    r = client.post("/demo/whatsapp", json={"remetente": "5511987654321", "texto": "meu pix não caiu, preciso hoje"}).json()
+    conversa = client.get(f"/demo/conversa/{r['ticket_id']}", params={"senha": r["senha"]})
+    assert conversa.status_code == 200
+    corpo = conversa.json()
+    assert corpo["respondida"] and corpo["resposta"]  # o TestClient já rodou a classificação em background
+    assert set(corpo) == {"respondida", "resposta", "equipe"}  # nada de urgência, sentimento ou confiança
+
+
+def test_conversa_recusa_senha_errada_ou_de_outro_ticket(client):
+    a = client.post("/demo/instagram", json={"remetente": "mari.souza", "texto": "quero cancelar minha conta"}).json()
+    b = client.post("/demo/instagram", json={"remetente": "joaop", "texto": "o app não abre desde ontem"}).json()
+    assert client.get(f"/demo/conversa/{a['ticket_id']}").status_code == 404
+    assert client.get(f"/demo/conversa/{a['ticket_id']}", params={"senha": "x" * 32}).status_code == 404
+    assert client.get(f"/demo/conversa/{a['ticket_id']}", params={"senha": b["senha"]}).status_code == 404
+
+
 def test_demo_valida_remetente_por_canal(client):
     assert client.post("/demo/whatsapp", json={"remetente": "abc", "texto": "olá, tudo bem?"}).status_code == 400
     assert client.post("/demo/instagram", json={"remetente": "Nome Com Espaço", "texto": "olá, tudo bem?"}).status_code == 400
