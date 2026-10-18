@@ -11,7 +11,7 @@ const ROTULO_SLA_CURTO = {
   estourado: "prazo estourado", em_risco: "prazo em risco", no_prazo: "no prazo",
   respondido: "1ª resposta feita", aguardando_classificacao: "classificando",
 };
-const TITULOS = { atendimento: "Atendimento", incidentes: "Incidentes", relatorios: "Relatórios" };
+const TITULOS = { atendimento: "Atendimento", incidentes: "Incidentes", relatorios: "Relatórios", recorrencia: "Recorrência" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const ORDEM_ESTADO = { estourado: 0, em_risco: 1, no_prazo: 2, aguardando_classificacao: 3, respondido: 4 };
 // Filtro das chamadas, o mesmo no Dashboard e no Atendimento (guardado neste navegador).
@@ -41,6 +41,8 @@ const estado = {
   selecionado: null,
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
   problemas: [],
+  incidentes: [],
+  periodo: Number(lerArmazenado(localStorage, "triagem.periodo") || 24), // horas; 0 = tudo
   encerrando: false, // formulário de encerramento aberto no detalhe
   relatorios: {}, // relatório já carregado por ticket (não muda depois do encerramento)
   timer: null,
@@ -148,7 +150,9 @@ async function carregar() {
     renderCartoes();
     if (!estado.editando && !tocandoAudio() && !estado.anexos.length && !estado.gravador) renderDetalhe();
     else if (estado.selecionado) carregarConversa(estado.selecionado); // a conversa continua atualizando
+    estado.incidentes = incidentes;
     renderIncidentes(incidentes);
+    if (estado.pagina === "recorrencia") renderRecorrencia();
     const agora = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
     $("#status").textContent = agora;
   } catch (e) {
@@ -687,6 +691,7 @@ function irPara(pagina) {
   $("#titulo").textContent = TITULOS[pagina];
   gravarArmazenado(sessionStorage, "triagem.pagina", pagina);
   if (pagina === "relatorios") carregarProblemas();
+  if (pagina === "recorrencia") renderRecorrencia();
 }
 
 function abrirTicket(id) {
@@ -768,6 +773,129 @@ async function mudarPlantao(ligado) {
     alertaStatus(e.message);
     $("#plantao").checked = !ligado;
   }
+}
+
+// ---------------------------------------------------------------- recorrência: painel no estilo Grafana
+// Tudo é calculado no navegador a partir dos tickets já carregados (período escolhido) e de /metricas (precisão).
+const ROTULO_ASSUNTO = { pagamento: "Pagamento", cobranca: "Cobrança", acesso: "Acesso", instabilidade: "Instabilidade",
+  cancelamento: "Cancelamento", reclamacao: "Reclamação", duvida: "Dúvida", elogio: "Elogio" };
+const CORES = ["#73bf69", "#f2cc0c", "#5794f2", "#ff9830", "#b877d9", "#f2495c", "#8ab8ff", "#96d98d"];
+const nomeAssunto = (a) => ROTULO_ASSUNTO[a] || a || "Sem triagem";
+const dataUtc = (iso) => new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+const corLimiar = (v) => (v === null || v === undefined ? "#8e8e8e" : v >= 85 ? "#73bf69" : v >= 70 ? "#f2cc0c" : "#f2495c");
+
+function noPeriodo(lista, campo) {
+  if (!estado.periodo) return lista;
+  const desde = Date.now() - estado.periodo * 3600e3;
+  return lista.filter((x) => x[campo] && dataUtc(x[campo]).getTime() >= desde);
+}
+
+function painel(titulo, corpo, classe = "") {
+  return `<section class="gf-painel ${classe}"><h3 class="gf-titulo">${esc(titulo)}</h3><div class="gf-corpo">${corpo}</div></section>`;
+}
+
+function stat(titulo, valor, sub, cor) {
+  return painel(titulo, `<div class="gf-stat" style="color:${cor || "var(--texto-forte)"}">${esc(valor)}</div><div class="gf-sub">${esc(sub || "")}</div>`, "gf-stat-painel");
+}
+
+function barrasGf(itens, total, unidade = "") {
+  const max = Math.max(1, ...itens.map((i) => i.n));
+  return itens.length ? `<div class="gf-barras">${itens.map((i, k) => `<div class="gf-barra-linha">
+      <span class="gf-rotulo">${esc(i.rotulo)}</span>
+      <div class="gf-trilho"><div class="gf-barra" style="width:${(i.n / max) * 100}%;background:${i.cor || CORES[k % CORES.length]}"></div></div>
+      <span class="gf-valor">${i.n}${unidade}${total ? `<small> ${Math.round((i.n / total) * 100)}%</small>` : ""}</span></div>`).join("")}</div>`
+    : `<p class="gf-vazio">Sem dados no período.</p>`;
+}
+
+// Série temporal: casos por hora (24 h) ou por dia, total e os 3 motivos mais frequentes.
+function serieTemporal(tickets, top) {
+  const fim = Date.now();
+  const inicio = estado.periodo ? fim - estado.periodo * 3600e3
+    : Math.min(fim - 86400e3, ...tickets.map((t) => dataUtc(t.received_at).getTime()));
+  const porHora = fim - inicio <= 72 * 3600e3; // até 3 dias: pontos por hora; acima disso, por dia
+  const passo = porHora ? 3600e3 : 86400e3;
+  const n = Math.max(2, Math.min(60, Math.ceil((fim - inicio) / passo)));
+  const base = fim - n * passo;
+  const contar = (filtro) => {
+    const v = new Array(n).fill(0);
+    tickets.filter(filtro).forEach((t) => { const i = Math.floor((dataUtc(t.received_at).getTime() - base) / passo); if (i >= 0 && i < n) v[i] += 1; });
+    return v;
+  };
+  const series = [{ nome: "Total", cor: "#c7d0d9", v: contar(() => true), tracejada: true },
+    ...top.map((a, k) => ({ nome: nomeAssunto(a), cor: CORES[k], v: contar((t) => t.assunto === a) }))];
+  const max = Math.max(1, ...series.flatMap((s) => s.v));
+  const W = 600, H = 170, E = 28, T = 8, B = 22;
+  const x = (i) => E + (i * (W - E - 6)) / (n - 1);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const linhas = [0, 0.5, 1].map((f) => `<line x1="${E}" x2="${W - 6}" y1="${y(max * f)}" y2="${y(max * f)}" class="gf-grade-linha"/>
+    <text x="${E - 6}" y="${y(max * f) + 4}" class="gf-eixo" text-anchor="end">${Math.round(max * f)}</text>`).join("");
+  const rotulo = (i) => {
+    const d = new Date(base + i * passo);
+    return porHora ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit" }) + "h"
+      : d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" });
+  };
+  const marcas = [...new Set([0, Math.floor((n - 1) / 2), n - 1])].map((i) => `<text x="${x(i)}" y="${H - 6}" class="gf-eixo" text-anchor="middle">${rotulo(i)}</text>`).join("");
+  const caminhos = series.map((s) => `<polyline fill="none" stroke="${s.cor}" stroke-width="${s.tracejada ? 1.5 : 2}"
+    ${s.tracejada ? 'stroke-dasharray="4 4"' : ""} points="${s.v.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>`).join("");
+  const legenda = series.map((s) => `<span><i style="background:${s.cor}"></i>${esc(s.nome)} <b>${s.v.reduce((a, b) => a + b, 0)}</b></span>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" class="gf-serie" role="img" aria-label="Casos ao longo do tempo">${linhas}${marcas}${caminhos}</svg>
+    <div class="gf-legenda">${legenda}</div>`;
+}
+
+function renderRecorrencia() {
+  if (!estado.resumo) return;
+  const tickets = noPeriodo(estado.tickets, "received_at");
+  const total = tickets.length;
+  const r = estado.resumo;
+  // motivos de contato no período
+  const porAssunto = {};
+  tickets.forEach((t) => { porAssunto[t.assunto || ""] = (porAssunto[t.assunto || ""] || 0) + 1; });
+  const motivos = Object.entries(porAssunto).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ chave: k, rotulo: nomeAssunto(k), n }));
+  // clientes que voltaram (mais de um contato no período: atendimentos ou mensagens)
+  const porCliente = {};
+  tickets.forEach((t) => {
+    const k = (t.cliente || `#${t.ticket_id}`).toLowerCase();
+    const c = porCliente[k] || (porCliente[k] = { cliente: t, atendimentos: 0, mensagens: 0, motivos: new Set() });
+    c.atendimentos += 1; c.mensagens += Number(t.total_mensagens || 1); if (t.assunto) c.motivos.add(nomeAssunto(t.assunto));
+  });
+  const recorrentes = Object.values(porCliente).filter((c) => c.atendimentos > 1 || c.mensagens > 2)
+    .sort((a, b) => b.atendimentos - a.atendimentos || b.mensagens - a.mensagens);
+  // incidentes no período
+  const incid = noPeriodo(estado.incidentes || [], "incident_opened_at");
+  // precisão medida (revisões) e confiança média da IA
+  const p = r.precisao || {};
+  const dims = [["assunto", "Assunto"], ["urgencia", "Urgência"], ["sentimento", "Sentimento"], ["equipe", "Equipe"]];
+  const comIa = tickets.filter((t) => t.origem === "llm");
+  const conf = dims.map(([k, rot]) => {
+    const v = comIa.map((t) => Number(t["conf_" + k])).filter((x) => !Number.isNaN(x));
+    return { rotulo: rot, n: v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 100) : 0 };
+  });
+  const precisaoMedida = p.revisados
+    ? barrasGf(dims.map(([k, rot]) => { const v = Math.round(p.por_dimensao[k] ?? 0); return { rotulo: rot, n: v, cor: corLimiar(v) }; }), 0, "%")
+      + `<div class="gf-sub">${p.revisados} triagens revisadas · IA ${pct(r.precisao_llm?.agregado)} · plano B ${pct(r.precisao_fallback?.agregado)}</div>`
+    : `<p class="gf-vazio">Nenhuma triagem revisada ainda: a precisão aparece quando os atendentes confirmarem ou corrigirem a IA.</p>`;
+  const periodoTxt = { 24: "nas últimas 24 h", 168: "nos últimos 7 dias", 720: "nos últimos 30 dias", 0: "no total" }[estado.periodo] || "";
+
+  $("#gf-grade").innerHTML = [
+    stat("Casos", total, periodoTxt),
+    stat("Incidentes", incid.length, `${r.incidentes} ativo(s) agora`, incid.length ? "#f2495c" : "#73bf69"),
+    stat("Precisão da triagem", p.revisados ? pct(p.agregado) : "—", p.revisados ? `${p.revisados} revisadas` : "sem revisões ainda", corLimiar(p.agregado)),
+    stat("Clientes que voltaram", recorrentes.length, total ? `${Math.round((recorrentes.length / Math.max(1, Object.keys(porCliente).length)) * 100)}% dos clientes` : ""),
+    painel("Principais motivos de contato", barrasGf(motivos.map((m, k) => ({ ...m, cor: CORES[k % CORES.length] })), total), "gf-largo"),
+    painel("Casos ao longo do tempo", total ? serieTemporal(tickets, motivos.slice(0, 3).map((m) => m.chave).filter(Boolean)) : `<p class="gf-vazio">Sem dados no período.</p>`, "gf-largo"),
+    painel("Incidentes de contato", incid.length ? `<table class="gf-tabela"><thead><tr><th>Assunto</th><th>Mensagens</th><th>Aberto</th><th>Situação</th></tr></thead><tbody>
+      ${incid.map((g) => `<tr><td><i class="gf-ponto" style="background:#f2495c"></i>${esc(nomeAssunto(g.assunto_predominante))}</td><td>${g.size}</td>
+        <td>${esc(hora(g.incident_opened_at))}</td><td>${esc(g.status)}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="gf-vazio">Nenhum incidente no período.</p>`, "gf-largo"),
+    painel("Precisão da triagem (revisões)", precisaoMedida),
+    painel("Confiança média da IA", comIa.length ? barrasGf(conf.map((c) => ({ ...c, cor: corLimiar(c.n) })), 0, "%") + `<div class="gf-sub">${comIa.length} triagens feitas pela IA</div>`
+      : `<p class="gf-vazio">Sem triagens da IA no período.</p>`),
+    painel("Clientes recorrentes", recorrentes.length ? `<table class="gf-tabela"><thead><tr><th>Cliente</th><th>Atendimentos</th><th>Mensagens</th><th>Motivos</th></tr></thead><tbody>
+      ${recorrentes.slice(0, 8).map((c) => `<tr><td>${esc(contato(c.cliente).nome)}</td><td>${c.atendimentos}</td><td>${c.mensagens}</td>
+        <td>${esc([...c.motivos].join(", ") || "—")}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="gf-vazio">Nenhum cliente voltou no período.</p>`, "gf-largo"),
+  ].join("");
+  $("#gf-atualizado").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-BR")}`;
 }
 
 // ---------------------------------------------------------------- relatórios: problemas e ocorrências (ADR-020)
@@ -976,6 +1104,15 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#sair").addEventListener("click", () => sair());
   $("#plantao").addEventListener("change", (ev) => mudarPlantao(ev.target.checked));
   $("#form-problema").addEventListener("submit", (ev) => { ev.preventDefault(); criarProblema(ev.target); });
+  document.querySelectorAll(".gf-periodo button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.periodo) === estado.periodo)));
+  $(".gf-periodo").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-periodo]");
+    if (!b) return;
+    estado.periodo = Number(b.dataset.periodo);
+    gravarArmazenado(localStorage, "triagem.periodo", String(estado.periodo));
+    document.querySelectorAll(".gf-periodo button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderRecorrencia();
+  });
   $("#lista-problemas").addEventListener("click", acaoProblema);
   $("#lista-problemas").addEventListener("submit", (ev) => { ev.preventDefault(); ocorrenciaRapida(ev.target); });
   const dlg = $("#dlg-ocorrencia");

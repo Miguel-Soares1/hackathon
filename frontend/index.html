@@ -52,6 +52,7 @@
         <button type="button" data-pagina="atendimento" aria-current="page"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
         <button type="button" data-pagina="relatorios"><span aria-hidden="true">📋</span> Relatórios</button>
+        <button type="button" data-pagina="recorrencia"><span aria-hidden="true">📈</span> Recorrência</button>
       </nav>
       <hr>
       <div class="quem-logado"><div class="avatar" id="eu-inicial">?</div>
@@ -90,6 +91,20 @@
       <section id="pagina-incidentes" class="pagina" hidden>
         <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
         <div id="lista-incidentes"></div>
+      </section>
+
+      <!-- Recorrência: painel no estilo Grafana com motivos de contato, incidentes e precisão da triagem -->
+      <section id="pagina-recorrencia" class="pagina" hidden>
+        <div class="gf-toolbar">
+          <div class="gf-periodo" role="group" aria-label="Período">
+            <button type="button" data-periodo="24" aria-pressed="true">Últimas 24 h</button>
+            <button type="button" data-periodo="168" aria-pressed="false">7 dias</button>
+            <button type="button" data-periodo="720" aria-pressed="false">30 dias</button>
+            <button type="button" data-periodo="0" aria-pressed="false">Tudo</button>
+          </div>
+          <span id="gf-atualizado" class="gf-atualizado"></span>
+        </div>
+        <div id="gf-grade" class="gf-grade"></div>
       </section>
 
       <!-- Relatórios: problemas, quantas vezes aconteceram e quais clientes foram afetados (ADR-020) -->
