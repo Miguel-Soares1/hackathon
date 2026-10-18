@@ -290,6 +290,10 @@ $('arquivo').addEventListener('change', async (e) => {
 $('gravar').addEventListener('click', async () => {
   if (gravador) return gravador.stop();
   let fluxo;
+  // O navegador só libera o microfone em página segura (https ou localhost): pelo IP em http, ele nem aparece.
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    return void ($('aviso').textContent = 'Para gravar áudio no celular, abra pelo endereço https (QR code da página /demo/celular). Texto e foto funcionam aqui.');
+  }
   try { fluxo = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (_) { return void ($('aviso').textContent = 'Sem acesso ao microfone. Permita o uso no navegador.'); }
   const g = new MediaRecorder(fluxo); const pedacos = [];

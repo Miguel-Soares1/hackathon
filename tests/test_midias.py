@@ -93,7 +93,25 @@ def test_ler_com_ia_ignora_partes_de_raciocinio():
 def test_ler_com_ia_levanta_erro_na_falha(resposta):
     client, _ = cliente_http(resposta)
     with pytest.raises(midias.MidiaErro):
-        midias.ler_com_ia(midias.Midia("imagem", "image/png", PNG), settings(), client)
+        midias.ler_com_ia(midias.Midia("imagem", "image/png", PNG), settings(), client, esperas=())
+
+
+def test_ler_com_ia_tenta_de_novo_quando_o_gemini_esta_sobrecarregado():
+    client, chamadas = cliente_http(httpx.Response(503, json={"error": {"status": "UNAVAILABLE"}}),
+                                    httpx.Response(429, json={}), ok("Transcrição depois da sobrecarga."))
+    r = midias.ler_com_ia(midias.Midia("audio", "audio/ogg", OGG), settings(), client, esperas=(0, 0))
+    assert r == "Transcrição depois da sobrecarga." and len(chamadas) == 3
+
+
+def test_ler_com_ia_desiste_depois_das_tentativas_e_nao_insiste_em_erro_definitivo():
+    client, chamadas = cliente_http(*[httpx.Response(503, json={})] * 3)
+    with pytest.raises(midias.MidiaErro):
+        midias.ler_com_ia(midias.Midia("audio", "audio/ogg", OGG), settings(), client, esperas=(0, 0))
+    assert len(chamadas) == 3
+    client, chamadas = cliente_http(httpx.Response(400, json={}))
+    with pytest.raises(midias.MidiaErro):
+        midias.ler_com_ia(midias.Midia("audio", "audio/ogg", OGG), settings(), client, esperas=(0, 0))
+    assert len(chamadas) == 1
 
 
 def test_ler_com_ia_sem_chave_nao_chama_a_rede():

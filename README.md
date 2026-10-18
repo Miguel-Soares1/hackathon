@@ -58,6 +58,12 @@ powershell -ExecutionPolicy Bypass -File scripts\iniciar.ps1 -Celular
 
 A API passa a escutar na rede local e abre http://localhost:8000/demo/celular com um QR code por canal; aponte a câmera do celular.
 O celular precisa estar na mesma rede Wi-Fi do notebook (ou no hotspot do notebook, se o Wi-Fi do evento isolar os aparelhos).
+Os QR codes apontam para **`https://IP-do-notebook:8443`**: o `-Celular` também liga um HTTPS só para o celular
+(`scripts/https_celular.py`), porque o navegador do celular só libera o **microfone** (gravar áudio) em página segura.
+Na primeira vez o celular avisa que a conexão "não é particular" (o certificado é do próprio notebook, guardado em
+`.certs/`): toque em **Avançado → Continuar**. Com o hotspot do Windows ligado, o QR usa o endereço do hotspot
+(`192.168.137.1`). Se o Gemini estiver sobrecarregado ou no limite da chave, a transcrição é tentada de novo algumas
+vezes; se ainda falhar, o áudio fica no painel com o aviso "não foi possível transcrever".
 Na primeira vez, permita o Python no firewall do Windows em **redes privadas**. Use só em rede confiável: as telas `/demo` não pedem senha (o painel continua exigindo a `API_KEY`).
 Sem o script: `python -m uvicorn triagem.api:app --app-dir src --host 0.0.0.0 --port 8000`.
 O sistema roda só no notebook; a única chamada externa é ao LLM (DeepSeek). Sem internet, a triagem usa o plano B por regras.

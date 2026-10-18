@@ -15,10 +15,17 @@ import qrcode.image.svg
 
 CANAIS = (("whatsapp", "WhatsApp"), ("instagram", "Instagram"), ("email", "E-mail"))
 _LOCAIS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"}
+HOTSPOT_WINDOWS = "192.168.137.1"  # endereço fixo do notebook quando o hotspot móvel do Windows está ligado
 
 
 def ip_da_rede() -> Optional[str]:
-    """IPv4 do notebook na rede local (a interface da rota padrão). Não envia nenhum pacote."""
+    """IPv4 do notebook que o celular alcança. Não envia nenhum pacote.
+
+    Com o hotspot do Windows ligado, o celular conectado nele só enxerga o notebook em 192.168.137.1, mesmo que a
+    rota padrão saia por outra interface (cabo ou outro Wi-Fi). Sem hotspot, vale a interface da rota padrão.
+    """
+    if HOTSPOT_WINDOWS in outros_ips():
+        return HOTSPOT_WINDOWS
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))
@@ -37,14 +44,20 @@ def outros_ips() -> list[str]:
     return sorted(ip for ip in ips if ipaddress.ip_address(ip).is_private and not ipaddress.ip_address(ip).is_loopback)
 
 
-def base_para_celular(host_header: str, porta_padrao: int) -> tuple[str, bool]:
-    """Endereço que o celular deve abrir e se ele foi descoberto (True) ou é o mesmo usado no navegador (False)."""
+def base_para_celular(host_header: str, porta_padrao: int, porta_https: Optional[int] = None) -> tuple[str, bool]:
+    """Endereço que o celular deve abrir e se ele foi descoberto (True) ou é o mesmo usado no navegador (False).
+
+    Com o HTTPS do celular ligado (`porta_https`, ver https_celular.py), o endereço é https: só assim o navegador do
+    celular libera o microfone para gravar áudio.
+    """
     host, _, porta = host_header.rpartition(":") if re.search(r":\d+$", host_header) else (host_header, "", "")
     porta = porta or str(porta_padrao)
     if host.lower() in _LOCAIS:
         ip = ip_da_rede()
         if ip:
-            return f"http://{ip}:{porta}", True
+            return (f"https://{ip}:{porta_https}" if porta_https else f"http://{ip}:{porta}"), True
+    if porta_https:
+        return f"https://{host}:{porta_https}", False
     return f"http://{host_header}", False
 
 
@@ -56,20 +69,28 @@ def qr_svg(texto: str) -> str:
     return re.sub(r'\swidth="[^"]*" height="[^"]*"', "", svg, count=1)  # tamanho vem do CSS
 
 
-def pagina(host_header: str, porta_padrao: int) -> str:
-    base, descoberto = base_para_celular(host_header, porta_padrao)
+def pagina(host_header: str, porta_padrao: int, porta_https: Optional[int] = None) -> str:
+    base, descoberto = base_para_celular(host_header, porta_padrao, porta_https)
     cartoes = "".join(
         f'<a class="cartao" href="/demo/{c}"><div class="qr">{qr_svg(f"{base}/demo/{c}")}</div>'
         f"<b>{nome}</b><code>{html.escape(base)}/demo/{c}</code></a>"
         for c, nome in CANAIS
     )
+    esquema = base.split("://", 1)[0]
     extras = [ip for ip in outros_ips() if f"//{ip}:" not in base]
     dica_extra = (
         "<li>Se não abrir, tente outro endereço do notebook: "
-        + ", ".join(f"<code>http://{html.escape(ip)}:{html.escape(base.rsplit(':', 1)[-1])}/demo</code>" for ip in extras)
+        + ", ".join(f"<code>{esquema}://{html.escape(ip)}:{html.escape(base.rsplit(':', 1)[-1])}/demo</code>" for ip in extras)
         + "</li>"
         if extras else ""
     )
+    if porta_https:
+        dica_extra += ("<li><b>Primeira vez no celular:</b> ele avisa que a conexão não é particular (o certificado é do "
+                       "próprio notebook). Toque em <b>Avançado → Continuar</b>. É isso que libera o microfone para gravar áudio.</li>")
+    else:
+        dica_extra += ("<li>Para <b>gravar áudio</b> pelo celular, ligue o HTTPS: <code>scripts\\iniciar.ps1 -Celular</code> "
+                       "(ou <code>python scripts/https_celular.py</code>) e recarregue esta página. Sem ele, texto e foto "
+                       "funcionam, mas o navegador do celular bloqueia o microfone.</li>")
     aviso = "" if descoberto or host_header.split(":")[0].lower() not in _LOCAIS else (
         '<p class="alerta">Não encontrei o endereço do notebook na rede. Conecte-o ao Wi-Fi e recarregue a página.</p>'
     )

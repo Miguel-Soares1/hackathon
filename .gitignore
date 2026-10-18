@@ -11,3 +11,6 @@ backups/*
 
 # Senha local do administrador (nunca versionar)
 admin-senha.local.txt
+
+# Certificado autoassinado do HTTPS do celular (gerado por scripts/https_celular.py)
+.certs/
