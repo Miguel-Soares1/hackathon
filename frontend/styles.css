@@ -193,10 +193,8 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: var(--brilho); }
 .conteudo { padding: 32px 40px; min-width: 0; max-width: 1480px; }
 
 /* ---------- central de triagem */
-.central-topo { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
-.central-topo > div { flex: 1; min-width: 260px; }
+.central-topo { display: flex; justify-content: flex-end; margin-bottom: 14px; }
 .sobretitulo { margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--destaque-claro); }
-.central-titulo { font-size: clamp(24px, 2.6vw, 34px); font-weight: 700; margin: 0; max-width: 30ch; }
 .hora-atualizacao {
   padding: 7px 14px; border-radius: 999px; font-size: 13.5px; color: var(--muted-2); border: 1px solid var(--borda);
   white-space: nowrap; font-variant-numeric: tabular-nums;
