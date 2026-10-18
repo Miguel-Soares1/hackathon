@@ -17,6 +17,7 @@ CONFIG_PADRAO = {
     "ia_max_minutos": 15.0,    # passou disso desde a 1ª mensagem: vai para um atendente
     "ia_max_respostas": 5.0,   # a IA já respondeu tantas vezes: vai para um atendente
     "encerrar_inativo_min": 10.0,  # cliente sem responder por tanto tempo: atendimento encerrado (0 desliga)
+    "alerta_critico_min": 10.0,    # cliente crítico esperando resposta por tanto tempo: o painel alerta (0 desliga)
 }
 
 

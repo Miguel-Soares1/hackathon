@@ -157,7 +157,18 @@ def receber_mensagem(canal: str, texto: str, cliente: Optional[str] = None, rece
     return criar_ticket(canal, texto, cliente, received_at, external_id, conversa_id, midias), True, None
 
 
-def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
+def _espera_desde(d: dict) -> Optional[datetime]:
+    """Desde quando o cliente espera uma pessoa responder (só para quem está aguardando)."""
+    if not d["aguardando"]:
+        return None
+    if d.get("ultima_saida_humana_id"):
+        return d.get("espera_entrada_at") or d.get("ultima_entrada_at")  # 1ª mensagem do cliente depois da resposta
+    if d["first_response_at"] is None or d.get("escalado_em"):
+        return d["received_at"]
+    return d.get("ultima_entrada_at")  # respondido por fora do chat
+
+
+def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict], alerta_min: float = 10.0) -> dict:
     d = dict(row._mapping)
     d["revisado"] = bool(d.get("revisado"))
     d["midias"] = midias
@@ -184,13 +195,20 @@ def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
     else:  # respondido por fora do chat (botão "marcar respondido")
         d["aguardando"] = bool(d.get("ultima_entrada_at") and d["ultima_entrada_at"] > d["first_response_at"])
     d["ultima_texto"] = d.get("ultima_texto") or d["texto"]
+    desde = _espera_desde(d)
+    d["espera_min"] = round(max((agora - desde).total_seconds(), 0) / 60.0, 1) if desde else None
+    # Cliente crítico sem resposta há `alerta_critico_min` minutos: o painel pisca o chat e mostra um aviso.
+    d["alerta_critico"] = bool(d["espera_min"] is not None and d.get("urgencia") == "critica" and alerta_min > 0
+                               and d["espera_min"] >= alerta_min)
     return d
 
 
 _SQL_CONVERSA = (
     "SELECT v.*, m.ultima_entrada_at, m.ultima_saida_at, m.ultima_entrada_id, m.ultima_saida_id, m.ultima_saida_humana_id, "
     "m.total_mensagens, "
-    "(SELECT x.texto FROM messages x WHERE x.ticket_id = v.ticket_id ORDER BY x.id DESC LIMIT 1) AS ultima_texto "
+    "(SELECT x.texto FROM messages x WHERE x.ticket_id = v.ticket_id ORDER BY x.id DESC LIMIT 1) AS ultima_texto, "
+    "(SELECT MIN(e.created_at) FROM messages e WHERE e.ticket_id = v.ticket_id AND e.direcao = 'entrada' "
+    "AND e.id > COALESCE(m.ultima_saida_humana_id, 0)) AS espera_entrada_at "
     "FROM vw_tickets v LEFT JOIN ("
     "SELECT ticket_id, MAX(CASE WHEN direcao = 'entrada' THEN created_at END) AS ultima_entrada_at, "
     "MAX(CASE WHEN direcao = 'saida' THEN created_at END) AS ultima_saida_at, "
@@ -206,7 +224,7 @@ def listar(limite: int = 200, apenas_abertos: bool = False, agora: Optional[date
     agora = agora or utcnow()
     with get_engine().connect() as conn:
         prazos = sla.carregar_prazos(conn)
-        risco = sla.carregar_config(conn)["sla_risco_pct"]
+        cfg = sla.carregar_config(conn)
         rows = conn.execute(
             text(
                 _SQL_CONVERSA + "WHERE (:so_abertos = 0 OR v.first_response_at IS NULL) "
@@ -215,19 +233,20 @@ def listar(limite: int = 200, apenas_abertos: bool = False, agora: Optional[date
             {"limite": limite, "so_abertos": 1 if apenas_abertos else 0},
         ).fetchall()
         midias = midias_mod.por_ticket(conn, [r.ticket_id for r in rows])
-    return [_linha_para_dict(r, prazos, risco, agora, midias.get(r.ticket_id, [])) for r in rows]
+    return [_linha_para_dict(r, prazos, cfg["sla_risco_pct"], agora, midias.get(r.ticket_id, []), cfg["alerta_critico_min"])
+            for r in rows]
 
 
 def obter(ticket_id: int, agora: Optional[datetime] = None) -> dict:
     agora = agora or utcnow()
     with get_engine().connect() as conn:
         prazos = sla.carregar_prazos(conn)
-        risco = sla.carregar_config(conn)["sla_risco_pct"]
+        cfg = sla.carregar_config(conn)
         row = conn.execute(text(_SQL_CONVERSA + "WHERE v.ticket_id = :id"), {"id": ticket_id}).fetchone()
         midias = midias_mod.por_ticket(conn, [ticket_id])
     if row is None:
         raise TicketNaoEncontrado(ticket_id)
-    return _linha_para_dict(row, prazos, risco, agora, midias.get(ticket_id, []))
+    return _linha_para_dict(row, prazos, cfg["sla_risco_pct"], agora, midias.get(ticket_id, []), cfg["alerta_critico_min"])
 
 
 @com_retry_deadlock()

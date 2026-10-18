@@ -232,6 +232,19 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: var(--brilho); }
 @keyframes chegou { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pulso, .incidente-ativo { animation: none; } }
 
+/* Cliente crítico sem resposta há 10 min: o chat pisca na lista e na fila, e abre um popup */
+.piscando { border-color: var(--critica) !important; animation: piscar 1s ease-in-out infinite; }
+@keyframes piscar { 0%, 100% { background: var(--alerta-bg); box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); } 50% { background: rgba(244, 63, 94, .28); box-shadow: 0 0 0 3px var(--alerta-borda); } }
+@media (prefers-reduced-motion: reduce) { .piscando { animation: none; background: rgba(244, 63, 94, .2); } }
+.modal-critico { border-color: var(--critica); box-shadow: 0 0 0 4px var(--alerta-borda); }
+.modal-critico h2 { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--critica); }
+.modal-critico .pulso { margin-top: 0; align-self: center; }
+.lista-critico { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; }
+.lista-critico li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--alerta-borda); border-radius: 12px; background: var(--alerta-bg); }
+.lista-critico li > div { min-width: 0; }
+.lista-critico .msg { margin: 4px 0 0; color: var(--muted-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-critico .btn { flex: none; }
+
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-bottom: 20px; }
 .kpi {
   display: flex; flex-direction: column; gap: 4px; padding: 22px 22px 20px; border-radius: 16px;

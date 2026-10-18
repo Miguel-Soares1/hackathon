@@ -174,6 +174,7 @@ async function carregar() {
     if (!estado.editando && !tocandoAudio() && !estado.anexos.length && !estado.gravador) renderDetalhe();
     else if (estado.selecionado) carregarConversa(estado.selecionado); // a conversa continua atualizando
     renderIncidentes(incidentes);
+    avisarCriticos();
     if (estado.pagina === "correcoes") renderCorrecoes(await api("/correcoes"));
     carregarResumoIa();
     const agora = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
@@ -183,6 +184,28 @@ async function carregar() {
     if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
     $("#status").textContent = `⚠ ${e.message}`;
   }
+}
+
+// Cliente crítico sem resposta há 10 min (alerta_critico, calculado na API): popup uma vez por espera.
+// Sai do conjunto quando alguém responde, para avisar de novo se ele voltar a esperar.
+const criticosAvisados = new Set();
+function avisarCriticos() {
+  const criticos = estado.tickets.filter((t) => t.alerta_critico && !t.desfecho);
+  const ids = new Set(criticos.map((t) => t.ticket_id));
+  criticosAvisados.forEach((id) => { if (!ids.has(id)) criticosAvisados.delete(id); });
+  const novos = criticos.filter((t) => !criticosAvisados.has(t.ticket_id));
+  document.title = criticos.length ? `(${criticos.length}) ⚠ Crítico sem resposta · NEXUS` : "NEXUS";
+  if (!novos.length) return;
+  novos.forEach((t) => criticosAvisados.add(t.ticket_id));
+  const modal = $("#alerta-critico");
+  // Junta com os que já estavam no popup aberto.
+  const lista = modal.open ? criticos : novos;
+  $("#alerta-critico-lista").innerHTML = lista.map((t) => `<li>
+      <div><b>${esc(contato(t).nome)}</b> <span class="legenda">· ${tagCanal(t.canal)} sem resposta há ${Math.floor(t.espera_min)} min</span>
+        <p class="msg">${esc(t.ultima_texto || t.texto)}</p></div>
+      <button type="button" class="btn primario pequeno" data-abrir-critico="${t.ticket_id}">Abrir conversa</button>
+    </li>`).join("");
+  if (!modal.open) modal.showModal();
 }
 
 function agendar() {
@@ -316,7 +339,7 @@ function itemFila(t, i) {
   const classificado = t.status === "classificado";
   const aberto = estado.porqueAbertos.has(t.ticket_id);
   const prazo = prazoTexto(t);
-  return `<li class="fila-item u-borda-${esc(t.urgencia || "nenhuma")}" data-id="${t.ticket_id}" tabindex="0" title="Abrir no Atendimento">
+  return `<li class="fila-item u-borda-${esc(t.urgencia || "nenhuma")}${t.alerta_critico ? " piscando" : ""}" data-id="${t.ticket_id}" tabindex="0" title="Abrir no Atendimento">
     <span class="fila-pos" aria-hidden="true">${i + 1}</span>
     <div class="fila-corpo">
       <div class="fila-linha">
@@ -576,7 +599,8 @@ function cartao(t) {
     if (t.urgencia === "critica" || t.urgencia === "alta") marcas.push(pill(t.urgencia));
     if (aguardando(t) && (t.sla.estado === "estourado" || t.sla.estado === "em_risco")) marcas.push(selo(ROTULO_SLA_CURTO[t.sla.estado], `s-${esc(t.sla.estado)}`));
   }
-  return `<button type="button" class="cartao${t.ticket_id === estado.selecionado ? " sel" : ""}" data-id="${t.ticket_id}">
+  if (t.alerta_critico) marcas.unshift(selo(`sem resposta há ${Math.floor(t.espera_min)} min`, "s-estourado"));
+  return `<button type="button" class="cartao${t.ticket_id === estado.selecionado ? " sel" : ""}${t.alerta_critico ? " piscando" : ""}" data-id="${t.ticket_id}">
     ${avatar(t)}
     <div class="cartao-corpo">
       <div class="cartao-linha"><span class="nome">${esc(c.nome)}</span><span class="quando">${esc(horaCurta(t.ultima_entrada_at || t.received_at))}</span></div>
@@ -1387,6 +1411,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const b = ev.target.closest("button[data-pagina]");
     if (b) irPara(b.dataset.pagina);
   }));
+
+  $("#alerta-critico-lista").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-abrir-critico]");
+    if (!b) return;
+    $("#alerta-critico").close();
+    abrirNoAtendimento(Number(b.dataset.abrirCritico));
+  });
 
   $("#busca").addEventListener("input", renderCartoes);
   $("#filtro-canal").addEventListener("click", (ev) => {

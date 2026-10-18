@@ -243,5 +243,15 @@
       </section>
     </main>
   </div>
+
+  <!-- Cliente crítico sem resposta há 10 min: aparece em qualquer página do painel -->
+  <dialog id="alerta-critico" class="modal modal-critico" aria-labelledby="alerta-critico-titulo">
+    <form method="dialog">
+      <h2 id="alerta-critico-titulo"><span class="pulso" aria-hidden="true"></span> Cliente crítico sem resposta</h2>
+      <p class="legenda">Atendimento de urgência crítica esperando há mais de 10 minutos. Responda agora.</p>
+      <ul id="alerta-critico-lista" class="lista-critico"></ul>
+      <div class="acoes-modal"><button type="submit" class="btn">Depois</button></div>
+    </form>
+  </dialog>
 </body>
 </html>
