@@ -137,14 +137,16 @@ def classificar_por_regras(texto: str) -> Classificacao:
     if idioma != "pt":
         resposta = RESPOSTAS.get(idioma, RESPOSTAS[IDIOMA_RESPOSTA_PADRAO])[melhor]
 
-    if any(_contem(norm, c) for c in URGENCIA_CRITICA):
-        urgencia = "critica"
-    elif any(_contem(norm, c) for c in URGENCIA_ALTA):
-        urgencia = "alta"
-    elif any(_contem(norm, c) for c in URGENCIA_MEDIA):
-        urgencia = "media"
-    else:
-        urgencia = "baixa"
+    urgencia, sinal = "baixa", None
+    for nivel, chaves in (("critica", URGENCIA_CRITICA), ("alta", URGENCIA_ALTA), ("media", URGENCIA_MEDIA)):
+        sinal = next((c for c in chaves if _contem(norm, c)), None)
+        if sinal:
+            urgencia = nivel
+            break
+    justificativa = (
+        f"Plano B por regras: o termo “{sinal}” na mensagem indica urgência {urgencia}." if sinal
+        else "Plano B por regras: nenhum sinal de urgência na mensagem."
+    )
 
     neg = sum(1 for c in NEGATIVO if _contem(norm, c))
     if neg and "!" in texto:
@@ -161,6 +163,7 @@ def classificar_por_regras(texto: str) -> Classificacao:
         resposta_sugerida=resposta,
         idioma=idioma,
         confianca={"assunto": base, "urgencia": 0.35, "sentimento": 0.35, "equipe": base},
+        justificativa=justificativa,
         origem="fallback",
         prompt_version="regras",
     )

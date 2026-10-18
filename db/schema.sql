@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS classifications (
   -- Versão do prompt (ex.: 'v2', 'v2+fewshot', 'regras') e ids dos tickets revisados usados como exemplo.
   prompt_version VARCHAR(30) NOT NULL DEFAULT 'v1',
   exemplos VARCHAR(255) NULL,
+  -- "Por que essa prioridade?": frase da IA (ou do plano B) sobre o impacto que definiu a urgência.
+  justificativa VARCHAR(300) NULL,
   classified_at DATETIME NOT NULL,
   CONSTRAINT fk_class_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -110,6 +112,9 @@ CREATE TABLE IF NOT EXISTS incident_groups (
   incident_opened_at DATETIME NULL,
   justificativa TEXT NULL,
   assunto_predominante VARCHAR(30) NULL,
+  -- Nome e resumo do incidente escritos pela IA a partir das mensagens agrupadas (NULL = sem o LLM).
+  titulo_ia VARCHAR(120) NULL,
+  resumo_ia TEXT NULL,
   INDEX idx_groups_last (last_at),
   INDEX idx_groups_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -190,7 +195,7 @@ CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
   t.desfecho, t.encerrado_em, t.encerrado_por,
-  cl.origem, cl.prompt_version, cl.exemplos, cl.idioma,
+  cl.origem, cl.prompt_version, cl.exemplos, cl.idioma, cl.justificativa, cl.classified_at,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,
   cl.resposta_sugerida AS resposta_original,

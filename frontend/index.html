@@ -47,16 +47,22 @@
     <!-- Menu lateral (layout da dashboard do chat de atendimento, ADR-016) -->
     <aside class="lateral">
       <div class="marca"><img class="logo" src="img/nexus-icone.png" alt="Nexus"><div class="nome">NEXUS</div></div>
-      <div class="menu-titulo">Menu</div>
       <nav class="menu" aria-label="Páginas">
-        <button type="button" data-pagina="dashboard" aria-current="page"><span aria-hidden="true">📊</span> Dashboard</button>
-        <button type="button" data-pagina="atendimento"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
-        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
-        <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
-        <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
-        <button type="button" data-pagina="admin" id="menu-admin" hidden><span aria-hidden="true">🛡️</span> Administração</button>
-        <button type="button" data-pagina="conta"><span aria-hidden="true">👤</span> Minha conta</button>
+        <button type="button" data-pagina="dashboard" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v5c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V7z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg> Central de Triagem</button>
+        <button type="button" data-pagina="atendimento"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l2.1-5.7A8.4 8.4 0 1 1 21 11.5z"/></svg> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
+        <button type="button" data-pagina="incidentes"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Incidentes <span id="badge-incidentes" class="badge alerta-badge" hidden></span></button>
       </nav>
+      <details class="mais" id="menu-mais">
+        <summary>Mais</summary>
+        <nav class="menu" aria-label="Mais páginas">
+          <button type="button" data-pagina="correcoes">Correções</button>
+          <button type="button" data-pagina="relatorios">Relatórios</button>
+          <button type="button" data-pagina="atendimentos">Histórico de atendimentos</button>
+          <a class="menu-link" href="/demo" target="_blank" rel="noopener">Simular mensagem <span aria-hidden="true">↗</span></a>
+          <button type="button" data-pagina="admin" id="menu-admin" hidden>Usuários</button>
+          <button type="button" data-pagina="conta">Minha conta</button>
+        </nav>
+      </details>
       <hr>
       <div class="quem-logado"><div class="avatar" id="eu-inicial">?</div>
         <div><div class="nome" id="eu-nome"></div><div class="legenda" id="eu-papel"></div></div></div>
@@ -76,24 +82,39 @@
     <main class="conteudo">
       <h1 id="titulo">Dashboard</h1>
 
-      <!-- Dashboard: indicadores e métricas -->
+      <!-- Central de Triagem: a história da IA em uma tela (resumo, incidente, 4 números, fila e motivos) -->
       <section id="pagina-dashboard" class="pagina">
-        <header class="hero">
-          <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
-          <div class="hero-texto">
-            <h2 class="hero-titulo">Visão geral</h2>
-            <p>Acompanhe os indicadores em tempo real e fique por dentro dos avisos da equipe.</p>
+        <header class="central-topo">
+          <div>
+            <p class="sobretitulo">Central de Triagem</p>
+            <h2 class="central-titulo">A IA classifica, prioriza e detecta incidentes. O time só atende.</h2>
           </div>
-          <span id="hero-hora" class="hero-hora" aria-live="polite">Atualizando…</span>
+          <span id="hero-hora" class="hora-atualizacao" aria-live="polite">Atualizando…</span>
         </header>
+        <section id="resumo-ia" class="resumo-ia" aria-label="Resumo da IA" hidden></section>
+        <section id="incidente-ativo" class="incidente-ativo" aria-label="Incidente em andamento" aria-live="polite" hidden></section>
+        <div id="kpis" class="kpis" aria-label="Indicadores da triagem"></div>
+        <div class="central-grade">
+          <section class="card fila-ia" aria-labelledby="titulo-fila">
+            <header class="card-cab">
+              <h2 id="titulo-fila">Fila priorizada pela IA</h2>
+              <button type="button" class="btn pequeno" data-ir="atendimento">Abrir atendimento →</button>
+            </header>
+            <ol id="fila-ia" class="fila-lista"></ol>
+          </section>
+          <section class="card" aria-labelledby="titulo-motivos">
+            <h2 id="titulo-motivos">Principais motivos de contato</h2>
+            <div id="motivos"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Relatórios: os números secundários que saíram da Central de Triagem -->
+      <section id="pagina-relatorios" class="pagina" hidden>
+        <h2 class="secao">Clientes por situação</h2>
         <div id="cards-atendimento" class="cards" aria-label="Clientes por situação"></div>
-        <h2 class="secao">Indicadores da triagem</h2>
-        <div id="kpis" class="cards" aria-label="Indicadores da triagem"></div>
-        <section class="card chamadas-espera" aria-label="Chamadas em espera">
-          <h2>Chamadas em espera</h2>
-          <div class="filtros" data-contexto="dashboard"></div>
-          <div id="tabela-chamadas" class="tabela-rolagem"></div>
-        </section>
+        <h2 class="secao">Prazos e qualidade</h2>
+        <div id="kpis-rel" class="cards" aria-label="Prazos e qualidade"></div>
         <div id="metricas" class="grade-2"></div>
       </section>
 

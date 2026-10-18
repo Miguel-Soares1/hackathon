@@ -21,6 +21,7 @@ VALORES_PERMITIDOS = {
 }
 
 MAX_RESPOSTA = 2000
+MAX_JUSTIFICATIVA = 300
 
 
 def normalizar(valor: str) -> str:
@@ -38,6 +39,8 @@ class Classificacao(BaseModel):
     # Código ISO 639-1 do idioma do cliente; vazio = não informado (o classificador completa, ADR-015).
     idioma: str = ""
     confianca: dict[str, float]
+    # "Por que essa prioridade?": uma frase sobre o impacto que definiu a urgência (vazio = não informado).
+    justificativa: str = ""
     origem: str = "llm"
     # Preenchidos pelo classificador, nunca pela resposta do LLM (ver classifier.chamar_llm).
     prompt_version: str = "v2"
@@ -56,6 +59,15 @@ class Classificacao(BaseModel):
     def _idioma(cls, v):
         # Tolerante: um idioma ilegível não invalida a classificação inteira.
         return normalizar_codigo(v)
+
+    @field_validator("justificativa", mode="before")
+    @classmethod
+    def _justificativa(cls, v):
+        # Tolerante como o idioma: uma justificativa ausente ou longa demais não invalida a classificação.
+        if not isinstance(v, str):
+            return ""
+        v = " ".join(v.split())
+        return v if len(v) <= MAX_JUSTIFICATIVA else v[: MAX_JUSTIFICATIVA - 1].rstrip() + "…"
 
     @field_validator("resposta_sugerida", mode="before")
     @classmethod

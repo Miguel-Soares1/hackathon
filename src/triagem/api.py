@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
 from . import (canais, corrections, demo_celular, demo_chat, demo_email, incidents, metrics, midias, pipeline,
-               relatorios, tickets, usuarios)
+               relatorios, resumo_ia, tickets, usuarios)
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -695,12 +695,23 @@ def create_app() -> FastAPI:
         return corrections.historico(ticket_id, limite)
 
     @app.get("/incidentes", dependencies=[Depends(exigir_chave)])
-    def incidentes(todos_os_grupos: bool = False):
-        return incidents.listar_incidentes(apenas_incidentes=not todos_os_grupos)
+    def incidentes(background: BackgroundTasks, todos_os_grupos: bool = False):
+        grupos = incidents.listar_incidentes(apenas_incidentes=not todos_os_grupos)
+        if get_settings().deepseek_api_key:
+            pendentes = resumo_ia.sem_nome(grupos)
+            if pendentes:  # o nome chega na próxima atualização do painel
+                background.add_task(resumo_ia.nomear_varios, pendentes)
+        return grupos
 
     @app.get("/metricas", dependencies=[Depends(exigir_chave)])
     def resumo():
         return metrics.resumo()
+
+    @app.get("/resumo-ia", dependencies=[Depends(exigir_chave)])
+    def resumo_da_ia():
+        """Resumo do momento em 2 ou 3 frases para o topo da Central de Triagem. Escrito pelo LLM (com cache) ou,
+        sem ele, montado por regras com os mesmos números; nunca devolve erro por causa do LLM."""
+        return resumo_ia.resumo_do_dia()
 
     @app.get("/dominio", dependencies=[Depends(exigir_chave)])
     def dominio():

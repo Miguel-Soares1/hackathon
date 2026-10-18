@@ -177,7 +177,8 @@ def listar_incidentes(apenas_incidentes: bool = True) -> list[dict]:
     with get_engine().connect() as conn:
         grupos = conn.execute(
             text(
-                "SELECT id, size, first_at, last_at, status, incident_opened_at, justificativa, assunto_predominante "
+                "SELECT id, size, first_at, last_at, status, incident_opened_at, justificativa, assunto_predominante, "
+                "titulo_ia, resumo_ia "
                 "FROM incident_groups WHERE (:so_inc = 0 OR status = 'incidente') ORDER BY last_at DESC"
             ),
             {"so_inc": 1 if apenas_incidentes else 0},
@@ -186,12 +187,15 @@ def listar_incidentes(apenas_incidentes: bool = True) -> list[dict]:
         for g in grupos:
             tickets = conn.execute(
                 text(
-                    "SELECT t.id, t.cliente, t.canal, t.texto, t.received_at FROM group_members gm "
+                    "SELECT t.id, t.cliente, t.canal, t.texto, t.received_at, t.desfecho FROM group_members gm "
                     "JOIN tickets t ON t.id = gm.ticket_id WHERE gm.group_id = :g ORDER BY t.received_at"
                 ),
                 {"g": g.id},
             ).fetchall()
             d = dict(g._mapping)
             d["tickets"] = [dict(t._mapping) for t in tickets]
+            # Em andamento = ainda há cliente do grupo sem atendimento encerrado (o painel destaca esses).
+            d["abertos"] = sum(1 for t in d["tickets"] if not t["desfecho"])
+            d["ativo"] = d["status"] == "incidente" and d["abertos"] > 0
             saida.append(d)
     return saida

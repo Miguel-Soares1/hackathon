@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import text
 
-from . import exemplos, incidents, midias
+from . import exemplos, incidents, midias, resumo_ia
 from .classifier import classificar
 from .db import com_retry_deadlock, get_engine, utcnow
 
@@ -20,20 +20,21 @@ def _salvar_classificacao(ticket_id: int, c) -> None:
             text(
                 "INSERT INTO classifications (ticket_id, assunto, urgencia, sentimento, equipe, "
                 "resposta_sugerida, idioma, conf_assunto, conf_urgencia, conf_sentimento, conf_equipe, origem, prompt_version, "
-                "exemplos, classified_at) "
-                "VALUES (:id, :a, :u, :s, :e, :r, :i, :ca, :cu, :cs, :ce, :o, :pv, :ex, :q) "
+                "exemplos, justificativa, classified_at) "
+                "VALUES (:id, :a, :u, :s, :e, :r, :i, :ca, :cu, :cs, :ce, :o, :pv, :ex, :j, :q) "
                 "ON DUPLICATE KEY UPDATE assunto = VALUES(assunto), urgencia = VALUES(urgencia), "
                 "sentimento = VALUES(sentimento), equipe = VALUES(equipe), "
                 "resposta_sugerida = VALUES(resposta_sugerida), idioma = VALUES(idioma), conf_assunto = VALUES(conf_assunto), "
                 "conf_urgencia = VALUES(conf_urgencia), conf_sentimento = VALUES(conf_sentimento), "
                 "conf_equipe = VALUES(conf_equipe), origem = VALUES(origem), prompt_version = VALUES(prompt_version), "
-                "exemplos = VALUES(exemplos), classified_at = VALUES(classified_at)"
+                "exemplos = VALUES(exemplos), justificativa = VALUES(justificativa), classified_at = VALUES(classified_at)"
             ),
             {
                 "id": ticket_id, "a": c.assunto, "u": c.urgencia, "s": c.sentimento, "e": c.equipe,
                 "r": c.resposta_sugerida, "i": c.idioma or "pt", "ca": c.confianca["assunto"], "cu": c.confianca["urgencia"],
                 "cs": c.confianca["sentimento"], "ce": c.confianca["equipe"], "o": c.origem,
-                "pv": c.prompt_version, "ex": ",".join(map(str, c.exemplos)) or None, "q": utcnow(),
+                "pv": c.prompt_version, "ex": ",".join(map(str, c.exemplos)) or None, "j": c.justificativa or None,
+                "q": utcnow(),
             },
         )
 
@@ -63,10 +64,14 @@ def processar_ticket(ticket_id: int) -> str:
         return "erro"
 
     try:
-        incidents.registrar(ticket_id)
+        agrupado = incidents.registrar(ticket_id)
     except Exception:
         # Falha no agrupamento não invalida a classificação já salva.
         logger.exception("erro ao agrupar o ticket %s", ticket_id)
+        return "classificado"
+    if agrupado.get("incidente"):
+        # Nome e resumo do incidente pela IA, uma vez por incidente; sem o LLM o painel usa o assunto predominante.
+        resumo_ia.nomear_incidente(agrupado["grupo_id"])
     return "classificado"
 
 

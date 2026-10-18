@@ -1,11 +1,50 @@
 """Métricas do painel (Spec 4): motivos de contato, SLA/SLI e resumo."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import text
 
 from . import corrections, incidents, sla
 from .db import get_engine, utcnow
+
+
+# Horário de Brasília (sem horário de verão desde 2019): "hoje" é o dia do painel, não o dia em UTC.
+BRT = timezone(timedelta(hours=-3))
+# Reprocessamentos (a API reiniciou com tickets pendentes) não entram na média do tempo de triagem.
+TEMPO_TRIAGEM_MAX_S = 3600
+
+
+def inicio_do_dia(agora: Optional[datetime] = None) -> datetime:
+    """Meia-noite de hoje em Brasília, em UTC sem fuso (como as datas do banco)."""
+    agora = agora or utcnow()
+    local = agora.replace(tzinfo=timezone.utc).astimezone(BRT)
+    meia_noite = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    return meia_noite.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def triagem_hoje(agora: Optional[datetime] = None) -> dict:
+    """Quantas mensagens a triagem automática classificou hoje e quanto tempo levou cada uma.
+
+    O tempo vai da gravação do ticket (created_at) até a classificação: received_at pode ser a hora original
+    de uma mensagem importada ou simulada.
+    """
+    with get_engine().connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT COUNT(*) AS total, COALESCE(SUM(cl.origem = 'llm'), 0) AS ia, "
+                "AVG(CASE WHEN TIMESTAMPDIFF(SECOND, t.created_at, cl.classified_at) BETWEEN 0 AND :max "
+                "THEN TIMESTAMPDIFF(SECOND, t.created_at, cl.classified_at) END) AS tempo "
+                "FROM classifications cl JOIN tickets t ON t.id = cl.ticket_id WHERE cl.classified_at >= :ini"
+            ),
+            {"ini": inicio_do_dia(agora), "max": TEMPO_TRIAGEM_MAX_S},
+        ).fetchone()
+    total, ia = int(r.total), int(r.ia)
+    return {
+        "triadas_hoje": total,
+        "triadas_ia_hoje": ia,
+        "plano_b_hoje": total - ia,
+        "tempo_medio_s": None if r.tempo is None else round(float(r.tempo), 1),
+    }
 
 
 def motivos_contato() -> list[dict]:
@@ -79,4 +118,5 @@ def resumo(agora: Optional[datetime] = None) -> dict:
         "precisao_fallback": corrections.precisao("fallback"),
         "precisao_por_versao": corrections.precisao_por_versao(),
         "incidentes": len(incidents.listar_incidentes(apenas_incidentes=True)),
+        "triagem": triagem_hoje(agora),
     }

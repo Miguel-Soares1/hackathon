@@ -1,5 +1,5 @@
 // Painel da Triagem IA: HTML/CSS/JS puros, sem dependências. Consome a API do mesmo servidor.
-// Layout da dashboard de atendimento: menu lateral, Dashboard, Atendimento (fila estilo chat), Incidentes e Correções.
+// Menu enxuto (Central de Triagem, Atendimento, Incidentes) e o secundário em "Mais" (Correções, Relatórios...).
 "use strict";
 
 const ORDEM_URGENCIA = { critica: 0, alta: 1, media: 2, baixa: 3 };
@@ -17,8 +17,14 @@ const POLITICA_TEXTO = {
   congelar_funcionalidades: "Error budget esgotado: congelar funcionalidades novas e corrigir as causas dos atrasos.",
   sem_dados: "Ainda não há tickets com desfecho para calcular o SLI.",
 };
-const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções",
-  atendimentos: "Atendimentos", admin: "Administração", conta: "Minha conta" };
+const TITULOS = { dashboard: "Central de Triagem", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções",
+  relatorios: "Relatórios", atendimentos: "Histórico de atendimentos", admin: "Usuários", conta: "Minha conta" };
+const PAGINAS_MAIS = ["correcoes", "relatorios", "atendimentos", "admin", "conta"];
+const ROTULO_ASSUNTO = { cobranca: "Cobrança", pagamento: "Pagamento", acesso: "Acesso", instabilidade: "Instabilidade",
+  cancelamento: "Cancelamento", reclamacao: "Reclamação", duvida: "Dúvida", elogio: "Elogio" };
+const ROTULO_URGENCIA = { critica: "crítica", alta: "alta", media: "média", baixa: "baixa" };
+const ROTULO_SENTIMENTO = { positivo: "positivo", neutro: "neutro", negativo: "negativo" };
+const nomeAssunto = (a) => ROTULO_ASSUNTO[a] || a || "—";
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const ORDEM_ESTADO = { estourado: 0, em_risco: 1, no_prazo: 2, aguardando_classificacao: 3, respondido: 4 };
 // Filtro das chamadas, o mesmo no Dashboard e no Atendimento (guardado neste navegador).
@@ -42,6 +48,9 @@ const estado = {
   dominio: null,
   tickets: [],
   resumo: null,
+  incidentes: [],
+  resumoIa: null,
+  porqueAbertos: new Set(), // "Por que essa prioridade?" aberto na fila (sobrevive à atualização automática)
   pagina: "dashboard",
   lista: "espera",
   canal: "",
@@ -80,7 +89,7 @@ function hora(iso) {
 
 const pct = (v) => (v === null || v === undefined ? "—" : `${Number(v).toFixed(1)}%`);
 const selo = (texto, classe) => `<span class="selo ${classe}">${esc(texto)}</span>`;
-const pill = (u) => (u ? selo(u, `u-${esc(u)}`) : "—");
+const pill = (u) => (u ? selo(ROTULO_URGENCIA[u] || u, `u-${esc(u)}`) : "—");
 const inicial = (nome) => esc((nome || "?").trim().replace(/^@/, "").slice(0, 1).toUpperCase() || "?");
 const aguardando = (t) => t.aguardando ?? !t.first_response_at;
 
@@ -155,16 +164,18 @@ async function carregar() {
     ]);
     estado.tickets = tickets;
     estado.resumo = resumo;
-    renderKpis();
+    estado.incidentes = incidentes;
+    renderCentral();
     renderBadgeIncidentes();
+    renderSituacao();
     renderMetricas();
-    renderChamadas();
     renderCartoes();
     renderRelatorio();
     if (!estado.editando && !tocandoAudio() && !estado.anexos.length && !estado.gravador) renderDetalhe();
     else if (estado.selecionado) carregarConversa(estado.selecionado); // a conversa continua atualizando
     renderIncidentes(incidentes);
     if (estado.pagina === "correcoes") renderCorrecoes(await api("/correcoes"));
+    carregarResumoIa();
     const agora = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
     $("#status").textContent = agora;
     $("#hero-hora").textContent = agora;
@@ -210,7 +221,8 @@ function situacao(t) {
   return aguardando(t) ? "espera" : "atendimento";
 }
 
-function renderKpis() {
+// Relatórios: clientes por situação e os indicadores de prazo que saíram da Central de Triagem.
+function renderSituacao() {
   const n = { espera: 0, atendimento: 0, cancelado: 0, encerrado: 0 };
   estado.tickets.forEach((t) => { n[situacao(t)] += 1; });
   $("#cards-atendimento").innerHTML = [
@@ -220,7 +232,7 @@ function renderKpis() {
     cardInd("check", "Clientes encerrados", n.encerrado, "finalizados"),
   ].join("");
   const r = estado.resumo;
-  $("#kpis").innerHTML = [
+  $("#kpis-rel").innerHTML = [
     cardInd("alerta", "Prazos em risco", r.prazos_em_risco.length),
     cardInd("sirene", "Incidentes", r.incidentes),
     cardInd("medidor", `SLI (meta ${r.sli.alvo_pct.toFixed(0)}%)`, pct(r.sli.sli_pct)),
@@ -234,6 +246,148 @@ function renderBadgeIncidentes() {
   const total = estado.resumo.incidentes;
   badge.hidden = !total;
   badge.textContent = total;
+}
+
+// ---------------------------------------------------------------- central de triagem
+const URGENTES = ["critica", "alta"];
+const emAndamento = () => estado.incidentes
+  .filter((g) => g.status === "incidente" && g.ativo)
+  .sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
+
+function kpi({ rotulo, valor, sub, destaque, ir, rotuloIr }) {
+  const attrs = ir ? ` role="button" tabindex="0" data-ir="${ir}" title="${esc(rotuloIr)}"` : "";
+  return `<div class="kpi${destaque ? ` kpi-${destaque}` : ""}${ir ? " clicavel" : ""}"${attrs}>
+    <div class="kpi-rotulo">${esc(rotulo)}</div>
+    <div class="kpi-valor">${esc(valor)}</div>
+    <div class="kpi-sub">${sub}</div></div>`;
+}
+
+function renderCentral() {
+  const r = estado.resumo;
+  const tr = r.triagem || { triadas_hoje: 0, triadas_ia_hoje: 0, plano_b_hoje: 0, tempo_medio_s: null };
+  const espera = estado.tickets.filter((t) => situacao(t) === "espera");
+  const crit = espera.filter((t) => t.urgencia === "critica").length;
+  const alta = espera.filter((t) => t.urgencia === "alta").length;
+  const ativos = emAndamento().length;
+  const p = r.precisao;
+  const tempo = tr.tempo_medio_s === null ? "" : `<b>${tr.tempo_medio_s < 10 ? tr.tempo_medio_s.toFixed(1).replace(".", ",") : Math.round(tr.tempo_medio_s)} s</b> por mensagem · `;
+  $("#kpis").innerHTML = [
+    kpi({ rotulo: "Triadas pela IA hoje", valor: tr.triadas_ia_hoje,
+      sub: `${tempo}${tr.plano_b_hoje ? `${tr.plano_b_hoje} pelo plano B` : "sem triagem manual"}` }),
+    kpi({ rotulo: "Urgentes na frente da fila", valor: crit + alta, destaque: crit ? "critica" : alta ? "alta" : "",
+      sub: crit + alta ? `${crit} crítica(s) · ${alta} alta(s) aguardando` : "nenhum caso urgente aguardando",
+      ir: "atendimento", rotuloIr: "Abrir no Atendimento" }),
+    kpi({ rotulo: "Incidentes detectados", valor: r.incidentes, destaque: ativos ? "critica" : "",
+      sub: ativos ? `<b>${ativos} em andamento</b> · grupos de mensagens parecidas` : "grupos de mensagens parecidas",
+      ir: "incidentes", rotuloIr: "Abrir Incidentes" }),
+    kpi({ rotulo: "Precisão da IA", valor: pct(p.agregado).replace(".", ","),
+      sub: p.revisados ? `1 − correções ÷ ${p.revisados} triagens revisadas` : "revise triagens para medir" }),
+  ].join("");
+  renderFilaIa(espera);
+  renderIncidenteAtivo();
+  $("#motivos").innerHTML = barras(r.motivos_contato.slice(0, 6), (m) => nomeAssunto(m.assunto));
+}
+
+const tempoHumano = (m) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}` : `${Math.floor(m / 1440)} d`);
+
+// Prazo da 1ª resposta em linguagem de gente: "vence em 12 min" / "estourou há 5 min".
+function prazoTexto(t) {
+  const s = t.sla;
+  if (!s.vence_em) return "";
+  const vence = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s.vence_em) ? s.vence_em : s.vence_em + "Z");
+  const min = Math.round((vence - Date.now()) / 60000);
+  return min >= 0 ? `vence em ${tempoHumano(min)}` : `estourou há ${tempoHumano(-min)}`;
+}
+
+// "Por que essa prioridade?": a frase da IA (ou do plano B); tickets antigos ganham uma explicação pelos dados.
+function porqueTexto(t) {
+  if (t.justificativa) return t.justificativa;
+  const conf = Math.round(Number(t.conf_urgencia) * 100);
+  return `Urgência ${ROTULO_URGENCIA[t.urgencia] || t.urgencia} para um caso de ${nomeAssunto(t.assunto).toLowerCase()}`
+    + `${Number.isFinite(conf) ? ` (${conf}% de confiança)` : ""}; prazo de 1ª resposta de ${duracao(t.sla.prazo_minutos)}.`;
+}
+
+const seloOrigem = (t) => (t.status !== "classificado" ? `<span class="origem classificando">IA classificando…</span>`
+  : t.origem === "llm" ? `<span class="origem ia" title="Classificado pelo LLM (${esc(t.prompt_version || "")})">✦ classificado pela IA</span>`
+    : `<span class="origem planob" title="A IA não respondeu: classificado por regras">plano B</span>`);
+
+function itemFila(t, i) {
+  const c = contato(t);
+  const classificado = t.status === "classificado";
+  const aberto = estado.porqueAbertos.has(t.ticket_id);
+  const prazo = prazoTexto(t);
+  return `<li class="fila-item u-borda-${esc(t.urgencia || "nenhuma")}" data-id="${t.ticket_id}" tabindex="0" title="Abrir no Atendimento">
+    <span class="fila-pos" aria-hidden="true">${i + 1}</span>
+    <div class="fila-corpo">
+      <div class="fila-linha">
+        <span class="nome">${esc(c.nome)}</span>
+        ${classificado ? pill(t.urgencia) : ""}
+        ${seloOrigem(t)}
+        ${prazo ? `<span class="prazo s-${esc(t.sla.estado)}">${esc(prazo)}</span>` : ""}
+      </div>
+      <p class="fila-texto">${iconesMidia(t)}${esc(t.ultima_texto || t.texto)}</p>
+      ${classificado ? `<div class="fila-tags"><span>${esc(nomeAssunto(t.assunto))}</span><span>${esc(ROTULO_SENTIMENTO[t.sentimento] || t.sentimento)}</span><span>→ ${esc(nomeEquipe(t.equipe))}</span></div>
+      <details class="porque" data-porque="${t.ticket_id}" ${aberto ? "open" : ""}><summary>Por que essa prioridade?</summary><p>${esc(porqueTexto(t))}</p></details>` : ""}
+    </div>
+  </li>`;
+}
+
+function renderFilaIa(espera) {
+  const lista = [...espera].sort(porPrioridadeIa);
+  const proximos = lista.slice(0, 8);
+  $("#fila-ia").innerHTML = proximos.map(itemFila).join("")
+    || `<li class="vazio">Fila zerada: nenhum cliente aguardando resposta.</li>`;
+  if (lista.length > proximos.length) {
+    $("#fila-ia").insertAdjacentHTML("beforeend", `<li class="fila-mais">+ ${lista.length - proximos.length} na fila, já ordenados pela IA</li>`);
+  }
+}
+
+function minutosDesde(iso) {
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+  return Math.max(0, Math.round((Date.now() - d) / 60000));
+}
+
+function renderIncidenteAtivo() {
+  const caixa = $("#incidente-ativo");
+  const ativos = emAndamento();
+  caixa.hidden = !ativos.length;
+  if (!ativos.length) return void (caixa.innerHTML = "");
+  const g = ativos[0];
+  const canais = [...new Set(g.tickets.map((t) => CANAIS[chaveCanal(t.canal)].rotulo))];
+  const titulo = g.titulo_ia || `Vários clientes com o mesmo problema de ${nomeAssunto(g.assunto_predominante).toLowerCase()}`;
+  const ultima = minutosDesde(g.last_at);
+  caixa.innerHTML = `
+    <span class="pulso" aria-hidden="true"></span>
+    <div class="inc-corpo">
+      <p class="sobretitulo">Incidente em andamento${g.titulo_ia ? ` · <span class="nomeado">nomeado pela IA</span>` : ""}</p>
+      <h2>${esc(titulo)}</h2>
+      <p class="inc-resumo">${esc(g.resumo_ia || g.justificativa || "")}</p>
+      <div class="inc-numeros">
+        <span><b>${g.size}</b> clientes</span>
+        <span>desde <b>${esc(horaCurta(g.first_at))}</b></span>
+        <span>última mensagem ${ultima ? `há <b>${tempoHumano(ultima)}</b>` : "<b>agora</b>"}</span>
+        <span>${esc(canais.join(" · "))}</span>
+      </div>
+      ${ativos.length > 1 ? `<p class="inc-mais">+ ${ativos.length - 1} outro(s) incidente(s) em andamento</p>` : ""}
+    </div>
+    <button type="button" class="btn primario" data-ir="incidentes">Ver as mensagens</button>`;
+}
+
+// Resumo da IA: falha ou ausência só esconde o bloco (nunca uma tela de erro).
+async function carregarResumoIa() {
+  try {
+    estado.resumoIa = await api("/resumo-ia");
+  } catch (e) {
+    if (e instanceof NaoAutorizado) return;
+    estado.resumoIa = null;
+  }
+  const caixa = $("#resumo-ia");
+  const r = estado.resumoIa;
+  caixa.hidden = !r?.texto;
+  if (!r?.texto) return;
+  caixa.innerHTML = `<span class="resumo-selo">${r.origem === "llm" ? "✦ Resumo da IA" : "Resumo automático"}</span>
+    <p>${esc(r.texto)}</p>
+    <span class="resumo-hora">${r.origem === "llm" ? "escrito pela IA" : "IA indisponível: montado pelas regras"} · ${esc(horaCurta(r.gerado_em))}</span>`;
 }
 
 function barras(itens, rotulo) {
@@ -264,9 +418,12 @@ function renderMetricas() {
     : `<p class="muted">Revise tickets para comparar as versões do prompt.</p>`;
 
   const sli = r.sli;
+  const porCanal = {};
+  estado.tickets.forEach((t) => { const k = chaveCanal(t.canal); porCanal[k] = (porCanal[k] || 0) + 1; });
+  const canais = Object.entries(porCanal).map(([k, total]) => ({ k, total })).sort((a, b) => b.total - a.total);
 
   $("#metricas").innerHTML = `
-    <div class="card"><h2>Principais motivos de contato</h2>${barras(r.motivos_contato, (m) => m.assunto)}</div>
+    <div class="card"><h2>Canais de entrada</h2>${barras(canais, (c) => CANAIS[c.k].rotulo)}</div>
     <div class="card"><h2>Idiomas dos clientes</h2>${barras(r.idiomas || [], (i) => nomeIdioma(i.idioma))}</div>
     <div class="card"><h2>SLI e error budget</h2>
       <div class="politica ${esc(sli.politica)}">${esc(POLITICA_TEXTO[sli.politica])}</div>
@@ -384,28 +541,12 @@ function mudarFiltro(novo) {
     caixa.querySelector(".filtros-personalizado").hidden = novo.modo !== "personalizado";
     caixa.querySelector(".legenda-filtro").hidden = novo.modo !== "prioridade";
   });
-  renderChamadas();
   renderCartoes();
 }
 
 function contagem(contexto, mostradas, total) {
   const el = document.querySelector(`.filtros[data-contexto="${contexto}"] .contagem`);
   if (el) el.textContent = mostradas === total ? `${total} chamada(s)` : `${mostradas} de ${total} chamada(s)`;
-}
-
-// ---------------------------------------------------------------- dashboard: tabela de chamadas em espera
-function renderChamadas() {
-  const espera = estado.tickets.filter(aguardando);
-  const lista = aplicarFiltro(espera);
-  contagem("dashboard", lista.length, espera.length);
-  const linhas = lista.slice(0, 50);
-  $("#tabela-chamadas").innerHTML = linhas.length
-    ? `<table class="tabela chamadas"><thead><tr><th>#</th><th>Cliente</th><th>Urgência</th><th>Estado</th><th>Consumido</th><th>Assunto</th></tr></thead><tbody>
-        ${linhas.map((t) => `<tr data-id="${t.ticket_id}" tabindex="0" title="Abrir no Atendimento">
-          <td>#${t.ticket_id}</td><td>${esc(t.cliente || "—")}</td><td>${pill(t.urgencia)}</td>
-          <td>${esc(ROTULO_ESTADO[t.sla.estado] || t.sla.estado)}</td><td>${pct(t.sla.consumido_pct)}</td><td>${esc(t.assunto || "classificando")}</td></tr>`).join("")}
-      </tbody></table>${lista.length > linhas.length ? `<p class="muted">Mostrando as 50 primeiras de ${lista.length}.</p>` : ""}`
-    : `<p class="muted">${espera.length ? "Nenhuma chamada com esses filtros." : "✅ Nenhuma chamada em espera."}</p>`;
 }
 
 // ---------------------------------------------------------------- atendimento: fila estilo chat
@@ -594,7 +735,8 @@ function triagem(t) {
   const s = t.sla;
   const d = estado.dominio;
   return `
-    <div>${pill(t.urgencia)}${selo(t.assunto, "s-respondido")}${selo(t.sentimento, "s-respondido")}${selo("→ " + t.equipe.replace("_", " "), "s-novo")}</div>
+    <div>${pill(t.urgencia)}${selo(nomeAssunto(t.assunto), "s-respondido")}${selo(t.sentimento, "s-respondido")}${selo("→ " + nomeEquipe(t.equipe), "s-novo")}${seloOrigem(t)}</div>
+    <div class="porque-detalhe"><b>Por que essa prioridade?</b> ${esc(porqueTexto(t))}</div>
     <p class="muted">Prazo: ${esc(ROTULO_ESTADO[s.estado])} — ${s.prazo_minutos} min · vence ${esc(hora(s.vence_em))} · origem da triagem: ${esc(t.origem)}</p>
     <div><h3>Resposta sugerida</h3><div class="resposta" lang="${esc(t.idioma || "pt")}">${esc(t.resposta_sugerida)}</div></div>
     <p class="muted">🌐 Cliente escreveu em ${esc(nomeIdioma(t.idioma))}${t.idioma && t.idioma !== "pt" ? " · resposta sugerida no mesmo idioma" : ""}</p>
@@ -784,8 +926,11 @@ async function alternarGravacao() {
 // ---------------------------------------------------------------- incidentes e correções
 function renderIncidentes(grupos) {
   $("#lista-incidentes").innerHTML = grupos.length
-    ? grupos.map((g) => `<details class="card grupo" ${g.status === "incidente" ? "open" : ""}>
-        <summary>${g.status === "incidente" ? "🚨" : "•"} Grupo #${g.id} · ${esc(g.status)} · ${g.size} mensagens · ${esc(g.assunto_predominante || "—")}</summary>
+    ? grupos.map((g) => `<details class="card grupo${g.ativo ? " ativo" : ""}" ${g.status === "incidente" ? "open" : ""}>
+        <summary>${g.status === "incidente" ? (g.ativo ? `<span class="selo u-critica">em andamento</span>` : `<span class="selo s-respondido">resolvido</span>`) : "•"}
+          ${esc(g.titulo_ia || (g.status === "incidente" ? `Incidente de ${nomeAssunto(g.assunto_predominante).toLowerCase()}` : `Grupo #${g.id}`))}
+          <span class="muted">· ${g.size} mensagens · desde ${esc(horaCurta(g.first_at))}</span></summary>
+        ${g.resumo_ia ? `<p class="resumo-incidente"><span class="origem ia">✦ resumo da IA</span> ${esc(g.resumo_ia)}</p>` : ""}
         <p class="muted">${esc(g.justificativa || "Ainda abaixo do volume mínimo de incidente.")}</p>
         <ul>${g.tickets.map((t) => `<li><b>${esc(t.cliente || "cliente")}</b> (${esc(t.canal)}, ${esc(hora(t.received_at))}): ${esc(t.texto)}</li>`).join("")}</ul>
       </details>`).join("")
@@ -855,6 +1000,7 @@ function irPara(pagina) {
   document.querySelectorAll(".menu button").forEach((b) => {
     if (b.dataset.pagina === pagina) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
+  if (PAGINAS_MAIS.includes(pagina)) $("#menu-mais").open = true;
   document.querySelectorAll(".pagina").forEach((s) => { s.hidden = s.id !== `pagina-${pagina}`; });
   $("#titulo").textContent = TITULOS[pagina];
   $("#titulo").hidden = pagina === "dashboard" || pagina === "atendimentos";
@@ -1237,10 +1383,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#sair").addEventListener("click", () => sair());
   $("#intervalo").addEventListener("change", agendar);
   $("#todos-grupos").addEventListener("change", carregar);
-  $(".menu").addEventListener("click", (ev) => {
+  document.querySelectorAll(".menu").forEach((m) => m.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-pagina]");
     if (b) irPara(b.dataset.pagina);
-  });
+  }));
 
   $("#busca").addEventListener("input", renderCartoes);
   $("#filtro-canal").addEventListener("click", (ev) => {
@@ -1270,15 +1416,28 @@ document.addEventListener("DOMContentLoaded", () => {
       if (ev.target.closest('[data-acao="limpar-filtro"]')) mudarFiltro({ ...FILTRO_PADRAO });
     });
   });
-  const tabela = $("#tabela-chamadas");
-  tabela.addEventListener("click", (ev) => {
-    const tr = ev.target.closest("tr[data-id]");
-    if (tr) abrirNoAtendimento(Number(tr.dataset.id));
+  // Central de Triagem: números e botões levam à página; um item da fila abre o atendimento.
+  const central = $("#pagina-dashboard");
+  const irDaCentral = (alvo) => (alvo === "atendimento" ? irLista("espera") : irPara(alvo));
+  central.addEventListener("click", (ev) => {
+    const ir = ev.target.closest("[data-ir]");
+    if (ir) return irDaCentral(ir.dataset.ir);
+    if (ev.target.closest(".porque")) return; // abrir o "Por que?" não sai da tela
+    const item = ev.target.closest(".fila-item[data-id]");
+    if (item) abrirNoAtendimento(Number(item.dataset.id));
   });
-  tabela.addEventListener("keydown", (ev) => {
-    const tr = ev.target.closest("tr[data-id]");
-    if (tr && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); abrirNoAtendimento(Number(tr.dataset.id)); }
+  central.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const ir = ev.target.closest("[data-ir]");
+    const item = ev.target.closest(".fila-item[data-id]");
+    if (ir && ev.target === ir) { ev.preventDefault(); irDaCentral(ir.dataset.ir); }
+    else if (item && ev.target === item) { ev.preventDefault(); abrirNoAtendimento(Number(item.dataset.id)); }
   });
+  central.addEventListener("toggle", (ev) => {
+    const id = Number(ev.target.dataset?.porque);
+    if (!id) return;
+    if (ev.target.open) estado.porqueAbertos.add(id); else estado.porqueAbertos.delete(id);
+  }, true);
   $(".abas-lista").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-lista]");
     if (!b) return;

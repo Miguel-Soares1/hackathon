@@ -30,7 +30,7 @@ Abra http://localhost:8000. **No primeiro acesso**, o painel pede a `API_KEY` do
 administrador (nome, usuário e senha); depois disso a entrada é por **usuário e senha** (com "manter conectado", a
 sessão vale 30 dias no navegador). O administrador cadastra atendentes, troca papéis, desativa contas e redefine
 senhas em **Administração**; cada um troca a própria senha em **Minha conta** (ADR-018). A `API_KEY` continua só para
-integrações (webhook, canais e scripts). O painel tem menu lateral: **Dashboard** (clientes em espera, em atendimento, cancelados e encerrados; indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa com imagem e áudio, triagem da IA, encerrar/cancelar/reabrir), **Incidentes**, **Correções** e **Atendimentos** (histórico com filtros e CSV). Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+integrações (webhook, canais e scripts). O painel tem menu lateral: **Central de Triagem** (resumo do momento escrito pela IA, incidente em andamento, 4 números, fila priorizada pela IA com "Por que essa prioridade?" e motivos de contato), **Atendimento** (clientes em espera × respondidos, conversa com imagem e áudio, triagem da IA, encerrar/cancelar/reabrir) e **Incidentes**; em **Mais**: Correções, Relatórios (situação dos clientes, SLI, canais, idiomas e precisão detalhada), Histórico de atendimentos (filtros e CSV), Simular mensagem, Usuários e Minha conta. Roteiro de 5 minutos para a banca: [`docs/roteiro_apresentacao.md`](docs/roteiro_apresentacao.md). Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
 **Banco criado antes do login:** aplique `db/migrations/007_usuarios.sql` (ou rode `python scripts/criar_banco.py`).
 
@@ -93,14 +93,14 @@ mysql -h127.0.0.1 -uhackathon -phackathon hackathon -e "UPDATE app_config SET va
 Não há fine-tuning: antes de classificar, o sistema busca os tickets **já revisados** pelo atendente mais parecidos
 com a mensagem nova e os envia ao DeepSeek como exemplos (ADR-014). Corrigiu uma triagem no painel? A próxima
 mensagem parecida já usa essa correção. O painel mostra os exemplos usados em cada ticket e, em Métricas, a taxa de
-acerto por versão do prompt (`v3`, `v3+fewshot`, `regras`). Ajuste com `FEWSHOT_K` (0 desliga) e `FEWSHOT_SIM_MIN`.
+acerto por versão do prompt (`v4`, `v4+fewshot`, `regras`). Ajuste com `FEWSHOT_K` (0 desliga) e `FEWSHOT_SIM_MIN`.
 
 **Medir antes de mudar o prompt:** `data/avaliacao.json` tem 60 mensagens rotuladas nas 4 dimensões, separadas das
 mensagens de demo (inclui ironia e prompt injection). Ao mudar o texto do prompt, incremente `PROMPT_VERSION` em
 `src/triagem/classifier.py` e compare:
 
 ```bash
-python scripts/avaliar_triagem.py --saida data/avaliacoes/v3.json   # regras × LLM × LLM+few-shot + injection
+python scripts/avaliar_triagem.py --saida data/avaliacoes/v4.json   # regras × LLM × LLM+few-shot + injection
 ```
 
 **Banco criado antes desta versão:** aplique as migrações em ordem e recrie a visão:
@@ -180,7 +180,7 @@ Painel: fila · incidentes · motivos de contato · prazos em risco · SLI/error
 | Prazo "em risco" | ≥ 75% do prazo consumido sem resposta; "estourado" ≥ 100% |
 | Incidente | ≥ 3 mensagens no mesmo grupo em 30 min (cosseno com o centroide ≥ limiar) |
 | SLO | 95% das primeiras respostas dentro do prazo, janela de 7 dias |
-| Taxa de acerto | `1 − correções/revisados` por dimensão; agregado = 4 dimensões (assunto, urgência, sentimento, equipe). Separada por origem (`llm`/`fallback`) e por versão do prompt (`v3`, `v3+fewshot`, `regras`) |
+| Taxa de acerto | `1 − correções/revisados` por dimensão; agregado = 4 dimensões (assunto, urgência, sentimento, equipe). Separada por origem (`llm`/`fallback`) e por versão do prompt (`v4`, `v4+fewshot`, `regras`) |
 | Idioma | resposta sugerida no idioma do cliente; plano B com respostas em pt, en e es (outros idiomas → en) |
 | Few-shot | até `FEWSHOT_K` = 4 tickets revisados com similaridade ≥ `FEWSHOT_SIM_MIN` = 0,45 entram como exemplo |
 
