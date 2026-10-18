@@ -10,8 +10,9 @@ com status `enviado`, e não passam pela IA.
 import base64
 import binascii
 import logging
+import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
 import httpx
 from sqlalchemy import text
@@ -117,8 +118,18 @@ def salvar(conn, ticket_id: int, midias: list[Midia], mensagem_id: Optional[int]
         )
 
 
-def ler_com_ia(m: Midia, settings: Optional[Settings] = None, client: Optional[httpx.Client] = None) -> str:
-    """Uma chamada ao Gemini: transcrição (áudio) ou descrição (foto). Levanta MidiaErro na falha."""
+# Sobrecarga ou limite do Gemini ("high demand", 429/5xx) costuma passar em segundos: tenta de novo antes de desistir.
+STATUS_TEMPORARIOS = {429, 500, 502, 503, 504}
+ESPERAS_NOVA_TENTATIVA = (2.0, 5.0)
+
+
+def ler_com_ia(m: Midia, settings: Optional[Settings] = None, client: Optional[httpx.Client] = None,
+               esperas: Sequence[float] = ESPERAS_NOVA_TENTATIVA) -> str:
+    """Chamada ao Gemini: transcrição (áudio) ou descrição (foto). Levanta MidiaErro na falha.
+
+    Erros temporários (Gemini sobrecarregado, limite de uso, queda de conexão) são tentados de novo após cada
+    espera de `esperas`; erros definitivos (chave inválida, formato recusado) falham na hora.
+    """
     settings = settings or get_settings()
     if not settings.gemini_api_key:
         raise MidiaErro("GEMINI_API_KEY não configurada")
@@ -133,7 +144,17 @@ def ler_com_ia(m: Midia, settings: Optional[Settings] = None, client: Optional[h
     proprio = client is None
     client = client or httpx.Client(timeout=settings.midia_timeout)
     try:
-        resp = client.post(url, json=corpo, headers={"x-goog-api-key": settings.gemini_api_key})
+        for espera in (*esperas, None):
+            try:
+                resp = client.post(url, json=corpo, headers={"x-goog-api-key": settings.gemini_api_key})
+                if resp.status_code not in STATUS_TEMPORARIOS or espera is None:
+                    break
+                logger.info("Gemini respondeu %s (temporário); nova tentativa em %.0f s", resp.status_code, espera)
+            except (httpx.TimeoutException, httpx.TransportError):
+                if espera is None:
+                    raise
+                logger.info("Gemini sem resposta; nova tentativa em %.0f s", espera)
+            time.sleep(espera)
         resp.raise_for_status()
         partes = resp.json()["candidates"][0]["content"]["parts"]
         conteudo = " ".join(p.get("text", "") for p in partes if not p.get("thought")).strip()

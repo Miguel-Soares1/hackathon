@@ -1,7 +1,7 @@
 """Página /demo/celular: QR codes para abrir as telas de demo no celular."""
 from fastapi.testclient import TestClient
 
-from triagem import demo_celular
+from triagem import demo_celular, https_celular
 
 
 def _cliente(monkeypatch, **env):
@@ -40,13 +40,14 @@ def test_pagina_tem_um_qr_por_canal_com_o_ip_da_rede(monkeypatch):
     # Arrange
     monkeypatch.setattr(demo_celular, "ip_da_rede", lambda: "192.168.0.10")
     monkeypatch.setattr(demo_celular, "outros_ips", lambda: [])
+    monkeypatch.setattr(https_celular, "porta_ativa", lambda porta=8443: None)  # independe do HTTPS ligado na máquina
     c = _cliente(monkeypatch, API_KEY="k")
     # Act
     r = c.get("/demo/celular", headers={"host": "localhost:8000"})
     # Assert
     assert r.status_code == 200 and "Content-Security-Policy" in r.headers
-    assert r.text.count("<svg") == 3
-    for canal in ("whatsapp", "instagram", "email"):
+    assert r.text.count("<svg") == 1  # só WhatsApp: Instagram e e-mail saíram da demonstração
+    for canal in ("whatsapp",):
         assert f"http://192.168.0.10:8000/demo/{canal}" in r.text
 
 
@@ -67,3 +68,8 @@ def test_pagina_do_celular_desligada_em_producao(monkeypatch):
     c = _cliente(monkeypatch, ENVIRONMENT="production", API_KEY="x" * 32, DASHBOARD_PASSWORD="senha-forte-123",
                  DATABASE_URL="mysql+pymysql://u:p@127.0.0.1:3306/hackathon_test")
     assert c.get("/demo/celular").status_code == 404
+
+
+def test_hotspot_do_windows_tem_preferencia_sobre_a_rota_padrao(monkeypatch):
+    monkeypatch.setattr(demo_celular, "outros_ips", lambda: ["10.0.50.155", demo_celular.HOTSPOT_WINDOWS])
+    assert demo_celular.ip_da_rede() == demo_celular.HOTSPOT_WINDOWS

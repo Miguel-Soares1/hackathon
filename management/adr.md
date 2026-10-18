@@ -303,3 +303,47 @@ Consequências: ...
 - Desativar um usuário ou redefinir a senha derruba as sessões abertas dele; trocar a própria senha derruba as outras sessões e mantém a atual.
 - O sistema nunca fica sem administrador ativo; login errado não diz se o usuário existe; tentativas limitadas a 10 por minuto por IP.
 - Bancos existentes: `db/migrations/007_usuarios.sql`.
+
+---
+
+## ADR-019: Urgência baixa e média atendidas pela IA; alta e crítica por um atendente
+
+**Status:** accepted
+
+**Contexto:** a equipe quer que a IA resolva sozinha os atendimentos simples e que as pessoas fiquem com o que é urgente. Uma conversa simples que se arrasta também precisa chegar a uma pessoa.
+
+**Decisão:** depois da triagem (`atendimento_ia.iniciar`), urgência **baixa ou média** com triagem feita pelo LLM: a IA envia a resposta sugerida ao cliente e passa a responder cada nova mensagem com a conversa como contexto (`atendimento_ia.responder`, `classifier.sugerir_resposta`). Urgência **alta ou crítica**, ou triagem pelo plano B: vai direto para a fila do Atendimento. A IA passa a conversa para um atendente (`escalar`) quando ela passa de `ia_max_minutos` (15) desde a 1ª mensagem, quando a IA já respondeu `ia_max_respostas` (5) vezes, quando o cliente pede uma pessoa ou quando a IA falha; o cliente é avisado no idioma dele. Se um atendente responde num atendimento da IA, ele assume. Os limites e a chave `ia_auto_ativo` ficam em `app_config`. Coluna `tickets.modo` (`ia` | `humano`), `escalado_em` e `motivo_escalada` (migração 012).
+
+**Consequências:**
+- As respostas da IA são assinadas como "Assistente NEXUS (IA)" e não contam como resposta humana: um atendimento transferido volta para "Em espera" até uma pessoa responder. A 1ª resposta da IA conta para o prazo (SLA).
+- O painel mostra a aba "🤖 IA atendendo", o selo "↗ veio da IA" com o motivo e as falas da IA destacadas.
+- Erros da IA viram transferência, nunca silêncio para o cliente.
+
+---
+
+## ADR-020: Painel mínimo, alerta de problema crítico para o plantão e relatório de problemas
+
+**Status:** accepted
+
+**Contexto:** a equipe quer a tela de atendimento com o mínimo de informação, só WhatsApp, um aviso impossível de ignorar quando aparece um problema crítico e um lugar para contar quantas vezes cada problema aconteceu, com os clientes afetados, para priorizar a solução.
+
+**Decisão:**
+- Painel: cartão com nome, hora, última mensagem e urgência (só alta e crítica); detalhe com a conversa, as mídias do cliente e a resposta. Saem o filtro por canal, a barra de filtros, a triagem e a sugestão da IA no chat. Instagram e e-mail saem da navegação das telas de demo e dos QR codes (as rotas continuam).
+- Alerta: `GET /alertas` lista atendimentos críticos esperando uma pessoa e incidentes abertos nas últimas 2 h. A faixa pisca no topo do painel para todos e cada atendente **de plantão** (`usuarios.de_plantao`, botão no menu, `POST /auth/plantao`) recebe uma notificação do Windows e um aviso sonoro, uma vez por problema. Responder o atendimento tira o alerta.
+- Relatórios: tabelas `problemas` (título, características, aberto/resolvido) e `problema_ocorrencias` (identificação do cliente, atendimento opcional, observação, quem registrou). A aba mostra quantas vezes cada problema aconteceu e quantos clientes distintos; o botão "📋 Registrar problema" do atendimento já preenche o cliente e o número do atendimento. Migração 013.
+
+**Consequências:**
+- A notificação é do navegador (precisa da permissão e do painel aberto); não há envio por SMS ou e-mail aos atendentes.
+- Com os dados de demonstração, os atendimentos críticos sem resposta mantêm a faixa piscando até alguém responder.
+
+## ADR-021 — Roteamento por equipe, rascunho revisado e correções no chat
+
+**Contexto:** o desafio pede roteamento para a equipe certa na posição de prioridade, sugestão de resposta que não é enviada sozinha, correções do atendente medindo a taxa de acerto e um painel com motivos, incidentes, prazos (SLA) em risco e precisão. A tela mínima (ADR-020) tinha tirado a sugestão e a correção do chat.
+
+**Decisão:**
+- Fila: seletor de equipe ao lado da busca; cada cartão mostra a equipe da triagem; a ordem continua a de prioridade (urgência, estado do prazo, prazo consumido).
+- Atendimento humano (alta/crítica ou escalado): o rascunho da IA aparece acima do campo; "Usar no campo" só preenche o texto, o atendente revisa e envia. Se reescrever, a versão enviada fica registrada como correção de `resposta_sugerida`.
+- Faixa de triagem recolhida no topo da conversa: "IA acertou" (revisão) ou "Salvar correção" (`POST /tickets/{id}/correcoes`). Urgência corrigida para alta/crítica numa conversa da IA passa a conversa para a fila de atendentes (`atendimento_ia.apos_correcao`).
+- Aba Recorrência ganha o painel "Prazos (SLA) em risco" (clicável, abre o atendimento).
+
+**Consequência:** a resposta automática da IA em urgência baixa/média (ADR-019) continua, por decisão do time; pode ser desligada com `ia_auto_ativo = 0`, e então todo atendimento usa só o rascunho revisado.

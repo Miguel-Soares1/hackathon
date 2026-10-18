@@ -141,7 +141,7 @@ _PAGINA = r"""<!doctype html>
 <body>
 <div class="topo">
   <h1>Simulador de canais</h1>
-  <nav class="abas"><a href="/demo/whatsapp" data-c="whatsapp">WhatsApp</a><a href="/demo/instagram" data-c="instagram">Instagram</a><a href="/demo/email" data-c="email">E-mail</a></nav>
+  <nav class="abas"><a href="/demo/whatsapp" data-c="whatsapp">WhatsApp</a></nav>
   <a class="no-cel" href="/demo/celular">📱 Abrir no celular</a>
   <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO</span>
 </div>
@@ -169,7 +169,7 @@ _PAGINA = r"""<!doctype html>
 <script>
 const CANAL = document.documentElement.dataset.canal;
 const $ = (id) => document.getElementById(id);
-document.querySelector('.abas a[data-c="' + CANAL + '"]').classList.add('on');
+document.querySelector('.abas a[data-c="' + CANAL + '"]')?.classList.add('on');
 $('sub').textContent = CANAL === 'whatsapp' ? 'Conta comercial · online' : 'sua.empresa · Ativo agora';
 
 const PESSOAS = CANAL === 'whatsapp'
@@ -290,6 +290,10 @@ $('arquivo').addEventListener('change', async (e) => {
 $('gravar').addEventListener('click', async () => {
   if (gravador) return gravador.stop();
   let fluxo;
+  // O navegador só libera o microfone em página segura (https ou localhost): pelo IP em http, ele nem aparece.
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    return void ($('aviso').textContent = 'Para gravar áudio no celular, abra pelo endereço https (QR code da página /demo/celular). Texto e foto funcionam aqui.');
+  }
   try { fluxo = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (_) { return void ($('aviso').textContent = 'Sem acesso ao microfone. Permita o uso no navegador.'); }
   const g = new MediaRecorder(fluxo); const pedacos = [];

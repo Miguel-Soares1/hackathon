@@ -32,6 +32,7 @@ class TicketEncerrado(Exception):
 
 
 JANELA_CONVERSA = timedelta(hours=24)
+AUTOR_IA = "Assistente NEXUS (IA)"  # quem assina as respostas automáticas (ADR-019); não conta como resposta humana
 _TELEFONE_NO_NOME = re.compile(r"\((\+?\d{8,15})\)\s*$")
 
 
@@ -169,8 +170,13 @@ def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
         "cumpriu": est.cumpriu,
     }
     d["encerrado"] = bool(d.get("desfecho"))
+    d["ia_atendendo"] = d.get("modo") == "ia" and not d["encerrado"]
     if d["encerrado"]:
         d["aguardando"] = False  # encerrado ou cancelado: sai da fila
+    elif d["ia_atendendo"]:
+        d["aguardando"] = False  # a IA está respondendo sozinha (urgência baixa ou média, ADR-019)
+    elif d.get("escalado_em"):  # a IA passou para um atendente: só a resposta de uma pessoa tira da fila
+        d["aguardando"] = bool(d.get("ultima_entrada_id") and d["ultima_entrada_id"] > (d.get("ultima_saida_humana_id") or 0))
     elif d["first_response_at"] is None:
         d["aguardando"] = True
     elif d.get("ultima_saida_id"):  # compara por id: o DATETIME só tem precisão de segundos
@@ -182,13 +188,16 @@ def _linha_para_dict(row, prazos, risco_pct, agora, midias: list[dict]) -> dict:
 
 
 _SQL_CONVERSA = (
-    "SELECT v.*, m.ultima_entrada_at, m.ultima_saida_at, m.ultima_entrada_id, m.ultima_saida_id, m.total_mensagens, "
+    "SELECT v.*, m.ultima_entrada_at, m.ultima_saida_at, m.ultima_entrada_id, m.ultima_saida_id, m.ultima_saida_humana_id, "
+    "m.total_mensagens, "
     "(SELECT x.texto FROM messages x WHERE x.ticket_id = v.ticket_id ORDER BY x.id DESC LIMIT 1) AS ultima_texto "
     "FROM vw_tickets v LEFT JOIN ("
     "SELECT ticket_id, MAX(CASE WHEN direcao = 'entrada' THEN created_at END) AS ultima_entrada_at, "
     "MAX(CASE WHEN direcao = 'saida' THEN created_at END) AS ultima_saida_at, "
     "MAX(CASE WHEN direcao = 'entrada' THEN id END) AS ultima_entrada_id, "
-    "MAX(CASE WHEN direcao = 'saida' THEN id END) AS ultima_saida_id, COUNT(*) AS total_mensagens "
+    "MAX(CASE WHEN direcao = 'saida' THEN id END) AS ultima_saida_id, "
+    f"MAX(CASE WHEN direcao = 'saida' AND (autor IS NULL OR autor <> '{AUTOR_IA}') THEN id END) AS ultima_saida_humana_id, "
+    "COUNT(*) AS total_mensagens "
     "FROM messages GROUP BY ticket_id) m ON m.ticket_id = v.ticket_id "
 )
 

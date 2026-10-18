@@ -18,8 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
-from . import (canais, corrections, demo_celular, demo_chat, demo_email, incidents, metrics, midias, pipeline,
-               relatorios, resumo_ia, tickets, usuarios)
+from . import (atendimento_ia, canais, corrections, demo_celular, problemas, demo_chat, demo_email, https_celular, incidents, metrics, midias,
+               pipeline, relatorios, resumo_ia, tickets, usuarios)
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -195,6 +195,27 @@ class UsuarioNovoIn(BaseModel):
     nome: str = Field(min_length=1, max_length=120)
     senha: str = Field(min_length=1, max_length=200)
     papel: str = "atendente"
+
+
+class PlantaoIn(BaseModel):
+    de_plantao: bool
+
+
+class ProblemaIn(BaseModel):
+    titulo: str = Field(min_length=1, max_length=160)
+    caracteristicas: str = Field(min_length=1, max_length=4000)
+
+
+class ProblemaAlteracaoIn(BaseModel):
+    status: Optional[str] = None
+    titulo: Optional[str] = Field(default=None, max_length=160)
+    caracteristicas: Optional[str] = Field(default=None, max_length=4000)
+
+
+class OcorrenciaIn(BaseModel):
+    cliente_id: str = Field(min_length=1, max_length=190, description="telefone, e-mail ou protocolo do cliente")
+    ticket_id: Optional[int] = None
+    observacao: Optional[str] = Field(default=None, max_length=500)
 
 
 class UsuarioAlteracaoIn(BaseModel):
@@ -381,6 +402,68 @@ def create_app() -> FastAPI:
         except usuarios.UsuarioInvalido as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+
+    @app.post("/auth/plantao")
+    def auth_plantao(corpo: PlantaoIn, usuario: dict = Depends(usuario_logado)):
+        """O atendente liga ou desliga o próprio plantão (quem está de plantão é avisado dos problemas críticos)."""
+        return usuarios.definir_plantao(usuario["id"], corpo.de_plantao)
+
+    # ---- Alertas de problema crítico para quem está de plantão (ADR-020) ----
+    @app.get("/alertas", dependencies=[Depends(exigir_chave)])
+    def alertas():
+        """Atendimentos críticos esperando uma pessoa, incidentes abertos nas últimas 2 h e quem está de plantão."""
+        limite = utcnow() - timedelta(hours=2)  # incidente pisca nas 2 primeiras horas; crítico, até alguém responder
+        criticos = [
+            {"ticket_id": t["ticket_id"], "cliente": t["cliente"], "texto": t.get("ultima_texto") or t["texto"],
+             "received_at": t["received_at"], "assunto": t.get("assunto")}
+            for t in tickets.listar(limite=500)
+            if t.get("urgencia") == "critica" and t.get("aguardando") and not t.get("desfecho")
+        ]
+        abertos = [
+            {"id": g["id"], "assunto": g.get("assunto_predominante"), "size": g["size"], "aberto_em": g["incident_opened_at"]}
+            for g in incidents.listar_incidentes(apenas_incidentes=True)
+            if g.get("incident_opened_at") and g["incident_opened_at"] >= limite
+        ]
+        return {"criticos": criticos, "incidentes": abertos, "plantao": usuarios.de_plantao()}
+
+    # ---- Relatório de problemas (ADR-020) ----
+    @app.get("/problemas", dependencies=[Depends(exigir_chave)])
+    def listar_problemas():
+        return problemas.listar()
+
+    @app.post("/problemas", status_code=201, dependencies=[Depends(exigir_chave)])
+    def criar_problema(corpo: ProblemaIn, request: Request):
+        try:
+            return problemas.criar(corpo.titulo, corpo.caracteristicas, _quem(request, None))
+        except problemas.ProblemaInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.patch("/problemas/{problema_id}", dependencies=[Depends(exigir_chave)])
+    def alterar_problema(problema_id: int, corpo: ProblemaAlteracaoIn):
+        try:
+            return problemas.alterar(problema_id, corpo.status, corpo.titulo, corpo.caracteristicas)
+        except problemas.ProblemaNaoEncontrado:
+            raise HTTPException(status_code=404, detail="problema não encontrado")
+        except problemas.ProblemaInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/problemas/{problema_id}/ocorrencias", status_code=201, dependencies=[Depends(exigir_chave)])
+    def registrar_ocorrencia(problema_id: int, corpo: OcorrenciaIn, request: Request):
+        try:
+            return problemas.registrar_ocorrencia(problema_id, corpo.cliente_id, corpo.ticket_id, corpo.observacao,
+                                                  _quem(request, None))
+        except problemas.ProblemaNaoEncontrado:
+            raise HTTPException(status_code=404, detail="problema não encontrado")
+        except problemas.ProblemaInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.delete("/problemas/{problema_id}/ocorrencias/{ocorrencia_id}", dependencies=[Depends(exigir_chave)])
+    def remover_ocorrencia(problema_id: int, ocorrencia_id: int):
+        try:
+            return problemas.remover_ocorrencia(problema_id, ocorrencia_id)
+        except problemas.ProblemaNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ocorrência não encontrada")
+
     @app.post("/webhook/mensagens", status_code=202, dependencies=[Depends(exigir_chave)])
     def webhook(msg: MensagemIn, background: BackgroundTasks):
         try:
@@ -394,8 +477,8 @@ def create_app() -> FastAPI:
         except tickets.TicketDuplicado as dup:
             return {"ticket_id": dup.ticket_id, "status": "duplicado"}
         if not novo:
-            if anexos:  # áudio/foto na continuação da conversa: a IA lê e o texto entra na mensagem
-                background.add_task(midias.processar, ticket_id, msg.texto, msg_id)
+            # continuação da conversa: lê a mídia (se houver) e a sugestão passa a responder a esta mensagem
+            background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id, msg.texto, bool(anexos))
             return {"ticket_id": ticket_id, "status": "anexada"}
         background.add_task(pipeline.processar_ticket, ticket_id)
         return {"ticket_id": ticket_id, "status": "pendente"}
@@ -428,13 +511,15 @@ def create_app() -> FastAPI:
             if recebido and recebido > utcnow():
                 recebido = None
             try:
-                ticket_id, novo, _ = tickets.receber_mensagem(
+                ticket_id, novo, msg_id = tickets.receber_mensagem(
                     canal, m["texto"], m["cliente"], recebido, m["external_id"], m.get("conversa_id")
                 )
             except tickets.TicketDuplicado:
                 continue  # a Meta reenvia quando não recebe 200 a tempo
             if novo:
                 background.add_task(pipeline.processar_ticket, ticket_id)
+            else:
+                background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id)
             novas += 1
         return {"recebidas": novas}  # 200 sempre que a assinatura é válida, para a Meta não reenviar em loop
 
@@ -508,7 +593,8 @@ def create_app() -> FastAPI:
         @app.get("/demo/celular", response_class=HTMLResponse, include_in_schema=False)
         def demo_celular_pagina(request: Request):
             """QR codes para abrir as telas de demo no celular (mesma rede Wi-Fi; API com --host 0.0.0.0)."""
-            pagina = demo_celular.pagina(request.headers.get("host", "localhost"), request.url.port or 8000)
+            pagina = demo_celular.pagina(request.headers.get("host", "localhost"), request.url.port or 8000,
+                                         https_celular.porta_ativa())
             return HTMLResponse(pagina, headers={"Content-Security-Policy": csp_demo})
 
         @app.get("/demo/email", response_class=HTMLResponse, include_in_schema=False)
@@ -520,10 +606,11 @@ def create_app() -> FastAPI:
             convertida = demo_email.email_demo_para_mensagem(msg.de_email, msg.de_nome, msg.para, msg.assunto, msg.corpo)
             if convertida is None:  # remetente no-reply, texto vazio etc.: o leitor IMAP também ignoraria
                 return JSONResponse(status_code=400, content={"detail": "e-mail ignorado pelo filtro (remetente automático ou texto vazio)"})
-            ticket_id, novo, _ = tickets.receber_mensagem("email", convertida["texto"], convertida["cliente"],
-                                                       convertida["received_at"], convertida["external_id"],
-                                                       convertida.get("conversa_id"))
+            ticket_id, novo, msg_id = tickets.receber_mensagem("email", convertida["texto"], convertida["cliente"],
+                                                            convertida["received_at"], convertida["external_id"],
+                                                            convertida.get("conversa_id"))
             if not novo:
+                background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id)
                 return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
             return _enviado(ticket_id, "pendente")
@@ -551,9 +638,8 @@ def create_app() -> FastAPI:
                 return JSONResponse(status_code=400, content={"detail": "mensagem ignorada pelo canal (texto curto demais)"})
             ticket_id, novo, msg_id = tickets.receber_mensagem(canal, m["texto"], m["cliente"], m["received_at"],
                                                             m["external_id"], m.get("conversa_id"), anexos)
-            if not novo:
-                if anexos:  # mesmo caminho do webhook: a IA lê a mídia e o texto entra na mensagem
-                    background.add_task(midias.processar, ticket_id, m["texto"], msg_id)
+            if not novo:  # mesmo caminho do webhook: lê a mídia (se houver) e atualiza a sugestão
+                background.add_task(pipeline.mensagem_anexada, ticket_id, msg_id, m["texto"], bool(anexos))
                 return _enviado(ticket_id, "anexada")
             background.add_task(pipeline.processar_ticket, ticket_id)
             return _enviado(ticket_id, "pendente")
@@ -615,6 +701,21 @@ def create_app() -> FastAPI:
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
 
+    @app.post("/tickets/{ticket_id}/sugestao", dependencies=[Depends(exigir_chave)])
+    def sugerir_agora(ticket_id: int):
+        """Botão "Usar resposta sugerida": gera na hora a sugestão para a ÚLTIMA mensagem do cliente, com a conversa.
+
+        Sem LLM (ou se ele falhar), devolve a sugestão vigente com `atualizada = false`.
+        """
+        try:
+            tickets.obter(ticket_id)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
+        resultado = pipeline.atualizar_sugestao(ticket_id, forcar=True)
+        t = tickets.obter(ticket_id)
+        return {"ticket_id": ticket_id, "resposta_sugerida": t["resposta_sugerida"], "atualizada": resultado == "atualizada",
+                "mensagem_id": t.get("sugestao_mensagem_id"), "idioma": t.get("idioma")}
+
     @app.get("/tickets/{ticket_id}/mensagens", dependencies=[Depends(exigir_chave)])
     def listar_mensagens(ticket_id: int, depois_de: int = Query(0, ge=0)):
         """Conversa do ticket. Use `depois_de=<último id visto>` para buscar só as novas (polling do chat do cliente)."""
@@ -634,12 +735,16 @@ def create_app() -> FastAPI:
             anexos = [midias.validar(m.tipo, m.mime, m.dados_base64) for m in corpo.midias]
         except midias.MidiaInvalida as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        if autor == tickets.AUTOR_IA:  # só a própria IA assina como ela (a fila depende disso, ADR-019)
+            autor = "Atendente"
         try:
-            return tickets.responder_chat(ticket_id, corpo.texto, autor, anexos)
+            resposta = tickets.responder_chat(ticket_id, corpo.texto, autor, anexos)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
         except tickets.TicketEncerrado:
             raise HTTPException(status_code=409, detail="atendimento já encerrado")
+        atendimento_ia.assumir(ticket_id, autor)  # se a IA estava atendendo, a conversa passa a ser desta pessoa
+        return resposta
 
     def _quem(request: Request, autor: Optional[str]) -> Optional[str]:
         logado = getattr(request.state, "usuario", None)
@@ -688,7 +793,8 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="ticket ainda não foi classificado")
         except corrections.CorrecaoInvalida as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        return {"ticket_id": ticket_id, "correcoes_registradas": registradas}
+        escalado = atendimento_ia.apos_correcao(ticket_id, enviados)  # urgência subiu: sai da IA e vai para a fila
+        return {"ticket_id": ticket_id, "correcoes_registradas": registradas, "escalado": escalado}
 
     @app.get("/correcoes", dependencies=[Depends(exigir_chave)])
     def historico(ticket_id: Optional[int] = None, limite: int = Query(200, ge=1, le=1000)):

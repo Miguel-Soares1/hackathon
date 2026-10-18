@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS tickets (
   desfecho VARCHAR(12) NULL,
   encerrado_em DATETIME NULL,
   encerrado_por VARCHAR(120) NULL,
+  sugestao_contexto TEXT NULL,
+  sugestao_em DATETIME NULL,
+  sugestao_mensagem_id BIGINT UNSIGNED NULL,
+  modo VARCHAR(10) NULL,
+  escalado_em DATETIME NULL,
+  motivo_escalada VARCHAR(160) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
   INDEX idx_tickets_status (status),
@@ -165,7 +171,11 @@ INSERT IGNORE INTO app_config (chave, valor) VALUES
   ('window_minutes', '30'),
   ('min_group_size', '3'),
   ('slo_alvo_pct', '95'),
-  ('slo_janela_dias', '7');
+  ('slo_janela_dias', '7'),
+  -- Atendimento pela IA (ADR-019): urgência baixa e média; vai para um atendente se passar destes limites.
+  ('ia_auto_ativo', '1'),
+  ('ia_max_minutos', '15'),
+  ('ia_max_respostas', '5');
 
 -- Visão com os valores efetivos (predição da IA ou última correção do atendente).
 -- Usuários do painel e sessões de login (ADR-018). Senha só como hash PBKDF2; sessão só como hash do token.
@@ -176,6 +186,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   senha_hash VARCHAR(200) NOT NULL,
   papel VARCHAR(20) NOT NULL DEFAULT 'atendente',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
+  de_plantao TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL,
   ultimo_login DATETIME NULL,
   UNIQUE KEY uq_usuarios_usuario (usuario)
@@ -191,10 +202,34 @@ CREATE TABLE IF NOT EXISTS sessoes (
   CONSTRAINT fk_sessao_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Relatório de problemas (ADR-020): o atendente registra um problema e cada vez que ele acontece (cliente afetado).
+CREATE TABLE IF NOT EXISTS problemas (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  titulo VARCHAR(160) NOT NULL,
+  caracteristicas TEXT NOT NULL,
+  status VARCHAR(12) NOT NULL DEFAULT 'aberto',
+  criado_por VARCHAR(120) NULL,
+  created_at DATETIME NOT NULL,
+  resolvido_em DATETIME NULL,
+  INDEX idx_problemas_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS problema_ocorrencias (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  problema_id BIGINT UNSIGNED NOT NULL,
+  cliente_id VARCHAR(190) NOT NULL,
+  ticket_id BIGINT UNSIGNED NULL,
+  observacao VARCHAR(500) NULL,
+  registrado_por VARCHAR(120) NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_ocorr_problema (problema_id, id),
+  CONSTRAINT fk_ocorr_problema FOREIGN KEY (problema_id) REFERENCES problemas(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
-  t.desfecho, t.encerrado_em, t.encerrado_por,
+  t.desfecho, t.encerrado_em, t.encerrado_por, t.modo, t.escalado_em, t.motivo_escalada,
   cl.origem, cl.prompt_version, cl.exemplos, cl.idioma, cl.justificativa, cl.classified_at,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,
@@ -204,7 +239,13 @@ SELECT
   COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'urgencia' ORDER BY c.id DESC LIMIT 1), cl.urgencia) AS urgencia,
   COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'sentimento' ORDER BY c.id DESC LIMIT 1), cl.sentimento) AS sentimento,
   COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'equipe' ORDER BY c.id DESC LIMIT 1), cl.equipe) AS equipe,
-  COALESCE((SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'resposta_sugerida' ORDER BY c.id DESC LIMIT 1), cl.resposta_sugerida) AS resposta_sugerida,
+  -- Resposta sugerida: a da última mensagem do cliente (ADR-016) ou, se não houver, a correção do atendente ou a da triagem.
+  -- Uma correção da resposta apaga a sugestão atualizada; a próxima mensagem do cliente gera outra.
+  COALESCE(t.sugestao_contexto,
+    (SELECT c.valor_corrigido FROM corrections c WHERE c.ticket_id = t.id AND c.dimensao = 'resposta_sugerida' ORDER BY c.id DESC LIMIT 1),
+    cl.resposta_sugerida) AS resposta_sugerida,
+  (t.sugestao_contexto IS NOT NULL) AS sugestao_atualizada,
+  t.sugestao_mensagem_id,
   (rv.ticket_id IS NOT NULL) AS revisado
 FROM tickets t
 LEFT JOIN classifications cl ON cl.ticket_id = t.id

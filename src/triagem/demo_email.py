@@ -91,7 +91,7 @@ PAGINA_DEMO_EMAIL = r"""<!doctype html>
 <header>
   <div class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3" fill="#0b57d0"/><path d="M3.5 6.5 12 13l8.5-6.5" stroke="#fff" stroke-width="2" fill="none"/></svg>Correio</div>
   <div class="busca">Pesquisar e-mails</div>
-  <nav class="abas" aria-label="Canais"><a href="/demo/whatsapp">WhatsApp</a><a href="/demo/instagram">Instagram</a><a href="/demo/email" class="on">E-mail</a></nav>
+  <nav class="abas" aria-label="Canais"><a href="/demo/whatsapp">WhatsApp</a></nav>
   <a class="no-cel" href="/demo/celular">📱 Abrir no celular</a>
   <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO</span>
 </header>
