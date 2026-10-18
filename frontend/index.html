@@ -49,13 +49,8 @@
       <div class="marca"><img class="logo" src="img/nexus-icone.png" alt="Nexus"><div class="nome">NEXUS</div></div>
       <div class="menu-titulo">Menu</div>
       <nav class="menu" aria-label="Páginas">
-        <button type="button" data-pagina="dashboard" aria-current="page"><span aria-hidden="true">📊</span> Dashboard</button>
-        <button type="button" data-pagina="atendimento"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
+        <button type="button" data-pagina="atendimento" aria-current="page"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
-        <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
-        <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
-        <button type="button" data-pagina="admin" id="menu-admin" hidden><span aria-hidden="true">🛡️</span> Administração</button>
-        <button type="button" data-pagina="conta"><span aria-hidden="true">👤</span> Minha conta</button>
       </nav>
       <hr>
       <div class="quem-logado"><div class="avatar" id="eu-inicial">?</div>
@@ -74,31 +69,10 @@
     </aside>
 
     <main class="conteudo">
-      <h1 id="titulo">Dashboard</h1>
-
-      <!-- Dashboard: indicadores e métricas -->
-      <section id="pagina-dashboard" class="pagina">
-        <header class="hero">
-          <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
-          <div class="hero-texto">
-            <h2 class="hero-titulo">Visão geral</h2>
-            <p>Acompanhe os indicadores em tempo real e fique por dentro dos avisos da equipe.</p>
-          </div>
-          <span id="hero-hora" class="hero-hora" aria-live="polite">Atualizando…</span>
-        </header>
-        <div id="cards-atendimento" class="cards" aria-label="Clientes por situação"></div>
-        <h2 class="secao">Indicadores da triagem</h2>
-        <div id="kpis" class="cards" aria-label="Indicadores da triagem"></div>
-        <section class="card chamadas-espera" aria-label="Chamadas em espera">
-          <h2>Chamadas em espera</h2>
-          <div class="filtros" data-contexto="dashboard"></div>
-          <div id="tabela-chamadas" class="tabela-rolagem"></div>
-        </section>
-        <div id="metricas" class="grade-2"></div>
-      </section>
+      <h1 id="titulo">Atendimento</h1>
 
       <!-- Atendimento: fila estilo chat (em espera × respondidos) e conversa com a triagem -->
-      <section id="pagina-atendimento" class="pagina" hidden>
+      <section id="pagina-atendimento" class="pagina">
         <div class="barra-filtros">
           <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente ou mensagem…" aria-label="Buscar atendimento">
           <div id="filtro-canal" class="filtro-canal" role="group" aria-label="Filtrar por canal">
@@ -127,98 +101,6 @@
       <section id="pagina-incidentes" class="pagina" hidden>
         <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
         <div id="lista-incidentes"></div>
-      </section>
-
-      <section id="pagina-correcoes" class="pagina" hidden>
-        <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
-      </section>
-
-      <!-- Administração (só admin): usuários do painel -->
-      <section id="pagina-admin" class="pagina" hidden>
-        <div class="tabela-wrap"><table id="tabela-usuarios" class="tabela"></table></div>
-        <p id="admin-status" class="muted" aria-live="polite"></p>
-        <form id="form-usuario" class="card form-nova">
-          <h2>Novo usuário</h2>
-          <div class="linha">
-            <label>Nome <input name="nome" maxlength="120" required></label>
-            <label>Usuário <input name="usuario" maxlength="60" autocomplete="off" required></label>
-          </div>
-          <div class="linha">
-            <label>Senha inicial (mínimo 8) <input name="senha" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
-            <label>Papel
-              <select name="papel"><option value="atendente">Atendente</option><option value="admin">Administrador</option></select>
-            </label>
-          </div>
-          <button type="submit" class="btn primario">Criar usuário</button>
-        </form>
-      </section>
-
-      <!-- Minha conta: troca da própria senha -->
-      <section id="pagina-conta" class="pagina" hidden>
-        <form id="form-senha" class="card form-nova">
-          <h2>Alterar minha senha</h2>
-          <p class="muted">As outras sessões abertas com a sua conta são encerradas; esta continua.</p>
-          <label>Senha atual <input name="senha_atual" type="password" autocomplete="current-password" required></label>
-          <label>Nova senha (mínimo 8) <input name="nova_senha" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
-          <label>Repita a nova senha <input name="nova_senha2" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
-          <button type="submit" class="btn primario">Alterar senha</button>
-          <p id="senha-status" class="muted" aria-live="polite"></p>
-        </form>
-      </section>
-
-      <!-- Atendimentos: relatório de controle (abertos e finalizados), filtros e exportação -->
-      <section id="pagina-atendimentos" class="pagina" hidden>
-        <header class="hero hero-curto">
-          <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/><path d="M9.5 9 8 11l1.5 2M12.5 9l1.5 2-1.5 2"/></svg>
-          <div class="hero-texto"><h2 class="hero-titulo">Gerenciar Atendimentos</h2></div>
-          <button type="button" id="rel-exportar" class="btn contorno"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Exportar relatório</button>
-        </header>
-
-        <div class="rel-topo">
-          <div class="card rel-filtros">
-            <div><b>Filtros secundários</b><p class="muted">Período, canal, time e urgência em uma janela só.</p></div>
-            <button type="button" id="rel-config" class="btn contorno destaque">Configurar filtros <span id="rel-qtd-filtros" class="contador">0</span></button>
-          </div>
-          <form id="rel-busca-form" class="card rel-busca" role="search">
-            <input id="rel-busca" type="search" placeholder="Pesquisa rápida por nome, telefone ou protocolo" aria-label="Pesquisa rápida">
-            <button type="submit" class="btn icone" aria-label="Pesquisar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
-          </form>
-        </div>
-
-        <div class="rel-abas" role="tablist" aria-label="Status do atendimento">
-          <button type="button" role="tab" data-status="" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/></svg>Todos <span class="n"></span></button>
-          <button type="button" role="tab" data-status="espera" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Em Espera <span class="n"></span></button>
-          <button type="button" role="tab" data-status="atendimento" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/></svg>Em Atendimento <span class="n"></span></button>
-          <button type="button" role="tab" data-status="encerrado" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.5L16 9.5"/></svg>Finalizado <span class="n"></span></button>
-          <button type="button" role="tab" data-status="cancelado" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>Cancelado <span class="n"></span></button>
-          <button type="button" id="rel-limpar" class="btn icone" title="Limpar filtros" aria-label="Limpar filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
-        </div>
-
-        <div id="rel-chips" class="rel-chips" aria-label="Filtros ativos"></div>
-
-        <div class="card rel-lista">
-          <div class="rel-contagem"><span id="rel-contagem">Atendimentos: 0 de 0.</span></div>
-          <div id="rel-linhas"></div>
-        </div>
-
-        <dialog id="rel-modal" class="modal">
-          <form method="dialog" id="rel-modal-form">
-            <h2>Filtros secundários</h2>
-            <label>Período
-              <select name="periodo">
-                <option value="hoje">Hoje</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option>
-                <option value="tudo">Todo o período</option><option value="personalizado">Personalizado…</option>
-              </select>
-            </label>
-            <div class="linha rel-datas"><label>De <input type="date" name="de"></label><label>Até <input type="date" name="ate"></label></div>
-            <div class="linha">
-              <label>Canal <select name="canal"><option value="">Todos</option><option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option><option value="email">E-mail</option><option value="chat">Chat do site</option><option value="formulario">Formulário</option></select></label>
-              <label>Time <select name="equipe"><option value="">Todos</option></select></label>
-            </div>
-            <label>Urgência <select name="urgencia"><option value="">Todas</option><option value="critica">Crítica</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></label>
-            <div class="acoes-modal"><button type="button" class="btn" id="rel-modal-cancelar">Cancelar</button><button type="submit" class="btn primario" value="aplicar">Aplicar filtros</button></div>
-          </form>
-        </dialog>
       </section>
     </main>
   </div>
