@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from conftest import CHAVE
-from triagem import classifier, pipeline, tickets
+from triagem import atendimento_ia, classifier, pipeline, tickets
 from triagem.classifier import LLMError
 from triagem.config import get_settings
 
@@ -71,7 +71,9 @@ def test_nova_mensagem_atualiza_a_sugestao_e_mantem_a_triagem(client, ia_fake):
     assert t["resposta_original"] == original["resposta_original"]  # a original fica para medir a precisão
     assert t["assunto"] == original["assunto"] and t["urgencia"] == original["urgencia"]
     conversa, triagem = ia_fake[-1]
-    assert [p for p, _ in conversa] == ["cliente", "cliente"] and triagem["assunto"] == original["assunto"]
+    assert [x for p, x in conversa if p == "cliente"] == ["meu pix não caiu e preciso do dinheiro hoje",
+                                                          "já tentei de novo e continua sem cair"]
+    assert triagem["assunto"] == original["assunto"]
 
 
 def test_correcao_do_atendente_vale_ate_a_proxima_mensagem(client, ia_fake):
@@ -117,7 +119,8 @@ def test_botao_gera_na_hora_para_a_ultima_mensagem_mesmo_com_uma_so_do_cliente(c
     client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={"texto": "Qual o valor do Pix?"})
     r = client.post(f"/tickets/{tid}/sugestao", headers=CHAVE).json()
     conversa, _ = ia_fake[-1]
-    assert conversa == [("cliente", "meu pix não caiu"), ("atendente", "Qual o valor do Pix?")]  # contexto inteiro
+    assert conversa == [("cliente", "meu pix não caiu"), ("atendente", atendimento_ia.TRANSFERENCIA_URGENTE["pt"]),
+                        ("atendente", "Qual o valor do Pix?")]  # contexto inteiro, com o aviso de transferência
     assert r["atualizada"] and tickets.obter(tid)["resposta_sugerida"] == r["resposta_sugerida"]
     # clicar de novo gera outra vez (não reaproveita a anterior)
     client.post(f"/tickets/{tid}/sugestao", headers=CHAVE)

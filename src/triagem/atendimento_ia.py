@@ -39,6 +39,17 @@ TRANSFERENCIA = {
     "es": "Voy a transferirte a un agente de nuestro equipo, que seguirá contigo por aquí en unos instantes. ¡Gracias por tu paciencia!",
 }
 
+# Urgência alta ou crítica vai direto para um atendente: o cliente é avisado na hora.
+TRANSFERENCIA_URGENTE = {
+    "pt": "Recebemos sua mensagem e, pela urgência do seu caso, estamos transferindo você para um atendente da nossa "
+          "equipe, que já vai continuar com você por aqui. Obrigado pela paciência!",
+    "en": "We got your message and, given how urgent your case is, we're transferring you to one of our agents, who "
+          "will continue with you here shortly. Thank you for your patience!",
+    "es": "Recibimos tu mensaje y, por la urgencia de tu caso, te estamos transfiriendo a un agente de nuestro equipo, "
+          "que seguirá contigo por aquí en unos instantes. ¡Gracias por tu paciencia!",
+}
+URGENCIAS_ATENDENTE = ("alta", "critica")
+
 
 def _config() -> dict:
     with get_engine().connect() as conn:
@@ -69,6 +80,8 @@ def iniciar(ticket_id: int) -> str:
         if not cfg.get("ia_auto_ativo") or t.get("urgencia") not in URGENCIAS_IA or t.get("origem") != "llm" \
                 or not t.get("resposta_sugerida"):
             _definir_modo(ticket_id, "humano")
+            if t.get("urgencia") in URGENCIAS_ATENDENTE:
+                avisar_transferencia(ticket_id, t.get("idioma"))
             return "humano"
         tickets.responder_chat(ticket_id, t["resposta_sugerida"], AUTOR_IA)
         _definir_modo(ticket_id, "ia")
@@ -81,6 +94,15 @@ def iniciar(ticket_id: int) -> str:
         except Exception:
             pass
         return "humano"
+
+
+def avisar_transferencia(ticket_id: int, idioma: Optional[str] = None) -> None:
+    """Avisa o cliente de que um atendente vai continuar. Não conta como 1ª resposta: o prazo segue para a pessoa."""
+    try:
+        tickets.responder_chat(ticket_id, TRANSFERENCIA_URGENTE.get(idioma or "pt", TRANSFERENCIA_URGENTE["en"]), AUTOR_IA,
+                               primeira_resposta=False)
+    except Exception:
+        logger.exception("não consegui avisar o cliente do ticket %s sobre a transferência", ticket_id)
 
 
 def motivo_para_atendente(t: dict, conversa: list[tuple[str, str]], cfg: dict, agora=None) -> Optional[str]:

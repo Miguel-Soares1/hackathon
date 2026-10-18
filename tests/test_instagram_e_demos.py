@@ -135,7 +135,7 @@ def test_conversa_do_cliente_traz_a_resposta_da_ia_e_as_do_atendente(client):
     conversa = client.get(url, params={"senha": r["senha"]}).json()
     # Assert: resposta sugerida (resposta automática da demo) e a mensagem do atendente; nada de classificação
     assert conversa["respondida"] and conversa["resposta"]
-    assert [(m["texto"], m["autor"]) for m in conversa["atendente"]] == [("Oi! Já estou vendo o seu Pix.", "Joana")]
+    assert [(m["texto"], m["autor"]) for m in conversa["atendente"]][-1:] == [("Oi! Já estou vendo o seu Pix.", "Joana")]
     assert set(conversa) == {"respondida", "resposta", "equipe", "atendente", "ultimo_id"}
     # e o polling com depois_de não repete o que já foi visto
     assert client.get(url, params={"senha": r["senha"], "depois_de": conversa["ultimo_id"]}).json()["atendente"] == []
@@ -219,7 +219,7 @@ def test_cliente_da_demo_ve_imagem_do_atendente_so_com_a_senha(client):
     client.post(f"/tickets/{r['ticket_id']}/mensagens", headers=CHAVE,
                 json={"midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": _b64(PNG)}]})
     conversa = client.get(f"/demo/conversa/{r['ticket_id']}", params={"senha": r["senha"]}).json()
-    [msg] = conversa["atendente"]
+    msg = conversa["atendente"][-1]  # antes, o aviso de transferência (urgência alta)
     [m] = msg["midias"]
     assert msg["texto"] == "📷 Imagem" and m["tipo"] == "imagem"
     url = f"/demo/conversa/{r['ticket_id']}/midias/{m['id']}"

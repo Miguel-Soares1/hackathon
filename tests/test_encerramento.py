@@ -32,7 +32,7 @@ def test_encerrar_gera_o_relatorio_com_os_numeros_do_atendimento(client):
     assert rel["observacao"] == "Estorno feito."
     assert rel["origem_resumo"] == "regras"  # testes rodam sem chave do LLM
     assert "Ana" in rel["resumo"] and "resolvido" in rel["resumo"]
-    assert rel["dados"]["mensagens"] == {"cliente": 1, "atendente": 1}
+    assert rel["dados"]["mensagens"] == {"cliente": 1, "atendente": 2}  # aviso de transferência (urgência alta) + Bruno
     assert rel["dados"]["sem_resposta"] is False and rel["dados"]["primeira_resposta_min"] is not None
     assert client.get(f"/tickets/{tid}/relatorio", headers=CHAVE).json() == rel
 

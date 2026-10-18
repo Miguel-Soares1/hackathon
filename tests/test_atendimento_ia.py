@@ -61,13 +61,27 @@ def test_urgencia_alta_e_critica_vao_para_um_atendente(client, ia, urgencia):
     tid = _post(client, "o sistema caiu e não consigo vender")["ticket_id"]
     t = tickets.obter(tid)
     assert t["modo"] == "humano" and t["aguardando"] and not t["ia_atendendo"]
-    assert [d for d, _, _ in _conversa(tid)] == ["entrada"]  # a IA não respondeu
+    # A IA só avisa da transferência; o aviso não conta como 1ª resposta (o prazo segue para a pessoa).
+    assert _conversa(tid) == [("entrada", "Cliente IA", "o sistema caiu e não consigo vender"),
+                              ("saida", IA, atendimento_ia.TRANSFERENCIA_URGENTE["pt"])]
+    assert t["first_response_at"] is None and t["sla"]["estado"] != "respondido"
+    assert ia["chamadas"] == 0  # não gerou resposta pelo LLM
+
+
+def test_atendente_responde_depois_do_aviso_de_transferencia(client, ia):
+    ia["urgencia"] = "critica"
+    tid = _post(client, "o sistema caiu e não consigo vender")["ticket_id"]
+    client.post(f"/tickets/{tid}/mensagens", json={"texto": "Oi, sou a Bruna e já estou vendo.", "autor": "Bruna"},
+                headers=CHAVE)
+    t = tickets.obter(tid)
+    assert not t["aguardando"] and t["first_response_at"] is not None
 
 
 def test_triagem_pelo_plano_b_vai_para_um_atendente(client, ia):
     ia["origem"] = "fallback"
     tid = _post(client, "dúvida simples")["ticket_id"]
     assert tickets.obter(tid)["modo"] == "humano"
+    assert [d for d, _, _ in _conversa(tid)] == ["entrada"]  # urgência baixa: sem aviso de transferência
 
 
 def test_ia_responde_cada_nova_mensagem_com_a_conversa(client, ia):

@@ -293,17 +293,18 @@ def mensagens(ticket_id: int, depois_de: int = 0) -> list[dict]:
 
 @com_retry_deadlock()
 def _gravar_resposta_chat(ticket_id: int, texto: str, autor: Optional[str], agora: datetime,
-                          midias: Sequence[midias_mod.Midia] = ()) -> int:
+                          midias: Sequence[midias_mod.Midia] = (), primeira_resposta: bool = True) -> int:
     with get_engine().begin() as conn:
         existe = conn.execute(text("SELECT id, desfecho FROM tickets WHERE id = :id"), {"id": ticket_id}).fetchone()
         if existe is None:
             raise TicketNaoEncontrado(ticket_id)
         if existe.desfecho is not None:
             raise TicketEncerrado(ticket_id)
-        conn.execute(  # tickets primeiro, depois a mensagem filha (ordem que evita deadlock com o pipeline)
-            text("UPDATE tickets SET first_response_at = :q WHERE id = :id AND first_response_at IS NULL"),
-            {"q": agora, "id": ticket_id},
-        )
+        if primeira_resposta:
+            conn.execute(  # tickets primeiro, depois a mensagem filha (ordem que evita deadlock com o pipeline)
+                text("UPDATE tickets SET first_response_at = :q WHERE id = :id AND first_response_at IS NULL"),
+                {"q": agora, "id": ticket_id},
+            )
         msg_id = _inserir_mensagem(conn, ticket_id, "saida", texto, autor, agora)
         midias_mod.salvar(conn, ticket_id, list(midias), mensagem_id=msg_id, status="enviado")
         return msg_id
@@ -313,10 +314,11 @@ ROTULO_ENVIO = {"imagem": "📷 Imagem", "audio": "🎙 Áudio"}
 
 
 def responder_chat(ticket_id: int, texto: str, autor: Optional[str] = None,
-                   midias: Sequence[midias_mod.Midia] = ()) -> dict:
+                   midias: Sequence[midias_mod.Midia] = (), primeira_resposta: bool = True) -> dict:
     """Resposta do atendente no chat. Grava a mensagem (com imagem/áudio opcionais) e registra a 1ª resposta (SLA).
 
     Sem texto, a mensagem leva um rótulo ("📷 Imagem") para quem só lê texto, como as telas /demo.
+    `primeira_resposta=False` (aviso automático, como o de transferência): não conta como 1ª resposta.
     Não envia nada ao cliente: o canal de entrega é integrado depois (ver docs/chat.md).
     """
     texto = (texto or "").strip()[:2000]
@@ -325,7 +327,7 @@ def responder_chat(ticket_id: int, texto: str, autor: Optional[str] = None,
     if not texto:
         raise ValueError("mensagem vazia")
     agora = utcnow()
-    msg_id = _gravar_resposta_chat(ticket_id, texto, (autor or None) and autor[:120], agora, midias)
+    msg_id = _gravar_resposta_chat(ticket_id, texto, (autor or None) and autor[:120], agora, midias, primeira_resposta)
     with get_engine().connect() as conn:
         anexos = midias_mod.por_mensagem(conn, [msg_id]).get(msg_id, [])
     return {"id": msg_id, "ticket_id": ticket_id, "direcao": "saida", "autor": autor, "texto": texto, "created_at": agora,

@@ -18,7 +18,8 @@ def test_primeira_mensagem_cria_ticket_e_a_primeira_mensagem_da_conversa(client)
     r = _post(client)
     assert r.json()["status"] == "pendente"
     msgs = client.get(f"/tickets/{r.json()['ticket_id']}/mensagens", headers=CHAVE).json()
-    assert [(m["direcao"], m["texto"]) for m in msgs] == [("entrada", "Meu pix não caiu e preciso resolver")]
+    assert [(m["direcao"], m["texto"]) for m in msgs if m["direcao"] == "entrada"] == [
+        ("entrada", "Meu pix não caiu e preciso resolver")]
 
 
 def test_nova_mensagem_do_mesmo_cliente_entra_na_mesma_conversa(client, db):
@@ -27,7 +28,7 @@ def test_nova_mensagem_do_mesmo_cliente_entra_na_mesma_conversa(client, db):
     assert r2.json() == {"ticket_id": t1, "status": "anexada"}
     with db.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM tickets")).scalar() == 1
-        assert conn.execute(text("SELECT COUNT(*) FROM messages")).scalar() == 2
+        assert conn.execute(text("SELECT COUNT(*) FROM messages WHERE direcao = 'entrada'")).scalar() == 2
 
 
 def test_clientes_diferentes_ou_sem_identificacao_geram_tickets_separados(client, db):
@@ -85,7 +86,8 @@ def test_resposta_do_atendente_aparece_no_chat_e_registra_o_sla(client):
     tid = _post(client).json()["ticket_id"]
     r = client.post(f"/tickets/{tid}/mensagens", json={"texto": "Olá! Já estamos verificando.", "autor": "Bia"}, headers=CHAVE)
     assert r.status_code == 201 and r.json()["direcao"] == "saida"
-    msgs = client.get(f"/tickets/{tid}/mensagens", headers=CHAVE).json()
+    # Sem o aviso automático de transferência (urgência alta), que não é resposta do atendente.
+    msgs = [m for m in client.get(f"/tickets/{tid}/mensagens", headers=CHAVE).json() if m["autor"] != tickets.AUTOR_IA]
     assert [m["direcao"] for m in msgs] == ["entrada", "saida"] and msgs[1]["autor"] == "Bia"
     assert tickets.obter(tid)["first_response_at"] is not None
 
@@ -148,7 +150,7 @@ def test_external_id_repetido_na_conversa_nao_duplica_a_mensagem(client, db):
     r = _post(client, external_id="m2", texto="segunda mensagem do cliente")
     assert r.json()["status"] == "duplicado"
     with db.connect() as conn:
-        assert conn.execute(text("SELECT COUNT(*) FROM messages")).scalar() == 2
+        assert conn.execute(text("SELECT COUNT(*) FROM messages WHERE direcao = 'entrada'")).scalar() == 2
 
 
 def test_ticket_antigo_sem_mensagens_mostra_o_texto_original(client, db):
@@ -170,4 +172,4 @@ def test_whatsapp_usa_o_numero_como_conversa(client, monkeypatch, db):
         assert r.status_code == 200
     with db.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM tickets")).scalar() == 1
-        assert conn.execute(text("SELECT COUNT(*) FROM messages")).scalar() == 2
+        assert conn.execute(text("SELECT COUNT(*) FROM messages WHERE direcao = 'entrada'")).scalar() == 2

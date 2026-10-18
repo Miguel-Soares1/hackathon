@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from conftest import CHAVE
-from triagem import midias
+from triagem import midias, tickets
 from triagem.config import get_settings
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
@@ -286,4 +286,5 @@ def test_resposta_com_midia_invalida_retorna_400_e_nao_grava(client):
     r = client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={
         "midias": [{"tipo": "imagem", "mime": "image/png", "dados_base64": b64(OGG)}]})
     assert r.status_code == 400
-    assert len(client.get(f"/tickets/{tid}/mensagens", headers=CHAVE).json()) == 1
+    msgs = client.get(f"/tickets/{tid}/mensagens", headers=CHAVE).json()
+    assert [m for m in msgs if m["direcao"] == "saida" and m["autor"] != tickets.AUTOR_IA] == []  # só o aviso automático

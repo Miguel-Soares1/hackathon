@@ -48,7 +48,7 @@ def test_resposta_do_atendente_chega_no_email_do_cliente(client):
     conversa = client.get(f"/demo/conversa/{r['ticket_id']}", params={"senha": r["senha"]}).json()
     # Assert: o mesmo remetente fica na mesma conversa, e a resposta do atendente chega
     assert seguinte["status"] == "anexada" and seguinte["ticket_id"] == r["ticket_id"]
-    assert [m["texto"] for m in conversa["atendente"]] == ["Estorno solicitado."]
+    assert [m["texto"] for m in conversa["atendente"]][-1:] == ["Estorno solicitado."]  # antes, o aviso de transferência
 
 
 def test_envio_demo_respeita_filtro_de_remetente_automatico(client):
