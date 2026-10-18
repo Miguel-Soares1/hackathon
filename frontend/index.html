@@ -71,7 +71,17 @@
 
       <!-- Atendimento: fila estilo chat (em espera × respondidos) e conversa com a triagem -->
       <section id="pagina-atendimento" class="pagina">
-        <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente ou mensagem…" aria-label="Buscar atendimento">
+        <div class="barra-fila">
+          <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente ou mensagem…" aria-label="Buscar atendimento">
+          <select id="filtro-equipe" aria-label="Fila da equipe" title="A IA encaminha cada atendimento para uma equipe; a fila já vem na ordem de prioridade">
+            <option value="">Todas as equipes</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="suporte_tecnico">Suporte técnico</option>
+            <option value="engenharia">Engenharia</option>
+            <option value="retencao">Retenção</option>
+            <option value="atendimento">Atendimento</option>
+          </select>
+        </div>
         <div class="atendimento">
           <div class="coluna-lista">
             <div class="abas-lista" role="tablist">

@@ -335,3 +335,15 @@ Consequências: ...
 **Consequências:**
 - A notificação é do navegador (precisa da permissão e do painel aberto); não há envio por SMS ou e-mail aos atendentes.
 - Com os dados de demonstração, os atendimentos críticos sem resposta mantêm a faixa piscando até alguém responder.
+
+## ADR-021 — Roteamento por equipe, rascunho revisado e correções no chat
+
+**Contexto:** o desafio pede roteamento para a equipe certa na posição de prioridade, sugestão de resposta que não é enviada sozinha, correções do atendente medindo a taxa de acerto e um painel com motivos, incidentes, prazos (SLA) em risco e precisão. A tela mínima (ADR-020) tinha tirado a sugestão e a correção do chat.
+
+**Decisão:**
+- Fila: seletor de equipe ao lado da busca; cada cartão mostra a equipe da triagem; a ordem continua a de prioridade (urgência, estado do prazo, prazo consumido).
+- Atendimento humano (alta/crítica ou escalado): o rascunho da IA aparece acima do campo; "Usar no campo" só preenche o texto, o atendente revisa e envia. Se reescrever, a versão enviada fica registrada como correção de `resposta_sugerida`.
+- Faixa de triagem recolhida no topo da conversa: "IA acertou" (revisão) ou "Salvar correção" (`POST /tickets/{id}/correcoes`). Urgência corrigida para alta/crítica numa conversa da IA passa a conversa para a fila de atendentes (`atendimento_ia.apos_correcao`).
+- Aba Recorrência ganha o painel "Prazos (SLA) em risco" (clicável, abre o atendimento).
+
+**Consequência:** a resposta automática da IA em urgência baixa/média (ADR-019) continua, por decisão do time; pode ser desligada com `ia_auto_ativo = 0`, e então todo atendimento usa só o rascunho revisado.

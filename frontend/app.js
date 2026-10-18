@@ -26,6 +26,8 @@ const FILTRO_PADRAO = {
   estados: ESTADOS_FILTRO.map(([v]) => v),
   consumidoMin: 0,
 };
+const nomeEquipe = (e) => ({ financeiro: "Financeiro", suporte_tecnico: "Suporte técnico", engenharia: "Engenharia",
+  retencao: "Retenção", atendimento: "Atendimento" }[e] || e || "—");
 const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
 
 const estado = {
@@ -38,6 +40,9 @@ const estado = {
   pagina: "atendimento",
   lista: "espera",
   canal: "",
+  equipe: lerArmazenado(localStorage, "triagem.equipe"), // fila de uma equipe só ("" = todas)
+  triagemAberta: false, // painel de triagem (correção) aberto no detalhe
+  rascunho: null, // { id, texto } rascunho da IA colocado no campo, para registrar a correção se o atendente mudar
   selecionado: null,
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
   problemas: [],
@@ -303,7 +308,8 @@ function contagem(contexto, mostradas, total) {
 // ---------------------------------------------------------------- atendimento: fila estilo chat
 function filtrados() {
   const q = $("#busca").value.trim().toLowerCase();
-  const base = estado.canal ? estado.tickets.filter((t) => chaveCanal(t.canal) === estado.canal) : estado.tickets;
+  const base = estado.tickets.filter((t) => (!estado.canal || chaveCanal(t.canal) === estado.canal)
+    && (!estado.equipe || t.equipe === estado.equipe));
   const todos = q
     ? base.filter((t) => [t.cliente, t.canal, t.texto, t.ultima_texto, t.assunto].join(" ").toLowerCase().includes(q))
     : base;
@@ -325,7 +331,7 @@ function cartao(t) {
   return `<button type="button" class="cartao${t.ticket_id === estado.selecionado ? " sel" : ""}${t.urgencia === "critica" && aguardando(t) ? " critico" : ""}" data-id="${t.ticket_id}">
     ${avatar(t)}
     <div class="cartao-corpo">
-      <div class="cartao-linha"><span class="nome">${esc(c.nome)}</span>${marca}<span class="quando">${esc(horaCurta(t.ultima_entrada_at || t.received_at))}</span></div>
+      <div class="cartao-linha"><span class="nome">${esc(c.nome)}</span>${marca}${t.equipe && !estado.equipe ? `<span class="equipe-tag">${esc(nomeEquipe(t.equipe))}</span>` : ""}<span class="quando">${esc(horaCurta(t.ultima_entrada_at || t.received_at))}</span></div>
       <div class="msg">${iconesMidia(t)}${esc(ultimo)}</div>
     </div>
   </button>`;
@@ -368,10 +374,12 @@ function renderDetalhe() {
       <div class="cab-info"><div class="nome">${esc(c.nome)}</div>
         <div class="sub">${c.detalhe ? `<span>${esc(c.detalhe)}</span>` : ""}<span>#${t.ticket_id}</span></div></div>
       <div class="cab-acoes">${acoes}</div></div>
+    ${htmlTriagem(t)}
     <div id="conversa" class="conversa" aria-live="polite">${bolha({ direcao: "entrada", autor: t.cliente, texto: t.texto, created_at: t.received_at })}</div>
     ${renderMidias(t)}
     ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
       : estado.encerrando ? formEncerramento() : `
+    ${htmlRascunho(t)}
     <form id="form-chat" class="form-chat">
       <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
@@ -390,6 +398,84 @@ function renderDetalhe() {
   carregarMidias(t);
   renderAnexos();
   if (t.desfecho && !estado.relatorios[t.ticket_id]) carregarRelatorio(t.ticket_id);
+}
+
+// ---------------------------------------------------------------- triagem: confirmar ou corrigir (correções do atendente)
+// A correção fica registrada (histórico) e mede a precisão da IA; urgência alta/crítica tira a conversa da IA.
+function htmlTriagem(t) {
+  if (!t.urgencia) return `<div class="triagem-faixa muted">⏳ Classificando…</div>`;
+  const d = estado.dominio || {};
+  const campo = (nome, rot, valores, atual, nomear) => `<label>${rot}<select name="${nome}">${valores
+    .map((v) => `<option value="${esc(v)}" ${v === atual ? "selected" : ""}>${esc(nomear ? nomear(v) : v)}</option>`).join("")}</select></label>`;
+  const estadoRev = t.revisado ? (DIMS.some((k) => t[k + "_original"] && t[k + "_original"] !== t[k]) ? "corrigida" : "confirmada") : "";
+  return `<details class="triagem-faixa" ${estado.triagemAberta ? "open" : ""}>
+    <summary>${pill(t.urgencia)} <span>${esc(nomeAssunto(t.assunto))}</span> · <span>${esc(nomeEquipe(t.equipe))}</span>
+      ${estadoRev ? `<span class="muted">· triagem ${estadoRev}</span>` : `<span class="muted">· triagem da IA</span>`}</summary>
+    <form id="form-triagem" class="form-triagem">
+      ${campo("assunto", "Assunto", d.assuntos || [], t.assunto, nomeAssunto)}
+      ${campo("urgencia", "Urgência", d.urgencias || [], t.urgencia)}
+      ${campo("sentimento", "Sentimento", d.sentimentos || [], t.sentimento)}
+      ${campo("equipe", "Equipe", d.equipes || [], t.equipe, nomeEquipe)}
+      <div class="acoes-triagem">
+        <button type="button" class="btn pequeno" data-acao="confirmar-triagem" ${t.revisado ? "disabled" : ""}>✓ IA acertou</button>
+        <button type="submit" class="btn pequeno primario">Salvar correção</button>
+        <span id="triagem-status" class="muted" aria-live="polite"></span>
+      </div>
+    </form>
+  </details>`;
+}
+
+async function salvarTriagem(form) {
+  const t = estado.tickets.find((x) => x.ticket_id === estado.selecionado);
+  const novos = Object.fromEntries(new FormData(form));
+  const mudou = Object.fromEntries(Object.entries(novos).filter(([k, v]) => v && v !== t[k]));
+  const st = $("#triagem-status");
+  if (!Object.keys(mudou).length) return void (st.textContent = "Nada mudou. Se a IA acertou, use “IA acertou”.");
+  try {
+    const r = await api(`/tickets/${t.ticket_id}/correcoes`, { method: "POST", body: JSON.stringify(mudou) });
+    estado.editando = false;
+    await carregar();
+    $("#status").textContent = r.escalado ? "Correção salva. A urgência subiu: a conversa saiu da IA e foi para a fila de atendentes."
+      : `Correção salva (${Object.keys(mudou).length} campo(s)).`;
+  } catch (e) {
+    st.textContent = `⚠ ${e.message}`;
+  }
+}
+
+// ---------------------------------------------------------------- rascunho da IA (nunca é enviado sozinho)
+function htmlRascunho(t) {
+  if (t.ia_atendendo || !t.resposta_sugerida) return "";
+  return `<div class="rascunho">
+    <div class="rascunho-cab"><span>✨ Rascunho da IA</span>
+      <button type="button" class="btn pequeno" data-acao="usar-rascunho">Usar no campo</button>
+      <button type="button" class="btn pequeno" data-acao="novo-rascunho" title="Gerar de novo para a última mensagem do cliente">↻</button></div>
+    <p class="rascunho-texto">${esc(t.resposta_sugerida)}</p>
+  </div>`;
+}
+
+function usarRascunho() {
+  const t = estado.tickets.find((x) => x.ticket_id === estado.selecionado);
+  const campo = $("#form-chat textarea");
+  if (!t || !campo) return;
+  campo.value = t.resposta_sugerida;
+  estado.rascunho = { id: t.ticket_id, texto: t.resposta_sugerida };
+  estado.editando = true;
+  campo.focus();
+  $("#chat-status").textContent = "Revise o texto e clique em Enviar. Nada é enviado sem você.";
+}
+
+async function novoRascunho() {
+  const id = estado.selecionado;
+  const caixa = document.querySelector(".rascunho-texto");
+  if (caixa) caixa.textContent = "Escrevendo para a última mensagem do cliente…";
+  try {
+    const r = await api(`/tickets/${id}/sugestao`, { method: "POST" });
+    const t = estado.tickets.find((x) => x.ticket_id === id);
+    if (t) t.resposta_sugerida = r.resposta_sugerida;
+    if (caixa && estado.selecionado === id) caixa.textContent = r.resposta_sugerida || "Sem rascunho.";
+  } catch (e) {
+    if (caixa) caixa.textContent = `⚠ ${e.message}`;
+  }
 }
 
 // ---------------------------------------------------------------- encerramento e relatório
@@ -507,6 +593,11 @@ async function enviarChat(form) {
   const midias = estado.anexos.map(({ tipo, mime, dados_base64 }) => ({ tipo, mime, dados_base64 }));
   try {
     await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, midias }) }); // assina quem está logado
+    if (estado.rascunho?.id === id && texto && texto !== estado.rascunho.texto) {
+      // o atendente usou o rascunho e o reescreveu: fica registrado como correção da resposta sugerida
+      api(`/tickets/${id}/correcoes`, { method: "POST", body: JSON.stringify({ resposta_sugerida: texto }) }).catch(() => {});
+    }
+    estado.rascunho = null;
     form.texto.value = "";
     limparAnexos();
     estado.editando = false;
@@ -660,8 +751,10 @@ async function acaoDetalhe(acao) {
     return;
   }
   if (acao === "registrar-problema") return abrirRegistroProblema(id);
+  if (acao === "usar-rascunho") return usarRascunho();
+  if (acao === "novo-rascunho") return novoRascunho();
   try {
-    if (acao === "revisar") await api(`/tickets/${id}/revisao`, { method: "POST" });
+    if (acao === "revisar" || acao === "confirmar-triagem") await api(`/tickets/${id}/revisao`, { method: "POST" });
     if (acao === "responder") await api(`/tickets/${id}/resposta`, { method: "POST", body: "{}" });
     if (acao === "cancelar") {
       estado.relatorios[id] = (await api(`/tickets/${id}/encerrar`, { method: "POST", body: JSON.stringify({ desfecho: "cancelado" }) })).relatorio;
@@ -675,6 +768,7 @@ async function acaoDetalhe(acao) {
   }
   estado.editando = false;
   await carregar();
+  if (acao === "confirmar-triagem") $("#status").textContent = "Triagem confirmada: conta como acerto da IA.";
 }
 
 
@@ -696,6 +790,8 @@ function irPara(pagina) {
 
 function abrirTicket(id) {
   if (id !== estado.selecionado) { // anexos e gravação pertencem ao atendimento que estava aberto
+    estado.triagemAberta = false;
+    estado.rascunho = null;
     if (estado.gravador) {
       estado.gravador.descartar = true;
       estado.gravador.stop();
@@ -842,6 +938,21 @@ function serieTemporal(tickets, top) {
     <div class="gf-legenda">${legenda}</div>`;
 }
 
+// Solicitações abertas com prazo de 1ª resposta estourado ou perto de estourar (agora, independe do período).
+function htmlPrazos(lista) {
+  if (!lista.length) return `<p class="gf-vazio">Nenhum prazo em risco agora.</p>`;
+  const porId = Object.fromEntries(estado.tickets.map((t) => [t.ticket_id, t]));
+  return `<table class="gf-tabela"><thead><tr><th>Cliente</th><th>Urgência</th><th>Equipe</th><th>Prazo</th><th>Consumido</th></tr></thead><tbody>
+    ${lista.slice(0, 8).map((s) => {
+      const t = porId[s.ticket_id] || {};
+      const cor = s.estado === "estourado" ? "#f2495c" : "#ff9830";
+      return `<tr class="gf-clicavel" data-abrir="${s.ticket_id}"><td>${esc(contato(t).nome)} <span class="muted">#${s.ticket_id}</span></td><td>${pill(s.urgencia)}</td>
+        <td>${esc(nomeEquipe(t.equipe))}</td><td style="color:${cor}">${esc(ROTULO_SLA_CURTO[s.estado] || s.estado)}</td>
+        <td><div class="gf-trilho"><div class="gf-barra" style="width:${Math.min(100, s.consumido_pct)}%;background:${cor}"></div></div>
+          <small>${Math.round(s.consumido_pct)}%</small></td></tr>`;
+    }).join("")}</tbody></table>${lista.length > 8 ? `<div class="gf-sub">e mais ${lista.length - 8}</div>` : ""}`;
+}
+
 function renderRecorrencia() {
   if (!estado.resumo) return;
   const tickets = noPeriodo(estado.tickets, "received_at");
@@ -887,6 +998,7 @@ function renderRecorrencia() {
       ${incid.map((g) => `<tr><td><i class="gf-ponto" style="background:#f2495c"></i>${esc(nomeAssunto(g.assunto_predominante))}</td><td>${g.size}</td>
         <td>${esc(hora(g.incident_opened_at))}</td><td>${esc(g.status)}</td></tr>`).join("")}</tbody></table>`
       : `<p class="gf-vazio">Nenhum incidente no período.</p>`, "gf-largo"),
+    painel("Prazos (SLA) em risco", htmlPrazos(r.prazos_em_risco || []), "gf-largo"),
     painel("Precisão da triagem (revisões)", precisaoMedida),
     painel("Confiança média da IA", comIa.length ? barrasGf(conf.map((c) => ({ ...c, cor: corLimiar(c.n) })), 0, "%") + `<div class="gf-sub">${comIa.length} triagens feitas pela IA</div>`
       : `<p class="gf-vazio">Sem triagens da IA no período.</p>`),
@@ -1105,6 +1217,12 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#plantao").addEventListener("change", (ev) => mudarPlantao(ev.target.checked));
   $("#form-problema").addEventListener("submit", (ev) => { ev.preventDefault(); criarProblema(ev.target); });
   document.querySelectorAll(".gf-periodo button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.periodo) === estado.periodo)));
+  $("#gf-grade").addEventListener("click", (ev) => {
+    const linha = ev.target.closest("[data-abrir]");
+    if (!linha) return;
+    irPara("atendimento");
+    abrirTicket(Number(linha.dataset.abrir));
+  });
   $(".gf-periodo").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-periodo]");
     if (!b) return;
@@ -1128,6 +1246,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   $("#busca").addEventListener("input", renderCartoes);
+  $("#filtro-equipe").value = estado.equipe;
+  $("#filtro-equipe").addEventListener("change", (ev) => {
+    estado.equipe = ev.target.value;
+    gravarArmazenado(localStorage, "triagem.equipe", estado.equipe);
+    renderCartoes();
+  });
   document.querySelectorAll(".filtros").forEach((caixa) => {
     caixa.addEventListener("change", () => mudarFiltro(lerFiltrosDe(caixa)));
     caixa.addEventListener("click", (ev) => {
@@ -1172,7 +1296,14 @@ document.addEventListener("DOMContentLoaded", () => {
     ev.target.value = ""; // permite escolher o mesmo arquivo de novo
   });
   detalhe.addEventListener("input", () => { estado.editando = true; });
+  detalhe.addEventListener("toggle", (ev) => {
+    if (ev.target.classList?.contains("triagem-faixa")) estado.triagemAberta = ev.target.open;
+  }, true);
   detalhe.addEventListener("submit", (ev) => {
+    if (ev.target.id === "form-triagem") {
+      ev.preventDefault();
+      salvarTriagem(ev.target);
+    }
     if (ev.target.id === "form-chat") {
       ev.preventDefault();
       enviarChat(ev.target);

@@ -141,3 +141,19 @@ def test_desligado_na_configuracao_tudo_vai_para_atendente(client, ia, db):
                           "ON DUPLICATE KEY UPDATE valor = VALUES(valor)"))
     tid = _post(client, "dúvida simples")["ticket_id"]
     assert tickets.obter(tid)["modo"] == "humano"
+
+
+def test_correcao_da_urgencia_para_alta_tira_a_conversa_da_ia(client, ia):
+    tid = _post(client, "como emito a segunda via do boleto?")["ticket_id"]
+    assert tickets.obter(tid)["modo"] == "ia"
+    r = client.post(f"/tickets/{tid}/correcoes", headers=CHAVE, json={"urgencia": "alta", "equipe": "financeiro"})
+    assert r.status_code == 201 and r.json()["escalado"] is True
+    t = tickets.obter(tid)
+    assert t["modo"] == "humano" and "corrigida para alta" in t["motivo_escalada"] and t["aguardando"]
+    assert t["urgencia"] == "alta" and t["equipe"] == "financeiro"
+
+
+def test_correcao_que_mantem_urgencia_baixa_nao_muda_quem_atende(client, ia):
+    tid = _post(client, "como emito a segunda via do boleto?")["ticket_id"]
+    r = client.post(f"/tickets/{tid}/correcoes", headers=CHAVE, json={"assunto": "cobranca", "urgencia": "media"})
+    assert r.json()["escalado"] is False and tickets.obter(tid)["modo"] == "ia"

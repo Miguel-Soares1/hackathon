@@ -153,3 +153,22 @@ def assumir(ticket_id: int, quem: Optional[str]) -> None:
                  "motivo_escalada = COALESCE(motivo_escalada, :r) WHERE id = :id AND modo = 'ia'"),
             {"q": utcnow(), "r": f"assumido por {quem or 'um atendente'}"[:160], "id": ticket_id},
         )
+
+
+def apos_correcao(ticket_id: int, correcoes: dict) -> bool:
+    """Roteamento depois da correção do atendente: urgência corrigida para alta/crítica tira a conversa da IA.
+
+    Retorna True se a conversa foi passada para um atendente. Nunca levanta exceção.
+    """
+    nova = correcoes.get("urgencia")
+    if not nova or nova in URGENCIAS_IA:
+        return False
+    try:
+        t = tickets.obter(ticket_id)
+        if t.get("desfecho") or t.get("modo") != "ia":
+            return False
+        escalar(ticket_id, f"urgência corrigida para {nova} pelo atendente", t.get("idioma"))
+        return True
+    except Exception:
+        logger.exception("erro ao rotear o ticket %s depois da correção", ticket_id)
+        return False

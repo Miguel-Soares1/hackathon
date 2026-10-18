@@ -793,7 +793,8 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="ticket ainda não foi classificado")
         except corrections.CorrecaoInvalida as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        return {"ticket_id": ticket_id, "correcoes_registradas": registradas}
+        escalado = atendimento_ia.apos_correcao(ticket_id, enviados)  # urgência subiu: sai da IA e vai para a fila
+        return {"ticket_id": ticket_id, "correcoes_registradas": registradas, "escalado": escalado}
 
     @app.get("/correcoes", dependencies=[Depends(exigir_chave)])
     def historico(ticket_id: Optional[int] = None, limite: int = Query(200, ge=1, le=1000)):

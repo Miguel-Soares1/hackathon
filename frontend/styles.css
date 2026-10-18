@@ -500,7 +500,29 @@ dialog.modal form { display: flex; flex-direction: column; gap: 10px; }
 dialog.modal .acoes-modal { display: flex; justify-content: flex-end; gap: 8px; }
 
 
-#pagina-atendimento > .busca { width: 100%; max-width: 520px; margin-bottom: 12px; }
+#pagina-atendimento .barra-fila { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+#pagina-atendimento .barra-fila .busca { flex: 1 1 260px; max-width: 520px; margin: 0; }
+#filtro-equipe { flex: 0 1 200px; }
+.equipe-tag { font-size: 11px; color: var(--muted); border: 1px solid var(--borda); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
+
+/* triagem no topo da conversa: recolhida por padrão, abre para confirmar ou corrigir */
+.triagem-faixa { border-bottom: 1px solid var(--borda); padding: 6px 14px; font-size: 13px; }
+.triagem-faixa summary { cursor: pointer; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; list-style: none; }
+.triagem-faixa summary::-webkit-details-marker { display: none; }
+.triagem-faixa summary::after { content: "corrigir ▾"; margin-left: auto; color: var(--destaque); font-size: 12px; }
+.triagem-faixa[open] summary::after { content: "fechar ▴"; }
+.form-triagem { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; padding: 10px 0 4px; }
+.form-triagem label { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
+.acoes-triagem { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* rascunho da IA: só preenche o campo, o atendente revisa e envia */
+.rascunho { margin: 0 14px; border: 1px dashed var(--destaque); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.rascunho-cab { display: flex; align-items: center; gap: 6px; color: var(--destaque); }
+.rascunho-cab span { margin-right: auto; font-weight: 600; }
+.rascunho-texto { margin: 6px 0 0; color: var(--texto-forte); max-height: 6.5em; overflow: auto; white-space: pre-wrap; }
+.gf-clicavel { cursor: pointer; }
+.gf-clicavel:hover td { background: rgba(255, 255, 255, .03); }
+.gf-tabela td .gf-trilho { height: 8px; display: inline-block; width: 70px; vertical-align: middle; margin-right: 6px; }
 
 /* ---------------------------------------------------------------- Recorrência (painel no estilo Grafana) */
 .gf-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
