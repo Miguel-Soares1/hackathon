@@ -11,7 +11,7 @@ const ROTULO_SLA_CURTO = {
   estourado: "prazo estourado", em_risco: "prazo em risco", no_prazo: "no prazo",
   respondido: "1ª resposta feita", aguardando_classificacao: "classificando",
 };
-const TITULOS = { atendimento: "Atendimento", incidentes: "Incidentes", relatorios: "Relatórios", recorrencia: "Recorrência" };
+const TITULOS = { atendimento: "Atendimento", relatorios: "Relatórios", recorrencia: "Recorrência" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const ORDEM_ESTADO = { estourado: 0, em_risco: 1, no_prazo: 2, aguardando_classificacao: 3, respondido: 4 };
 // Filtro das chamadas, o mesmo no Dashboard e no Atendimento (guardado neste navegador).
@@ -32,8 +32,8 @@ const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idio
 
 const estado = {
   // Sessão do usuário (ADR-018): "manter conectado" guarda no localStorage (30 dias); senão só nesta aba.
-  token: lerArmazenado(localStorage, "triagem.sessao") || lerArmazenado(sessionStorage, "triagem.sessao"),
-  usuario: null,
+  chave: lerArmazenado(sessionStorage, "triagem.chave"),
+  plantao: lerArmazenado(localStorage, "triagem.plantao") === "1", // de plantão neste navegador
   dominio: null,
   tickets: [],
   resumo: null,
@@ -42,7 +42,6 @@ const estado = {
   canal: "",
   equipe: lerArmazenado(localStorage, "triagem.equipe"), // fila de uma equipe só ("" = todas)
   triagemAberta: false, // painel de triagem (correção) aberto no detalhe
-  rascunho: null, // { id, texto } rascunho da IA colocado no campo, para registrar a correção se o atendente mudar
   selecionado: null,
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
   problemas: [],
@@ -129,7 +128,7 @@ class NaoAutorizado extends Error {}
 async function api(caminho, opcoes = {}) {
   const resp = await fetch(caminho, {
     ...opcoes,
-    headers: { ...(estado.token ? { Authorization: `Bearer ${estado.token}` } : {}),
+    headers: { "X-API-Key": estado.chave, "X-Atendente": encodeURIComponent(nomeAtendente()),
       ...(opcoes.body ? { "Content-Type": "application/json" } : {}) },
   });
   if (resp.status === 401) throw new NaoAutorizado();
@@ -147,16 +146,14 @@ async function carregar() {
     const [tickets, resumo, incidentes] = await Promise.all([
       api("/tickets?limite=1000"),
       api("/metricas"),
-      api(`/incidentes?todos_os_grupos=${$("#todos-grupos").checked}`),
+      api("/incidentes"), // usados na Recorrência
     ]);
     estado.tickets = tickets;
     estado.resumo = resumo;
-    renderBadgeIncidentes();
     renderCartoes();
     if (!estado.editando && !tocandoAudio() && !estado.anexos.length && !estado.gravador) renderDetalhe();
     else if (estado.selecionado) carregarConversa(estado.selecionado); // a conversa continua atualizando
     estado.incidentes = incidentes;
-    renderIncidentes(incidentes);
     if (estado.pagina === "recorrencia") renderRecorrencia();
     const agora = `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`;
     $("#status").textContent = agora;
@@ -174,7 +171,7 @@ function agendar() {
 
 // A conversa aberta no Atendimento é um chat: atualiza a cada 3 s, sem esperar o ciclo do painel.
 setInterval(() => {
-  if (estado.token && estado.pagina === "atendimento" && estado.selecionado && !document.hidden) carregarConversa(estado.selecionado);
+  if (estado.chave && estado.pagina === "atendimento" && estado.selecionado && !document.hidden) carregarConversa(estado.selecionado);
 }, 3000);
 
 // Situação de cada cliente: em espera (falta responder), em atendimento (respondido e em aberto), cancelado, encerrado.
@@ -182,14 +179,6 @@ function situacao(t) {
   if (t.desfecho) return t.desfecho === "cancelado" ? "cancelado" : "encerrado";
   if (t.ia_atendendo) return "ia"; // urgência baixa ou média: a IA responde sozinha (ADR-019)
   return aguardando(t) ? "espera" : "atendimento";
-}
-
-// Total de incidentes no menu lateral, como o contador de atendimentos em espera.
-function renderBadgeIncidentes() {
-  const badge = $("#badge-incidentes");
-  const total = estado.resumo.incidentes;
-  badge.hidden = !total;
-  badge.textContent = total;
 }
 
 // ---------------------------------------------------------------- filtro das chamadas (Atendimento)
@@ -379,7 +368,6 @@ function renderDetalhe() {
     ${renderMidias(t)}
     ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
       : estado.encerrando ? formEncerramento() : `
-    ${htmlRascunho(t)}
     <form id="form-chat" class="form-chat">
       <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
@@ -439,42 +427,6 @@ async function salvarTriagem(form) {
       : `Correção salva (${Object.keys(mudou).length} campo(s)).`;
   } catch (e) {
     st.textContent = `⚠ ${e.message}`;
-  }
-}
-
-// ---------------------------------------------------------------- rascunho da IA (nunca é enviado sozinho)
-function htmlRascunho(t) {
-  if (t.ia_atendendo || !t.resposta_sugerida) return "";
-  return `<div class="rascunho">
-    <div class="rascunho-cab"><span>✨ Rascunho da IA</span>
-      <button type="button" class="btn pequeno" data-acao="usar-rascunho">Usar no campo</button>
-      <button type="button" class="btn pequeno" data-acao="novo-rascunho" title="Gerar de novo para a última mensagem do cliente">↻</button></div>
-    <p class="rascunho-texto">${esc(t.resposta_sugerida)}</p>
-  </div>`;
-}
-
-function usarRascunho() {
-  const t = estado.tickets.find((x) => x.ticket_id === estado.selecionado);
-  const campo = $("#form-chat textarea");
-  if (!t || !campo) return;
-  campo.value = t.resposta_sugerida;
-  estado.rascunho = { id: t.ticket_id, texto: t.resposta_sugerida };
-  estado.editando = true;
-  campo.focus();
-  $("#chat-status").textContent = "Revise o texto e clique em Enviar. Nada é enviado sem você.";
-}
-
-async function novoRascunho() {
-  const id = estado.selecionado;
-  const caixa = document.querySelector(".rascunho-texto");
-  if (caixa) caixa.textContent = "Escrevendo para a última mensagem do cliente…";
-  try {
-    const r = await api(`/tickets/${id}/sugestao`, { method: "POST" });
-    const t = estado.tickets.find((x) => x.ticket_id === id);
-    if (t) t.resposta_sugerida = r.resposta_sugerida;
-    if (caixa && estado.selecionado === id) caixa.textContent = r.resposta_sugerida || "Sem rascunho.";
-  } catch (e) {
-    if (caixa) caixa.textContent = `⚠ ${e.message}`;
   }
 }
 
@@ -592,12 +544,7 @@ async function enviarChat(form) {
   if (!texto && !estado.anexos.length) return;
   const midias = estado.anexos.map(({ tipo, mime, dados_base64 }) => ({ tipo, mime, dados_base64 }));
   try {
-    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, midias }) }); // assina quem está logado
-    if (estado.rascunho?.id === id && texto && texto !== estado.rascunho.texto) {
-      // o atendente usou o rascunho e o reescreveu: fica registrado como correção da resposta sugerida
-      api(`/tickets/${id}/correcoes`, { method: "POST", body: JSON.stringify({ resposta_sugerida: texto }) }).catch(() => {});
-    }
-    estado.rascunho = null;
+    await api(`/tickets/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto, midias }) }); // assina com o "Seu nome" (header X-Atendente)
     form.texto.value = "";
     limparAnexos();
     estado.editando = false;
@@ -606,9 +553,6 @@ async function enviarChat(form) {
     alertaStatus(e.message);
   }
 }
-
-// ---------------------------------------------------------------- resposta sugerida para a última mensagem
-// A IA escreve na hora, com a conversa inteira como contexto; sem a IA, usa a sugestão que já existia.
 
 // ---------------------------------------------------------------- mídias do cliente (áudio e foto, ADR-017)
 const ESTADO_MIDIA = { pendente: "⏳ a IA está lendo…", lido: "✓ lido pela IA (o texto está na conversa)", erro: "⚠ a IA não conseguiu ler" };
@@ -635,12 +579,12 @@ function carregarMidias(t) {
   return mostrarMidias(t.ticket_id, t.midias || []);
 }
 
-// <img>/<audio> não mandam o header de autorização: baixa com a sessão e mostra a partir de uma URL local (blob).
+// <img>/<audio> não mandam o header da chave: baixa com a chave e mostra a partir de uma URL local (blob).
 async function mostrarMidias(ticketId, lista) {
   for (const m of lista) {
     try {
       if (!estado.midiaUrls[m.id]) {
-        const resp = await fetch(`/tickets/${ticketId}/midias/${m.id}`, { headers: { Authorization: `Bearer ${estado.token}` } });
+        const resp = await fetch(`/tickets/${ticketId}/midias/${m.id}`, { headers: { "X-API-Key": estado.chave } });
         if (!resp.ok) throw new Error(`erro ${resp.status}`);
         estado.midiaUrls[m.id] = URL.createObjectURL(await resp.blob());
       }
@@ -730,17 +674,6 @@ async function alternarGravacao() {
   st.textContent = "🔴 Gravando… clique em “Parar gravação” quando terminar.";
 }
 
-// ---------------------------------------------------------------- incidentes e correções
-function renderIncidentes(grupos) {
-  $("#lista-incidentes").innerHTML = grupos.length
-    ? grupos.map((g) => `<details class="card grupo" ${g.status === "incidente" ? "open" : ""}>
-        <summary>${g.status === "incidente" ? "🚨" : "•"} Grupo #${g.id} · ${esc(g.status)} · ${g.size} mensagens · ${esc(g.assunto_predominante || "—")}</summary>
-        <p class="muted">${esc(g.justificativa || "Ainda abaixo do volume mínimo de incidente.")}</p>
-        <ul>${g.tickets.map((t) => `<li><b>${esc(t.cliente || "cliente")}</b> (${esc(t.canal)}, ${esc(hora(t.received_at))}): ${esc(t.texto)}</li>`).join("")}</ul>
-      </details>`).join("")
-    : `<p class="card">✅ Nenhum incidente detectado.</p>`;
-}
-
 // ---------------------------------------------------------------- ações
 async function acaoDetalhe(acao) {
   const id = estado.selecionado;
@@ -751,8 +684,6 @@ async function acaoDetalhe(acao) {
     return;
   }
   if (acao === "registrar-problema") return abrirRegistroProblema(id);
-  if (acao === "usar-rascunho") return usarRascunho();
-  if (acao === "novo-rascunho") return novoRascunho();
   try {
     if (acao === "revisar" || acao === "confirmar-triagem") await api(`/tickets/${id}/revisao`, { method: "POST" });
     if (acao === "responder") await api(`/tickets/${id}/resposta`, { method: "POST", body: "{}" });
@@ -791,7 +722,6 @@ function irPara(pagina) {
 function abrirTicket(id) {
   if (id !== estado.selecionado) { // anexos e gravação pertencem ao atendimento que estava aberto
     estado.triagemAberta = false;
-    estado.rascunho = null;
     if (estado.gravador) {
       estado.gravador.descartar = true;
       estado.gravador.stop();
@@ -825,7 +755,7 @@ function avisarPlantao(chave, titulo, corpo, abrir) {
   if (avisados.has(chave)) return;
   avisados.add(chave);
   gravarArmazenado(sessionStorage, "triagem.avisados", JSON.stringify([...avisados].slice(-200)));
-  if (!estado.usuario?.de_plantao) return;
+  if (!estado.plantao) return;
   bipe();
   if ("Notification" in window && Notification.permission === "granted") {
     const n = new Notification(titulo, { body: corpo, tag: chave, requireInteraction: true });
@@ -834,7 +764,7 @@ function avisarPlantao(chave, titulo, corpo, abrir) {
 }
 
 async function verificarAlertas() {
-  if (!estado.token) return;
+  if (!estado.chave) return;
   let r;
   try { r = await api("/alertas"); } catch { return; }
   const faixa = $("#alerta-critico");
@@ -842,11 +772,12 @@ async function verificarAlertas() {
     ...r.criticos.map((c) => ({ chave: `t${c.ticket_id}`, texto: `CRÍTICO · ${contato(c).nome}: ${c.texto}`, botao: "Atender",
       abrir: () => { irPara("atendimento"); mostrarLista("espera"); abrirTicket(c.ticket_id); } })),
     ...r.incidentes.map((g) => ({ chave: `i${g.id}`, texto: `INCIDENTE · ${g.assunto || "problema"} · ${g.size} clientes`, botao: "Ver",
-      abrir: () => irPara("incidentes") })),
+      abrir: () => irPara("recorrencia") })),
   ];
   faixa.hidden = !itens.length;
   if (!itens.length) return;
-  const plantao = r.plantao.length ? `Avisados (de plantão): ${r.plantao.join(", ")}` : "Ninguém de plantão agora.";
+  const plantao = estado.plantao ? "Este navegador está de plantão: avisa com som e notificação."
+    : "Marque “De plantão” no menu para ser avisado com som e notificação.";
   faixa.innerHTML = itens.slice(0, 3).map((x, i) => `<div class="alerta-linha"><span>🚨 ${esc(x.texto)}</span>
     <button type="button" class="btn pequeno" data-alerta="${i}">${x.botao}</button></div>`).join("")
     + `<div class="alerta-plantao">${esc(plantao)}${itens.length > 3 ? ` · e mais ${itens.length - 3}` : ""}</div>`;
@@ -861,14 +792,10 @@ function mostrarLista(lista) {
   renderCartoes();
 }
 
-async function mudarPlantao(ligado) {
-  try {
-    estado.usuario = await api("/auth/plantao", { method: "POST", body: JSON.stringify({ de_plantao: ligado }) });
-    if (ligado && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
-  } catch (e) {
-    alertaStatus(e.message);
-    $("#plantao").checked = !ligado;
-  }
+function mudarPlantao(ligado) {
+  estado.plantao = ligado;
+  gravarArmazenado(localStorage, "triagem.plantao", ligado ? "1" : "");
+  if (ligado && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
 }
 
 // ---------------------------------------------------------------- recorrência: painel no estilo Grafana
@@ -1123,96 +1050,49 @@ async function registrarOcorrencia(f) {
   }
 }
 
-// ---------------------------------------------------------------- acesso (usuário e senha, ADR-018)
-function guardarSessao(token, manter) {
-  estado.token = token;
-  gravarArmazenado(localStorage, "triagem.sessao", manter ? token : "");
-  gravarArmazenado(sessionStorage, "triagem.sessao", manter ? "" : token);
-}
-
-async function postPublico(caminho, corpo) {
-  const resp = await fetch(caminho, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
-  const dados = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(dados.detail || (Array.isArray(dados.erros) ? dados.erros.map((e) => e.erro).join("; ") : `erro ${resp.status}`));
-  return dados;
+// ---------------------------------------------------------------- acesso (chave de API)
+function nomeAtendente() {
+  return $("#atendente")?.value.trim() || "Atendente";
 }
 
 async function entrar() {
   try {
-    estado.usuario = await api("/auth/eu");
     estado.dominio = await api("/dominio");
   } catch (e) {
-    return sair(e instanceof NaoAutorizado ? "Sua sessão expirou. Entre de novo." : `Servidor indisponível: ${e.message}`);
+    return sair(e instanceof NaoAutorizado ? "Chave inválida." : `Servidor indisponível: ${e.message}`);
   }
-  const u = estado.usuario;
-  $("#eu-nome").textContent = u.nome;
-  $("#eu-papel").textContent = `${u.usuario} · ${u.papel === "admin" ? "administrador" : "atendente"}`;
-  $("#eu-inicial").textContent = (u.nome || "?").trim().slice(0, 1).toUpperCase();
-  $("#plantao").checked = !!u.de_plantao;
-  if (u.de_plantao && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
   $("#login").hidden = true;
   $("#app").hidden = false;
+  $("#plantao").checked = estado.plantao;
   renderFiltros();
-  const ultima = lerArmazenado(sessionStorage, "triagem.pagina") || "atendimento";
+  if (estado.plantao && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  const ultima = lerArmazenado(sessionStorage, "triagem.pagina");
   irPara(TITULOS[ultima] ? ultima : "atendimento");
   await carregar();
   agendar();
-  verificarAlertas();
 }
 
-async function sair(erro) {
+function sair(erro) {
   clearInterval(estado.timer);
-  if (estado.token && !erro) fetch("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${estado.token}` } }).catch(() => {});
-  guardarSessao("", false);
-  estado.usuario = null;
+  estado.chave = "";
+  gravarArmazenado(sessionStorage, "triagem.chave", "");
   $("#app").hidden = true;
   $("#login").hidden = false;
   const p = $("#login-erro");
   p.hidden = !erro;
   p.textContent = erro || "";
-  // Banco sem usuários: mostra o primeiro acesso (criar o administrador).
-  try {
-    const { precisa_configurar } = await (await fetch("/auth/estado")).json();
-    $("#form-login").hidden = precisa_configurar;
-    $("#form-primeiro").hidden = !precisa_configurar;
-  } catch { /* servidor fora do ar: fica o login */ }
-}
-
-async function fazerLogin() {
-  const erro = $("#login-erro");
-  erro.hidden = true;
-  try {
-    const manter = $("#manter").checked;
-    const r = await postPublico("/auth/login", { usuario: $("#usuario").value.trim(), senha: $("#senha").value, manter_conectado: manter });
-    $("#senha").value = "";
-    guardarSessao(r.token, manter);
-    entrar();
-  } catch (e) {
-    erro.hidden = false;
-    erro.textContent = e.message;
-  }
-}
-
-async function criarPrimeiroAdmin(form) {
-  const erro = $("#primeiro-erro");
-  erro.hidden = true;
-  const d = Object.fromEntries(new FormData(form));
-  if (d.senha !== d.senha2) { erro.hidden = false; erro.textContent = "As senhas não conferem."; return; }
-  try {
-    const r = await postPublico("/auth/primeiro-admin", { chave_api: d.chave_api, nome: d.nome, usuario: d.usuario, senha: d.senha });
-    form.reset();
-    guardarSessao(r.token, true);
-    entrar();
-  } catch (e) {
-    erro.hidden = false;
-    erro.textContent = e.message;
-  }
 }
 
 // ---------------------------------------------------------------- eventos
 document.addEventListener("DOMContentLoaded", () => {
-  $("#form-login").addEventListener("submit", (ev) => { ev.preventDefault(); fazerLogin(); });
-  $("#form-primeiro").addEventListener("submit", (ev) => { ev.preventDefault(); criarPrimeiroAdmin(ev.target); });
+  $("#form-login").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    estado.chave = $("#chave").value.trim();
+    gravarArmazenado(sessionStorage, "triagem.chave", estado.chave);
+    entrar();
+  });
+  $("#atendente").value = lerArmazenado(localStorage, "triagem.atendente") || "Atendente";
+  $("#atendente").addEventListener("change", (ev) => gravarArmazenado(localStorage, "triagem.atendente", ev.target.value.trim()));
   $("#sair").addEventListener("click", () => sair());
   $("#plantao").addEventListener("change", (ev) => mudarPlantao(ev.target.checked));
   $("#form-problema").addEventListener("submit", (ev) => { ev.preventDefault(); criarProblema(ev.target); });
@@ -1239,7 +1119,6 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#form-ocorrencia .novo-problema").hidden = ev.target.value !== "novo";
   });
   $("#form-ocorrencia").addEventListener("submit", (ev) => { ev.preventDefault(); registrarOcorrencia(ev.target); });
-  $("#todos-grupos").addEventListener("change", carregar);
   $(".menu").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-pagina]");
     if (b) irPara(b.dataset.pagina);
@@ -1318,5 +1197,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
 
-  if (estado.token) entrar(); else sair();
+  if (estado.chave) entrar(); else sair();
 });

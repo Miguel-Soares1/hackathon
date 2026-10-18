@@ -1,22 +1,24 @@
-"""Atendimento pela IA (ADR-019): urgência baixa e média é respondida sozinha; alta e crítica vão para um atendente.
+"""Atendimento automático pela IA (ADR-022): toda mensagem é atendida na hora, sem sugestão para revisar.
 
-- Depois da triagem, `iniciar` decide o modo do atendimento. Baixa ou média: a IA envia a resposta ao cliente e passa
-  a responder cada nova mensagem (`responder`), com a conversa como contexto. Alta ou crítica, ou triagem feita pelo
-  plano B (sem a IA): vai direto para a fila do Atendimento, para uma pessoa.
-- A IA passa a conversa para um atendente (`escalar`) quando ela demora demais (minutos desde a 1ª mensagem ou número
-  de respostas da IA, limites em app_config), quando o cliente pede uma pessoa ou quando a IA falha. O cliente é
-  avisado e o atendimento volta para "Em espera" até uma pessoa responder.
+A IA resolve o que dá para resolver com orientação ou encaminha para a equipe da triagem (financeiro, suporte técnico,
+engenharia, retenção, atendimento) e avisa o cliente, no idioma dele, para quem o caso foi.
+- Encaminha direto, sem perguntar ao modelo: urgência alta ou crítica, pedido de cancelamento, ameaça de cancelar ou
+  de sair, exigência de solução imediata, pedido para falar com uma pessoa, triagem sem a IA (plano B), conversa da
+  IA longa demais (limites em app_config) e qualquer falha da IA.
+- Nos outros casos, a cada mensagem do cliente a IA decide (`classifier.atender`) entre resolver e encaminhar.
+- O aviso de encaminhamento não conta como 1ª resposta: o prazo (SLA) segue até uma pessoa da equipe responder.
 - Se um atendente responde num atendimento da IA, ele assume (`assumir`).
-As respostas da IA são assinadas como AUTOR_IA e não contam como resposta humana na fila.
+As mensagens da IA são assinadas como AUTOR_IA e não contam como resposta humana na fila.
 """
 import logging
 import re
+import unicodedata
 from typing import Optional
 
 from sqlalchemy import text
 
 from . import sla, tickets
-from .classifier import LLMError, sugerir_resposta
+from .classifier import LLMError, atender
 from .db import get_engine, utcnow
 from .idioma import detectar
 
@@ -33,11 +35,60 @@ PEDE_PESSOA = re.compile(
     re.IGNORECASE,
 )
 
-TRANSFERENCIA = {
-    "pt": "Vou te transferir para um atendente da nossa equipe, que continua com você por aqui em instantes. Obrigado pela paciência!",
-    "en": "I'm transferring you to one of our agents, who will continue with you here shortly. Thank you for your patience!",
-    "es": "Voy a transferirte a un agente de nuestro equipo, que seguirá contigo por aquí en unos instantes. ¡Gracias por tu paciencia!",
+# Risco de perder o cliente (pt, en e es, comparado sem acentos): ameaça de cancelar ou de sair, órgão de defesa do
+# consumidor ou processo, e exigência de solução imediata. A IA não negocia isso: passa na hora para uma pessoa.
+AMEACA_SAIR = re.compile(
+    r"\b(cancel\w*|vou (sair|embora|trocar)|trocar de (empresa|operadora|banco|fornecedor)|procon|reclame ?aqui|"
+    r"consumidor\.gov|advogad\w*|process(ar|o judicial)|justica|chargeback|lawyer|sue you|switch to another|"
+    r"abogad\w*|demandar)\b",
+    re.IGNORECASE,
+)
+EXIGE_AGORA = re.compile(
+    r"\b(imediatamente|agora mesmo|urgente|urgencia|(consert|resolv|arrum|corrig)\w* (isso |isto |o problema )?"
+    r"(agora|ja|hoje)|immediately|right now|asap|inmediatamente|ahora mismo)\b",
+    re.IGNORECASE,
+)
+
+
+def _sem_acento(texto: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", texto or "") if unicodedata.category(c) != "Mn")
+
+
+def risco_de_perder_cliente(texto: str) -> Optional[str]:
+    """Motivo para uma pessoa assumir já (ou None): ameaça de cancelar/sair ou exigência de solução imediata."""
+    t = _sem_acento(texto)
+    if AMEACA_SAIR.search(t):
+        return "o cliente ameaçou cancelar ou sair"
+    if EXIGE_AGORA.search(t):
+        return "o cliente exigiu solução imediata"
+    return None
+
+
+# Aviso ao cliente quando a IA encaminha: diz para qual equipe o caso foi (pt, en e es; outros idiomas, em inglês).
+EQUIPE_NOME = {
+    "financeiro": ("nossa equipe financeira", "our billing team", "nuestro equipo financiero"),
+    "suporte_tecnico": ("nosso suporte técnico", "our technical support team", "nuestro soporte técnico"),
+    "engenharia": ("nossa equipe técnica", "our engineering team", "nuestro equipo técnico"),
+    "retencao": ("nossa equipe de relacionamento", "our customer relations team", "nuestro equipo de relación con clientes"),
+    "atendimento": ("nossa equipe de atendimento", "our customer service team", "nuestro equipo de atención"),
 }
+AVISO_ENCAMINHADO = {
+    "pt": "Entendi. Encaminhei o seu caso{prioridade} para {equipe}, que já está com esta conversa e continua com você "
+          "por aqui em instantes.",
+    "en": "Got it. I've forwarded your case{prioridade} to {equipe}, who already have this conversation and will "
+          "continue with you here shortly.",
+    "es": "Entendido. Remití tu caso{prioridade} a {equipe}, que ya tiene esta conversación y seguirá contigo por aquí "
+          "en unos instantes.",
+}
+PRIORIDADE = {"pt": " com prioridade", "en": " as a priority", "es": " con prioridad"}
+IDIOMAS_AVISO = ("pt", "en", "es")
+
+
+def aviso_encaminhado(equipe: Optional[str], idioma: Optional[str], urgente: bool = False) -> str:
+    lingua = idioma if idioma in IDIOMAS_AVISO else ("en" if idioma else "pt")
+    nomes = EQUIPE_NOME.get(equipe or "atendimento", EQUIPE_NOME["atendimento"])
+    return AVISO_ENCAMINHADO[lingua].format(equipe=nomes[IDIOMAS_AVISO.index(lingua)],
+                                           prioridade=PRIORIDADE[lingua] if urgente else "")
 
 
 def _config() -> dict:
@@ -59,25 +110,68 @@ def _conversa(ticket_id: int) -> list[tuple[str, str]]:
             for m in tickets.mensagens(ticket_id) if m["texto"]]
 
 
+def _motivo_inicial(t: dict) -> Optional[str]:
+    """Casos que vão direto para a equipe, sem perguntar ao modelo (ou None)."""
+    if t.get("origem") != "llm":
+        return "triagem sem a IA (plano B)"
+    if t.get("urgencia") not in URGENCIAS_IA:
+        return f"urgência {t.get('urgencia') or 'indefinida'}"
+    if t.get("assunto") == "cancelamento":
+        return "pedido de cancelamento"
+    return risco_de_perder_cliente(t["texto"]) or (
+        "o cliente pediu para falar com uma pessoa" if PEDE_PESSOA.search(t["texto"] or "") else None)
+
+
+def _atender(ticket_id: int, t: dict, conversa: list[tuple[str, str]], idioma: Optional[str]) -> str:
+    """A IA decide: resolve (responde ao cliente) ou encaminha para a equipe. Retorna respondida | encaminhada."""
+    triagem = {k: t.get(k) for k in ("assunto", "urgencia", "sentimento", "equipe", "idioma")}
+    for tentativa in (1, 2):  # uma segunda chance (resposta em outro idioma, JSON quebrado) antes de encaminhar
+        try:
+            acao, resposta, equipe = atender(conversa, triagem)
+            break
+        except LLMError as exc:
+            if tentativa == 2:
+                encaminhar(ticket_id, f"a IA não conseguiu responder ({exc})", t, idioma)
+                return "encaminhada"
+            logger.info("ticket %s: a IA tenta de novo (%s)", ticket_id, exc)
+    if acao == "encaminhar":
+        if equipe and equipe != t.get("equipe"):
+            t = _redirecionar(ticket_id, t, equipe)
+        encaminhar(ticket_id, "a IA avaliou que o caso precisa da equipe", t, idioma)
+        return "encaminhada"
+    tickets.responder_chat(ticket_id, resposta, AUTOR_IA)
+    _definir_modo(ticket_id, "ia")
+    return "respondida"
+
+
+def _redirecionar(ticket_id: int, t: dict, equipe: str) -> dict:
+    """O problema mudou na conversa (ex.: dúvida de boleto virou erro 500): a IA troca a equipe da triagem."""
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE classifications SET equipe = :e WHERE ticket_id = :t"), {"e": equipe, "t": ticket_id})
+    logger.info("ticket %s: a IA trocou a equipe de %s para %s", ticket_id, t.get("equipe"), equipe)
+    return {**t, "equipe": equipe}
+
+
 def iniciar(ticket_id: int) -> str:
-    """Logo depois da triagem: decide quem atende. Retorna ia | humano | ignorado. Nunca levanta exceção."""
+    """Logo depois da triagem: a IA resolve ou encaminha. Retorna ia | humano | ignorado. Nunca levanta exceção."""
     try:
         t = tickets.obter(ticket_id)
         if t.get("desfecho") or t.get("modo") or t["status"] == "pendente":
             return "ignorado"
-        cfg = _config()
-        if not cfg.get("ia_auto_ativo") or t.get("urgencia") not in URGENCIAS_IA or t.get("origem") != "llm" \
-                or not t.get("resposta_sugerida"):
-            _definir_modo(ticket_id, "humano")
+        if not _config().get("ia_auto_ativo"):
+            _definir_modo(ticket_id, "humano")  # atendimento automático desligado: tudo vai para as pessoas
             return "humano"
-        tickets.responder_chat(ticket_id, t["resposta_sugerida"], AUTOR_IA)
-        _definir_modo(ticket_id, "ia")
-        logger.info("ticket %s: urgência %s, a IA atende", ticket_id, t.get("urgencia"))
-        return "ia"
+        motivo = _motivo_inicial(t)
+        if motivo:
+            encaminhar(ticket_id, motivo, t, t.get("idioma"))
+            return "humano"
+        resultado = _atender(ticket_id, t, _conversa(ticket_id), t.get("idioma"))
+        logger.info("ticket %s: urgência %s, a IA %s", ticket_id, t.get("urgencia"), resultado)
+        return "ia" if resultado == "respondida" else "humano"
     except Exception:
         logger.exception("erro ao iniciar o atendimento do ticket %s", ticket_id)
         try:
-            _definir_modo(ticket_id, "humano")
+            encaminhar(ticket_id, "erro no atendimento da IA")
         except Exception:
             pass
         return "humano"
@@ -89,6 +183,9 @@ def motivo_para_atendente(t: dict, conversa: list[tuple[str, str]], cfg: dict, a
     ultima = next((texto for papel, texto in reversed(conversa) if papel == "cliente"), "")
     if PEDE_PESSOA.search(ultima or ""):
         return "o cliente pediu para falar com uma pessoa"
+    risco = risco_de_perder_cliente(ultima)
+    if risco:
+        return risco
     minutos = (agora - t["received_at"]).total_seconds() / 60
     if minutos >= cfg.get("ia_max_minutos", 15):
         return f"atendimento da IA passou de {int(cfg.get('ia_max_minutos', 15))} min"
@@ -98,15 +195,20 @@ def motivo_para_atendente(t: dict, conversa: list[tuple[str, str]], cfg: dict, a
     return None
 
 
-def escalar(ticket_id: int, motivo: str, idioma: Optional[str] = None) -> None:
-    """Passa a conversa para um atendente: avisa o cliente e devolve o atendimento para a fila."""
-    aviso = TRANSFERENCIA.get(idioma or "pt", TRANSFERENCIA["en"])
+def encaminhar(ticket_id: int, motivo: str, t: Optional[dict] = None, idioma: Optional[str] = None) -> None:
+    """Passa a conversa para a equipe da triagem: avisa o cliente para quem foi e põe o atendimento na fila dela."""
     try:
-        tickets.responder_chat(ticket_id, aviso, AUTOR_IA)
+        t = t or tickets.obter(ticket_id)
+        urgente = t.get("urgencia") in ("alta", "critica")
+        aviso = aviso_encaminhado(t.get("equipe"), idioma or t.get("idioma"), urgente)
+        tickets.responder_chat(ticket_id, aviso, AUTOR_IA, conta_resposta=False)
     except Exception:
-        logger.exception("não consegui avisar o cliente do ticket %s sobre a transferência", ticket_id)
+        logger.exception("não consegui avisar o cliente do ticket %s sobre o encaminhamento", ticket_id)
     _definir_modo(ticket_id, "humano", motivo, escalado=True)
-    logger.info("ticket %s vai para um atendente: %s", ticket_id, motivo)
+    logger.info("ticket %s encaminhado para a equipe: %s", ticket_id, motivo)
+
+
+escalar = encaminhar  # nome antigo (ADR-019)
 
 
 def responder(ticket_id: int, mensagem_id: Optional[int] = None) -> str:
@@ -126,20 +228,13 @@ def responder(ticket_id: int, mensagem_id: Optional[int] = None) -> str:
         idioma = detectar(ultima).codigo if ultima else t.get("idioma")
         motivo = motivo_para_atendente(t, conversa, _config())
         if motivo:
-            escalar(ticket_id, motivo, idioma)
+            encaminhar(ticket_id, motivo, t, idioma)
             return "escalada"
-        triagem = {k: t.get(k) for k in ("assunto", "urgencia", "sentimento", "equipe")}
-        try:
-            resposta = sugerir_resposta(conversa, triagem)
-        except LLMError as exc:
-            escalar(ticket_id, f"a IA não conseguiu responder ({exc})", idioma)
-            return "escalada"
-        tickets.responder_chat(ticket_id, resposta, AUTOR_IA)
-        return "respondida"
+        return "respondida" if _atender(ticket_id, t, conversa, idioma) == "respondida" else "escalada"
     except Exception:
         logger.exception("erro no atendimento da IA do ticket %s", ticket_id)
         try:
-            escalar(ticket_id, "erro no atendimento da IA")
+            encaminhar(ticket_id, "erro no atendimento da IA")
         except Exception:
             pass
         return "escalada"
@@ -167,7 +262,7 @@ def apos_correcao(ticket_id: int, correcoes: dict) -> bool:
         t = tickets.obter(ticket_id)
         if t.get("desfecho") or t.get("modo") != "ia":
             return False
-        escalar(ticket_id, f"urgência corrigida para {nova} pelo atendente", t.get("idioma"))
+        encaminhar(ticket_id, f"urgência corrigida para {nova} pelo atendente", t, t.get("idioma"))
         return True
     except Exception:
         logger.exception("erro ao rotear o ticket %s depois da correção", ticket_id)

@@ -26,15 +26,15 @@ python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + paine
 python scripts/simular.py                                       # 2) envia as 34 mensagens de demo
 ```
 
-Abra http://localhost:8000. **No primeiro acesso**, o painel pede a `API_KEY` do `.env` uma única vez para criar o
-administrador (nome, usuário e senha); depois disso a entrada é por **usuário e senha** (com "manter conectado", a
-sessão vale 30 dias no navegador). O administrador cadastra atendentes, troca papéis, desativa contas e redefine
-senhas em **Administração**; cada um troca a própria senha em **Minha conta** (ADR-018). A `API_KEY` continua só para
-integrações (webhook, canais e scripts). **Quem atende:** urgência **baixa e média** a IA responde sozinha (aba "🤖 IA atendendo"); **alta e crítica** vão
-para um atendente ("Em espera"). A IA passa a conversa para uma pessoa se ela passar de 15 min ou de 5 respostas, se o
-cliente pedir um atendente ou se a IA falhar (limites em `app_config`, ADR-019). O painel tem menu lateral: **Dashboard** (clientes em espera, em atendimento, cancelados e encerrados; indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa com imagem e áudio, triagem da IA, encerrar/cancelar/reabrir), **Incidentes**, **Correções** e **Atendimentos** (histórico com filtros e CSV). Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+Abra http://localhost:8000 e entre com a `API_KEY` do `.env` (fica só na aba do navegador). O nome digitado em
+**Seu nome no chat** assina respostas, encerramentos e problemas; quem marca **De plantão** recebe som e notificação dos
+problemas críticos naquele navegador. **Quem atende:** a IA responde **toda** mensagem
+na hora, sem sugestão para revisar: ou resolve (orientação, passos, informação) ou **encaminha para a equipe certa**
+(financeiro, suporte técnico, engenharia, retenção, atendimento) e avisa o cliente, no idioma dele, para quem o caso
+foi. Vai direto para a equipe: urgência alta ou crítica, cancelamento, ameaça de cancelar ou exigência de solução
+imediata, pedido para falar com uma pessoa e falha da IA. O aviso não conta como 1ª resposta: o prazo segue até a
+equipe responder (ADR-022). O painel tem menu lateral: **Atendimento** (fila por equipe, conversa com imagem e áudio, triagem, encerrar/cancelar/reabrir), **Relatórios** e **Recorrência**. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
-**Banco criado antes do login:** aplique `db/migrations/007_usuarios.sql` (ou rode `python scripts/criar_banco.py`).
 
 Simulador de canais para a apresentação (WhatsApp, Instagram e e-mail fictícios): http://localhost:8000/demo (veja `docs/canais.md`).
 
@@ -113,7 +113,7 @@ python scripts/avaliar_triagem.py --saida data/avaliacoes/v3.json   # regras × 
 
 **Banco criado antes desta versão:** aplique as migrações em ordem e recrie a visão:
 ```powershell
-Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql, db/migrations/005_chat.sql, db/migrations/006_midias.sql, db/migrations/007_usuarios.sql, db/migrations/008_desfecho.sql, db/migrations/009_midias_chat.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
+Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql, db/migrations/005_chat.sql, db/migrations/006_midias.sql, db/migrations/008_desfecho.sql, db/migrations/009_midias_chat.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
 python scripts/criar_banco.py
 ```
 

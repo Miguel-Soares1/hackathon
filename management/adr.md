@@ -290,7 +290,7 @@ Consequências: ...
 
 ## ADR-018: Login do painel por usuário e senha, com sessões no banco
 
-**Status:** accepted
+**Status:** revogado. O sistema de contas foi retirado: o painel entra com a `API_KEY` (threat model T11), o atendente informa o próprio nome ("Seu nome no chat", enviado no header `X-Atendente`) e o plantão é marcado por navegador (ADR-020). Bancos que já têm as tabelas `usuarios` e `sessoes` podem mantê-las; o código não as usa mais.
 
 **Contexto:** o painel pedia a `API_KEY` do servidor toda vez que era aberto, e todos os atendentes usavam a mesma chave: não havia como saber quem respondeu, tirar o acesso de uma pessoa ou trocar a senha sem trocar a chave das integrações.
 
@@ -329,7 +329,7 @@ Consequências: ...
 
 **Decisão:**
 - Painel: cartão com nome, hora, última mensagem e urgência (só alta e crítica); detalhe com a conversa, as mídias do cliente e a resposta. Saem o filtro por canal, a barra de filtros, a triagem e a sugestão da IA no chat. Instagram e e-mail saem da navegação das telas de demo e dos QR codes (as rotas continuam).
-- Alerta: `GET /alertas` lista atendimentos críticos esperando uma pessoa e incidentes abertos nas últimas 2 h. A faixa pisca no topo do painel para todos e cada atendente **de plantão** (`usuarios.de_plantao`, botão no menu, `POST /auth/plantao`) recebe uma notificação do Windows e um aviso sonoro, uma vez por problema. Responder o atendimento tira o alerta.
+- Alerta: `GET /alertas` lista atendimentos críticos esperando uma pessoa e incidentes abertos nas últimas 2 h. A faixa pisca no topo do painel para todos e cada navegador marcado **de plantão** (botão no menu, guardado no próprio navegador) recebe uma notificação do Windows e um aviso sonoro, uma vez por problema. Responder o atendimento tira o alerta.
 - Relatórios: tabelas `problemas` (título, características, aberto/resolvido) e `problema_ocorrencias` (identificação do cliente, atendimento opcional, observação, quem registrou). A aba mostra quantas vezes cada problema aconteceu e quantos clientes distintos; o botão "📋 Registrar problema" do atendimento já preenche o cliente e o número do atendimento. Migração 013.
 
 **Consequências:**
@@ -342,8 +342,35 @@ Consequências: ...
 
 **Decisão:**
 - Fila: seletor de equipe ao lado da busca; cada cartão mostra a equipe da triagem; a ordem continua a de prioridade (urgência, estado do prazo, prazo consumido).
-- Atendimento humano (alta/crítica ou escalado): o rascunho da IA aparece acima do campo; "Usar no campo" só preenche o texto, o atendente revisa e envia. Se reescrever, a versão enviada fica registrada como correção de `resposta_sugerida`.
+- (Substituído pelo ADR-022: não há mais rascunho.) Atendimento humano (alta/crítica ou escalado): o rascunho da IA aparece acima do campo; "Usar no campo" só preenche o texto, o atendente revisa e envia. Se reescrever, a versão enviada fica registrada como correção de `resposta_sugerida`.
 - Faixa de triagem recolhida no topo da conversa: "IA acertou" (revisão) ou "Salvar correção" (`POST /tickets/{id}/correcoes`). Urgência corrigida para alta/crítica numa conversa da IA passa a conversa para a fila de atendentes (`atendimento_ia.apos_correcao`).
 - Aba Recorrência ganha o painel "Prazos (SLA) em risco" (clicável, abre o atendimento).
 
 **Consequência:** a resposta automática da IA em urgência baixa/média (ADR-019) continua, por decisão do time; pode ser desligada com `ia_auto_ativo = 0`, e então todo atendimento usa só o rascunho revisado.
+
+---
+
+## ADR-022: A IA atende sozinha toda mensagem: resolve ou encaminha para a equipe
+
+**Status:** accepted (substitui a divisão por urgência do ADR-019 e o rascunho do ADR-021)
+
+**Contexto:** na demonstração, um cliente disse que ia cancelar tudo se o problema não fosse resolvido na hora e a IA
+seguiu pedindo detalhes; alta e crítica ficavam sem resposta nenhuma até uma pessoa ver; e o rascunho para o atendente
+revisar não automatizava nada. A equipe quer o atendimento automatizado: a IA resolve ou passa para quem resolve.
+
+**Decisão:**
+- Toda mensagem é atendida na hora pela IA (`atendimento_ia`). Para cada mensagem do cliente, `classifier.atender`
+  devolve `resolver` (com a resposta) ou `encaminhar` (com a equipe que resolve o problema como ele está agora).
+- Encaminha direto, sem perguntar ao modelo: urgência alta ou crítica, assunto cancelamento, ameaça de cancelar ou de
+  sair, Procon/processo, exigência de solução imediata, pedido para falar com uma pessoa, triagem sem a IA (plano B),
+  conversa da IA além dos limites de `app_config` e falha da IA (depois de uma segunda tentativa).
+- Ao encaminhar, o cliente recebe um aviso fixo no idioma dele (pt, en, es; outros, em inglês) com o nome da equipe e
+  "com prioridade" quando a urgência é alta ou crítica. O aviso **não** conta como 1ª resposta: o prazo (SLA) segue
+  até a equipe responder. Se o problema mudou na conversa (dúvida de boleto que virou erro 500), a IA troca a equipe.
+- Saem as sugestões: o rascunho no painel, o botão de gerar de novo, `POST /tickets/{id}/sugestao` e a sugestão
+  recalculada a cada mensagem. As colunas `sugestao_*` ficam no banco sem uso.
+
+**Consequências:**
+- O cliente nunca fica sem resposta; a fila de cada equipe só recebe o que a IA não resolve.
+- A qualidade da decisão depende do prompt `PROMPT_ATENDIMENTO`; a regra fixa cobre os casos de risco sem depender do modelo.
+- `ia_auto_ativo = 0` desliga o atendimento automático (tudo vai para as pessoas, sem aviso).

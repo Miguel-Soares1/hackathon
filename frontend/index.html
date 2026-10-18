@@ -9,37 +9,17 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <!-- Tela de acesso: usuário e senha (ADR-018). Com "manter conectado" a sessão vale 30 dias neste navegador. -->
+  <!-- Tela de acesso: a chave fica só nesta aba (sessionStorage) -->
   <main id="login" class="login" hidden>
     <form id="form-login" class="card login-card">
       <img class="logo-nexus" src="img/nexus-logo.webp" alt="Nexus — Conexão e Inovação" width="660" height="240">
       <div class="marca"><img class="logo" src="img/nexus-icone.png" alt=""><div class="nome">NEXUS</div></div>
-      <p class="muted">Painel de atendimento. Entre com o seu usuário e senha.</p>
-      <label>Usuário
-        <input id="usuario" autocomplete="username" maxlength="60" required>
+      <p class="muted">Painel de atendimento. Informe a chave de API do servidor.</p>
+      <label>Chave de API
+        <input id="chave" type="password" autocomplete="current-password" required>
       </label>
-      <label>Senha
-        <input id="senha" type="password" autocomplete="current-password" maxlength="200" required>
-      </label>
-      <label class="toggle"><input type="checkbox" id="manter" checked> Manter conectado neste computador</label>
       <p id="login-erro" class="erro" hidden></p>
       <button type="submit" class="btn primario">Entrar</button>
-    </form>
-
-    <!-- Primeiro acesso: o banco ainda não tem usuários. A chave de API do servidor prova que é o dono. -->
-    <form id="form-primeiro" class="card login-card" hidden>
-      <img class="logo-nexus" src="img/nexus-logo.webp" alt="Nexus — Conexão e Inovação" width="660" height="240">
-      <h2>Primeiro acesso</h2>
-      <p class="muted">Crie o administrador do painel. Depois ele cadastra os atendentes em <b>Administração</b>.</p>
-      <label>Chave de API do servidor (<code>API_KEY</code> do <code>.env</code>)
-        <input name="chave_api" type="password" autocomplete="off" required>
-      </label>
-      <label>Seu nome <input name="nome" maxlength="120" required></label>
-      <label>Usuário <input name="usuario" autocomplete="username" maxlength="60" required></label>
-      <label>Senha (mínimo 8 caracteres) <input name="senha" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
-      <label>Repita a senha <input name="senha2" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
-      <p id="primeiro-erro" class="erro" hidden></p>
-      <button type="submit" class="btn primario">Criar administrador e entrar</button>
     </form>
   </main>
 
@@ -50,14 +30,12 @@
       <div class="menu-titulo">Menu</div>
       <nav class="menu" aria-label="Páginas">
         <button type="button" data-pagina="atendimento" aria-current="page"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
-        <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
         <button type="button" data-pagina="relatorios"><span aria-hidden="true">📋</span> Relatórios</button>
         <button type="button" data-pagina="recorrencia"><span aria-hidden="true">📈</span> Recorrência</button>
       </nav>
       <hr>
-      <div class="quem-logado"><div class="avatar" id="eu-inicial">?</div>
-        <div><div class="nome" id="eu-nome"></div><div class="legenda" id="eu-papel"></div></div></div>
-      <!-- De plantão: recebe o alerta (piscando, notificação e som) quando chega um problema crítico (ADR-020) -->
+      <label>Seu nome no chat <input id="atendente" maxlength="60" value="Atendente"></label>
+      <!-- De plantão (vale para este navegador): avisa com notificação e som quando chega um problema crítico (ADR-020) -->
       <label class="toggle plantao" title="Quem está de plantão é avisado na hora dos problemas críticos">
         <input type="checkbox" id="plantao"> De plantão</label>
       <p id="status" class="legenda" aria-live="polite"></p>
@@ -98,10 +76,6 @@
         </div>
       </section>
 
-      <section id="pagina-incidentes" class="pagina" hidden>
-        <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
-        <div id="lista-incidentes"></div>
-      </section>
 
       <!-- Recorrência: painel no estilo Grafana com motivos de contato, incidentes e precisão da triagem -->
       <section id="pagina-recorrencia" class="pagina" hidden>

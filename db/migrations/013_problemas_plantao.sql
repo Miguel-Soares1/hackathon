@@ -1,7 +1,5 @@
 -- Bancos criados antes do relatório de problemas e do plantão (ADR-020).
 -- Rode uma vez (ou deixe o python scripts/criar_banco.py aplicar sozinho).
-ALTER TABLE usuarios ADD COLUMN de_plantao TINYINT(1) NOT NULL DEFAULT 1 AFTER ativo;
-
 -- Relatório de problemas (ADR-020): o atendente registra um problema e cada vez que ele acontece (cliente afetado).
 CREATE TABLE IF NOT EXISTS problemas (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

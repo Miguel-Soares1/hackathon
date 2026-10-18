@@ -1,12 +1,13 @@
-"""Relatório de problemas, alertas críticos e plantão (ADR-020)."""
+"""Relatório de problemas e alertas críticos (ADR-020)."""
+from urllib.parse import quote
+
 from conftest import CHAVE
-from triagem import tickets, usuarios
+from triagem import tickets
 
 
-def _sessao(client, usuario="ana", nome="Ana"):
-    usuarios.criar(usuario, nome, "senha-forte-1", "atendente")
-    token = client.post("/auth/login", json={"usuario": usuario, "senha": "senha-forte-1"}).json()["token"]
-    return {"Authorization": f"Bearer {token}"}
+def _sessao(client, nome="Ana"):
+    """Painel sem contas: a chave de API e o "Seu nome" do atendente (header X-Atendente, codificado)."""
+    return {**CHAVE, "X-Atendente": quote(nome)}
 
 
 def test_problema_com_ocorrencias_conta_as_vezes_e_os_clientes(client):
@@ -44,9 +45,8 @@ def test_problema_valida_dados_e_exige_acesso(client):
     assert client.get("/problemas").status_code == 401
 
 
-def test_alertas_mostram_criticos_esperando_e_quem_esta_de_plantao(client, monkeypatch):
+def test_alertas_mostram_criticos_esperando_ate_alguem_responder(client, monkeypatch):
     s = _sessao(client)
-    _sessao(client, "bia", "Bia")
     tid = client.post("/webhook/mensagens", headers=CHAVE, json={"canal": "whatsapp", "texto": "sistema fora do ar", "cliente": "Loja (5511900000000)"}).json()["ticket_id"]
     original = tickets.listar
 
@@ -54,9 +54,12 @@ def test_alertas_mostram_criticos_esperando_e_quem_esta_de_plantao(client, monke
         return [{**t, "urgencia": "critica"} if t["ticket_id"] == tid else t for t in original(limite=limite, **kw)]
     monkeypatch.setattr(tickets, "listar", listar)
     r = client.get("/alertas", headers=s).json()
-    assert [c["ticket_id"] for c in r["criticos"]] == [tid] and r["plantao"] == ["Ana", "Bia"]
-    client.post("/auth/plantao", headers=s, json={"de_plantao": False})
-    assert client.get("/alertas", headers=s).json()["plantao"] == ["Bia"]
-    assert client.get("/auth/eu", headers=s).json()["de_plantao"] is False
+    assert [c["ticket_id"] for c in r["criticos"]] == [tid]
     client.post(f"/tickets/{tid}/mensagens", headers=s, json={"texto": "Já estou vendo!"})
     assert client.get("/alertas", headers=s).json()["criticos"] == []  # respondido: sai do alerta
+
+
+def test_nome_do_atendente_com_acento_assina_o_problema(client):
+    p = client.post("/problemas", headers=_sessao(client, "João"), json={"titulo": "Boleto não gera",
+                                                                         "caracteristicas": "erro ao emitir"}).json()
+    assert p["criado_por"] == "João"
