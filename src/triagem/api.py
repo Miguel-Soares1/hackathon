@@ -18,8 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
-from . import (atendimento_ia, canais, corrections, demo_celular, problemas, demo_chat, demo_email, https_celular, incidents, metrics, midias,
-               pipeline, relatorios, resumo_ia, tickets, usuarios)
+from . import (atendimento_ia, canais, corrections, demo_celular, problemas, demo_chat, demo_email, https_celular, inatividade, incidents,
+               metrics, midias, pipeline, relatorios, resumo_ia, tickets, usuarios)
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -261,7 +261,11 @@ def create_app() -> FastAPI:
     async def lifespan(_: FastAPI):
         # Recuperação: reprocessa tickets pendentes sem bloquear a subida da API.
         threading.Thread(target=pipeline.recuperar_pendentes, daemon=True).start()
+        # Encerra os atendimentos em que o cliente parou de responder.
+        parar = threading.Event()
+        inatividade.iniciar_verificacao(parar)
         yield
+        parar.set()
 
     settings = get_settings()
     validar_producao(settings)
