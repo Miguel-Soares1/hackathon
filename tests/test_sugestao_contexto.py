@@ -109,3 +109,26 @@ def test_formulario_reenviado_com_a_sugestao_atual_nao_conta_como_correcao(clien
     r = client.post(f"/tickets/{tid}/correcoes", headers=CHAVE, json={"resposta_sugerida": atual, "urgencia": "baixa"}).json()
     assert [c["dimensao"] for c in r["correcoes_registradas"]] == ["urgencia"]
     assert tickets.obter(tid)["resposta_sugerida"] == atual
+
+
+# ---------- botão "Sugerir resposta para a última mensagem" ----------
+def test_botao_gera_na_hora_para_a_ultima_mensagem_mesmo_com_uma_so_do_cliente(client, ia_fake):
+    tid = _post(client, "meu pix não caiu")["ticket_id"]
+    client.post(f"/tickets/{tid}/mensagens", headers=CHAVE, json={"texto": "Qual o valor do Pix?"})
+    r = client.post(f"/tickets/{tid}/sugestao", headers=CHAVE).json()
+    conversa, _ = ia_fake[-1]
+    assert conversa == [("cliente", "meu pix não caiu"), ("atendente", "Qual o valor do Pix?")]  # contexto inteiro
+    assert r["atualizada"] and tickets.obter(tid)["resposta_sugerida"] == r["resposta_sugerida"]
+    # clicar de novo gera outra vez (não reaproveita a anterior)
+    client.post(f"/tickets/{tid}/sugestao", headers=CHAVE)
+    assert len(ia_fake) == 2
+
+
+def test_botao_sem_ia_devolve_a_sugestao_vigente(client, monkeypatch):
+    tid = _post(client, "meu pix não caiu")["ticket_id"]
+    vigente = tickets.obter(tid)["resposta_sugerida"]
+    monkeypatch.setattr(pipeline, "sugerir_resposta", lambda c, t=None: (_ for _ in ()).throw(LLMError("fora do ar")))
+    r = client.post(f"/tickets/{tid}/sugestao", headers=CHAVE).json()
+    assert r["atualizada"] is False and r["resposta_sugerida"] == vigente
+    assert client.post("/tickets/999999/sugestao", headers=CHAVE).status_code == 404
+    assert client.post(f"/tickets/{tid}/sugestao").status_code == 401

@@ -497,7 +497,7 @@ function renderDetalhe() {
     ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
       : estado.encerrando ? formEncerramento() : `
     <form id="form-chat" class="form-chat">
-      ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao" title="${t.sugestao_atualizada ? "Responde à última mensagem do cliente" : "Resposta da triagem ou corrigida pelo atendente"}">💡 Usar resposta sugerida pela IA</button>` : ""}
+      ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao" title="A IA escreve na hora uma resposta para a última mensagem do cliente, considerando a conversa">💡 Sugerir resposta para a última mensagem</button>` : ""}
       <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
         <textarea name="texto" rows="2" maxlength="2000" placeholder="Responder pelo ${esc(CANAIS[chaveCanal(t.canal)].rotulo)}…" aria-label="Resposta ao cliente"></textarea>
@@ -672,6 +672,33 @@ async function enviarChat(form) {
   }
 }
 
+// ---------------------------------------------------------------- resposta sugerida para a última mensagem
+// A IA escreve na hora, com a conversa inteira como contexto; sem a IA, usa a sugestão que já existia.
+async function sugerirResposta(id) {
+  const botao = $('#detalhe button[data-acao="sugestao"]');
+  const caixa = $("#form-chat textarea");
+  if (!botao || !caixa) return;
+  const rotulo = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "⏳ Gerando sugestão…";
+  estado.editando = true; // não redesenha o detalhe enquanto a IA responde
+  try {
+    const r = await api(`/tickets/${id}/sugestao`, { method: "POST" });
+    if (estado.selecionado !== id) return; // o atendente trocou de ticket enquanto a IA respondia
+    caixa.value = r.resposta_sugerida || "";
+    caixa.focus();
+    const t = estado.tickets.find((x) => x.ticket_id === id);
+    if (t && r.atualizada) { t.resposta_sugerida = r.resposta_sugerida; t.sugestao_atualizada = 1; t.sugestao_mensagem_id = r.mensagem_id; }
+    if (!r.atualizada) alertaStatus("A IA não respondeu agora: usei a última sugestão disponível.");
+  } catch (e) {
+    if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
+    alertaStatus(e.message);
+  } finally {
+    botao.disabled = false;
+    botao.textContent = rotulo;
+  }
+}
+
 // ---------------------------------------------------------------- mídias do cliente (áudio e foto, ADR-017)
 const ESTADO_MIDIA = { pendente: "⏳ a IA está lendo…", lido: "✓ lido pela IA (o texto está na conversa)", erro: "⚠ a IA não conseguiu ler" };
 
@@ -819,14 +846,7 @@ async function acaoDetalhe(acao) {
     renderDetalhe();
     return;
   }
-  if (acao === "sugestao") {
-    const t = estado.tickets.find((x) => x.ticket_id === id);
-    const caixa = $("#form-chat textarea");
-    caixa.value = t?.resposta_sugerida || "";
-    caixa.focus();
-    estado.editando = true;
-    return;
-  }
+  if (acao === "sugestao") return sugerirResposta(id);
   try {
     if (acao === "revisar") await api(`/tickets/${id}/revisao`, { method: "POST" });
     if (acao === "responder") await api(`/tickets/${id}/resposta`, { method: "POST", body: "{}" });

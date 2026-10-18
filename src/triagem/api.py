@@ -615,6 +615,21 @@ def create_app() -> FastAPI:
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
 
+    @app.post("/tickets/{ticket_id}/sugestao", dependencies=[Depends(exigir_chave)])
+    def sugerir_agora(ticket_id: int):
+        """Botão "Usar resposta sugerida": gera na hora a sugestão para a ÚLTIMA mensagem do cliente, com a conversa.
+
+        Sem LLM (ou se ele falhar), devolve a sugestão vigente com `atualizada = false`.
+        """
+        try:
+            tickets.obter(ticket_id)
+        except tickets.TicketNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ticket não encontrado")
+        resultado = pipeline.atualizar_sugestao(ticket_id, forcar=True)
+        t = tickets.obter(ticket_id)
+        return {"ticket_id": ticket_id, "resposta_sugerida": t["resposta_sugerida"], "atualizada": resultado == "atualizada",
+                "mensagem_id": t.get("sugestao_mensagem_id"), "idioma": t.get("idioma")}
+
     @app.get("/tickets/{ticket_id}/mensagens", dependencies=[Depends(exigir_chave)])
     def listar_mensagens(ticket_id: int, depois_de: int = Query(0, ge=0)):
         """Conversa do ticket. Use `depois_de=<último id visto>` para buscar só as novas (polling do chat do cliente)."""

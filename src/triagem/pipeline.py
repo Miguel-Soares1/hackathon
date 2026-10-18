@@ -82,11 +82,13 @@ def recuperar_pendentes() -> int:
     return len(ids)
 
 
-def atualizar_sugestao(ticket_id: int, mensagem_id: Optional[int] = None) -> str:
+def atualizar_sugestao(ticket_id: int, mensagem_id: Optional[int] = None, forcar: bool = False) -> str:
     """Reescreve a resposta sugerida para a ÚLTIMA mensagem do cliente, com a conversa como contexto.
 
     A triagem (assunto, urgência, equipe e prazo) continua a da 1ª mensagem (ADR-016); só a sugestão acompanha a
     conversa. Sem LLM, ou se ele falhar, a sugestão anterior fica. Nunca levanta exceção.
+    `forcar` (botão do painel): gera de novo mesmo com uma só mensagem do cliente ou se já havia sugestão para ela,
+    para considerar também o que o atendente já respondeu.
     Retorna: atualizada | sem_mudanca | ignorado | mantida
     """
     try:
@@ -95,12 +97,14 @@ def atualizar_sugestao(ticket_id: int, mensagem_id: Optional[int] = None) -> str
             return "ignorado"  # ainda classificando (processar_ticket chama de novo no fim) ou atendimento encerrado
         msgs = tickets.mensagens(ticket_id)
         entradas = [m for m in msgs if m["direcao"] == "entrada"]
-        if len(entradas) < 2:
+        if not entradas:
+            return "sem_mudanca"
+        if len(entradas) < 2 and not forcar:
             return "sem_mudanca"  # só a 1ª mensagem: a sugestão da triagem já responde a ela
         ultima = entradas[-1]
         if mensagem_id is not None and ultima["id"] != mensagem_id:
             return "ignorado"  # chegou uma mensagem mais nova; a tarefa dela atualiza
-        if t.get("sugestao_mensagem_id") == ultima["id"]:
+        if t.get("sugestao_mensagem_id") == ultima["id"] and not forcar:
             return "sem_mudanca"
         conversa = [("cliente" if m["direcao"] == "entrada" else "atendente", m["texto"]) for m in msgs if m["texto"]]
         triagem = {k: t.get(k) for k in ("assunto", "urgencia", "sentimento", "equipe")}
