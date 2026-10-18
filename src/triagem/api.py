@@ -13,12 +13,12 @@ from typing import Literal, Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
-from . import canais, corrections, demo_chat, demo_email, incidents, metrics, pipeline, tickets
+from . import canais, corrections, demo_chat, demo_email, equipe, incidents, metrics, pipeline, tickets
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
 from .domain import ASSUNTOS, EQUIPES, SENTIMENTOS, URGENCIAS
@@ -126,6 +126,19 @@ class MensagemChatIn(BaseModel):
 
 class DesfechoIn(BaseModel):
     desfecho: Literal["encerrado", "cancelado"]
+
+
+class MembroIn(BaseModel):
+    nome: str = Field(min_length=2, max_length=60)
+
+
+class MensagemInternaIn(BaseModel):
+    de: str = Field(min_length=2, max_length=60)
+    para: str = Field(min_length=2, max_length=60)
+    texto: Optional[str] = Field(default=None, max_length=4000)
+    anexo_nome: Optional[str] = Field(default=None, max_length=200)
+    anexo_tipo: Optional[str] = Field(default=None, max_length=100)
+    anexo_base64: Optional[str] = Field(default=None, max_length=4_300_000, description="Até 3 MB depois de decodificado")
 
 
 class RespostaIn(BaseModel):
@@ -449,6 +462,60 @@ def create_app() -> FastAPI:
         """Valores permitidos na triagem, para o painel montar os formulários de correção."""
         return {"assuntos": ASSUNTOS, "urgencias": URGENCIAS, "sentimentos": SENTIMENTOS, "equipes": EQUIPES,
                 "idiomas": IDIOMAS}
+
+    # ---- Mensagens internas (chat da equipe) ----
+    def _erro_equipe(exc: Exception):
+        if isinstance(exc, equipe.MembroNaoEncontrado):
+            raise HTTPException(status_code=404, detail="atendente ou anexo não encontrado")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/equipe/presenca", dependencies=[Depends(exigir_chave)])
+    def equipe_presenca(corpo: MembroIn):
+        try:
+            return equipe.presenca(corpo.nome)
+        except equipe.MensagemInvalida as exc:
+            _erro_equipe(exc)
+
+    @app.post("/equipe", status_code=201, dependencies=[Depends(exigir_chave)])
+    def equipe_adicionar(corpo: MembroIn):
+        try:
+            return equipe.adicionar(corpo.nome)
+        except equipe.MensagemInvalida as exc:
+            _erro_equipe(exc)
+
+    @app.get("/equipe", dependencies=[Depends(exigir_chave)])
+    def equipe_listar(eu: str = Query(min_length=2, max_length=60)):
+        try:
+            return equipe.listar(eu)
+        except equipe.MensagemInvalida as exc:
+            _erro_equipe(exc)
+
+    @app.get("/equipe/conversa", dependencies=[Depends(exigir_chave)])
+    def equipe_conversa(eu: str = Query(min_length=2, max_length=60), com: str = Query(min_length=2, max_length=60),
+                        depois_de: int = Query(0, ge=0)):
+        try:
+            return equipe.conversa(eu, com, depois_de)
+        except (equipe.MembroNaoEncontrado, equipe.MensagemInvalida) as exc:
+            _erro_equipe(exc)
+
+    @app.post("/equipe/mensagens", status_code=201, dependencies=[Depends(exigir_chave)])
+    def equipe_enviar(corpo: MensagemInternaIn):
+        try:
+            return equipe.enviar(corpo.de, corpo.para, corpo.texto, corpo.anexo_nome, corpo.anexo_tipo, corpo.anexo_base64)
+        except (equipe.MembroNaoEncontrado, equipe.MensagemInvalida) as exc:
+            _erro_equipe(exc)
+
+    @app.get("/equipe/anexos/{mensagem_id}", dependencies=[Depends(exigir_chave)])
+    def equipe_anexo(mensagem_id: int, eu: str = Query(min_length=2, max_length=60)):
+        try:
+            nome, tipo, dados = equipe.anexo(mensagem_id, eu)
+        except (equipe.MembroNaoEncontrado, equipe.MensagemInvalida) as exc:
+            _erro_equipe(exc)
+        inline = tipo.startswith(("image/", "audio/"))
+        seguro = "".join(c if c.isascii() and (c.isalnum() or c in "._- ") else "_" for c in nome)
+        return Response(dados, media_type=tipo, headers={
+            "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{seguro}"',
+            "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "private, max-age=3600"})
 
     # Painel (HTML/CSS/JS estáticos) servido pela própria API: um único serviço para subir.
     # Montado por último para não sombrear as rotas acima.
