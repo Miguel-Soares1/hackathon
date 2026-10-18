@@ -235,15 +235,6 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 .filtro-canal button { font: inherit; font-size: 13px; background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 9px; cursor: pointer; }
 .filtro-canal button[aria-pressed="true"] { background: var(--destaque-fundo); color: #7ff0df; font-weight: 600; }
 .atendimento { display: grid; grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); gap: 20px; align-items: start; }
-/* Com o simulador do cliente aberto: lista | conversa | cliente */
-.atendimento.com-demo { grid-template-columns: minmax(240px, 1.2fr) minmax(0, 2fr) minmax(300px, 1.1fr); gap: 14px; }
-.coluna-demo { position: sticky; top: 16px; border: 1px solid var(--borda); border-radius: 14px; overflow: hidden; background: var(--card); }
-.coluna-demo iframe { display: block; width: 100%; height: calc(100vh - 150px); min-height: 480px; border: 0; }
-.demo-cab { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--borda); }
-.demo-cab a { color: var(--destaque); text-decoration: none; }
-.btn-demo { margin: 6px 0 0; width: 100%; text-align: left; background: transparent; color: var(--muted); border: 1px dashed var(--borda); border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; }
-.btn-demo[aria-pressed="true"] { color: var(--destaque); border-color: var(--destaque); border-style: solid; }
-@media (max-width: 1200px) { .atendimento.com-demo { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .atendimento.com-demo .coluna-demo { grid-column: 1 / -1; position: static; } }
 .abas-lista { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--borda); margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
 .abas-lista button {
   font: inherit; font-size: 14px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted);
@@ -567,4 +558,3 @@ dialog.modal .acoes-modal { display: flex; justify-content: flex-end; gap: 8px; 
 .gf-ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 @media (max-width: 1000px) { .gf-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .gf-grade { grid-template-columns: 1fr; } .gf-largo { grid-column: auto; } }
-.atendimento.com-demo .equipe-tag { display: none; } /* lista mais estreita: a equipe continua na faixa da triagem e no filtro */
