@@ -619,7 +619,9 @@ def create_app() -> FastAPI:
         def demo_chat_pagina(canal: str):
             if canal not in demo_chat.PAGINAS:
                 raise HTTPException(status_code=404, detail="canal de demonstração inexistente")
-            return HTMLResponse(demo_chat.PAGINAS[canal], headers={"Content-Security-Policy": csp_demo})
+            # O painel embute esta tela ao lado da conversa (mesma origem); outros sites não.
+            return HTMLResponse(demo_chat.PAGINAS[canal], headers={
+                "Content-Security-Policy": csp_demo + "; frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN"})
 
         @app.post("/demo/{canal}", status_code=202, include_in_schema=False)
         def demo_chat_enviar(canal: str, msg: ChatDemoIn, background: BackgroundTasks):

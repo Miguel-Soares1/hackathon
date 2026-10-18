@@ -1137,6 +1137,29 @@ async function postPublico(caminho, corpo) {
   return dados;
 }
 
+// ---------------------------------------------------------------- simulador do cliente ao lado da conversa
+// Só aparece se a API estiver com as telas de demonstração ligadas (DEMO=1, nunca em produção).
+async function prepararDemo() {
+  const botao = $("#alternar-demo");
+  try {
+    const r = await fetch("/demo/whatsapp", { method: "GET", cache: "no-store" });
+    if (!r.ok) return;
+  } catch { return; }
+  botao.hidden = false;
+  mostrarDemo(lerArmazenado(localStorage, "triagem.demo") !== "0");
+}
+
+function mostrarDemo(ligada) {
+  const coluna = $("#coluna-demo");
+  $("#alternar-demo").setAttribute("aria-pressed", String(ligada));
+  coluna.hidden = !ligada;
+  $(".atendimento").classList.toggle("com-demo", ligada);
+  if (ligada && !coluna.querySelector("iframe")) {
+    coluna.insertAdjacentHTML("beforeend", `<iframe src="/demo/whatsapp" title="Cliente no WhatsApp (demonstração)" allow="microphone"></iframe>`);
+  }
+  gravarArmazenado(localStorage, "triagem.demo", ligada ? "1" : "0");
+}
+
 async function entrar() {
   try {
     estado.usuario = await api("/auth/eu");
@@ -1153,6 +1176,7 @@ async function entrar() {
   $("#login").hidden = true;
   $("#app").hidden = false;
   renderFiltros();
+  prepararDemo();
   const ultima = lerArmazenado(sessionStorage, "triagem.pagina") || "atendimento";
   irPara(TITULOS[ultima] ? ultima : "atendimento");
   await carregar();
@@ -1214,6 +1238,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#form-login").addEventListener("submit", (ev) => { ev.preventDefault(); fazerLogin(); });
   $("#form-primeiro").addEventListener("submit", (ev) => { ev.preventDefault(); criarPrimeiroAdmin(ev.target); });
   $("#sair").addEventListener("click", () => sair());
+  $("#alternar-demo").addEventListener("click", () => {
+    const ligar = $("#alternar-demo").getAttribute("aria-pressed") !== "true";
+    mostrarDemo(ligar);
+    if (ligar) irPara("atendimento");
+  });
   $("#plantao").addEventListener("change", (ev) => mudarPlantao(ev.target.checked));
   $("#form-problema").addEventListener("submit", (ev) => { ev.preventDefault(); criarProblema(ev.target); });
   document.querySelectorAll(".gf-periodo button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.periodo) === estado.periodo)));

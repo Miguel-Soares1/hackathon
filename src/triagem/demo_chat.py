@@ -129,6 +129,12 @@ _PAGINA = r"""<!doctype html>
   .app > * { min-width:0; }
   .no-cel { font-size:13px; font-weight:600; color:var(--acento); text-decoration:none; }
   @media (max-width: 820px) { .app { padding:0 16px 16px; } .topo { padding:12px 16px; } .celular { border-width:8px; } .celular { height:600px; } }
+  /* Embutida no painel do atendente (iframe): só a conversa, sem cabeçalho nem moldura de aparelho. */
+  .embutido body { background:var(--fundo); }
+  .embutido .topo { display:none; }
+  .embutido .app { padding:0; max-width:none; }
+  .embutido .quem { padding:8px 10px 0; margin-bottom:6px; }
+  .embutido .celular { border:0; border-radius:0; box-shadow:none; min-height:0; height:calc(100vh - 44px); }
   /* Aberta no próprio celular: a tela inteira vira o app de conversa, sem a moldura de aparelho. */
   @media (max-width: 520px) {
     .topo { padding:8px 10px; gap:8px; } .topo h1, .tag-demo, .no-cel { display:none; } .abas { width:100%; } .abas a { flex:1; text-align:center; }
@@ -167,6 +173,7 @@ _PAGINA = r"""<!doctype html>
   </div>
 </div>
 <script>
+if (window.self !== window.top || new URLSearchParams(location.search).has('embutido')) document.documentElement.classList.add('embutido');
 const CANAL = document.documentElement.dataset.canal;
 const $ = (id) => document.getElementById(id);
 document.querySelector('.abas a[data-c="' + CANAL + '"]')?.classList.add('on');
