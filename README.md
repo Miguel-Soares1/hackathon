@@ -30,7 +30,9 @@ Abra http://localhost:8000. **No primeiro acesso**, o painel pede a `API_KEY` do
 administrador (nome, usuário e senha); depois disso a entrada é por **usuário e senha** (com "manter conectado", a
 sessão vale 30 dias no navegador). O administrador cadastra atendentes, troca papéis, desativa contas e redefine
 senhas em **Administração**; cada um troca a própria senha em **Minha conta** (ADR-018). A `API_KEY` continua só para
-integrações (webhook, canais e scripts). O painel tem menu lateral: **Dashboard** (clientes em espera, em atendimento, cancelados e encerrados; indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa com imagem e áudio, triagem da IA, encerrar/cancelar/reabrir), **Incidentes**, **Correções** e **Atendimentos** (histórico com filtros e CSV). Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+integrações (webhook, canais e scripts). **Quem atende:** urgência **baixa e média** a IA responde sozinha (aba "🤖 IA atendendo"); **alta e crítica** vão
+para um atendente ("Em espera"). A IA passa a conversa para uma pessoa se ela passar de 15 min ou de 5 respostas, se o
+cliente pedir um atendente ou se a IA falhar (limites em `app_config`, ADR-019). O painel tem menu lateral: **Dashboard** (clientes em espera, em atendimento, cancelados e encerrados; indicadores, incidentes e métricas), **Atendimento** (clientes em espera × respondidos, conversa com imagem e áudio, triagem da IA, encerrar/cancelar/reabrir), **Incidentes**, **Correções** e **Atendimentos** (histórico com filtros e CSV). Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
 **Banco criado antes do login:** aplique `db/migrations/007_usuarios.sql` (ou rode `python scripts/criar_banco.py`).
 

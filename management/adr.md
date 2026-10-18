@@ -303,3 +303,18 @@ Consequências: ...
 - Desativar um usuário ou redefinir a senha derruba as sessões abertas dele; trocar a própria senha derruba as outras sessões e mantém a atual.
 - O sistema nunca fica sem administrador ativo; login errado não diz se o usuário existe; tentativas limitadas a 10 por minuto por IP.
 - Bancos existentes: `db/migrations/007_usuarios.sql`.
+
+---
+
+## ADR-019: Urgência baixa e média atendidas pela IA; alta e crítica por um atendente
+
+**Status:** accepted
+
+**Contexto:** a equipe quer que a IA resolva sozinha os atendimentos simples e que as pessoas fiquem com o que é urgente. Uma conversa simples que se arrasta também precisa chegar a uma pessoa.
+
+**Decisão:** depois da triagem (`atendimento_ia.iniciar`), urgência **baixa ou média** com triagem feita pelo LLM: a IA envia a resposta sugerida ao cliente e passa a responder cada nova mensagem com a conversa como contexto (`atendimento_ia.responder`, `classifier.sugerir_resposta`). Urgência **alta ou crítica**, ou triagem pelo plano B: vai direto para a fila do Atendimento. A IA passa a conversa para um atendente (`escalar`) quando ela passa de `ia_max_minutos` (15) desde a 1ª mensagem, quando a IA já respondeu `ia_max_respostas` (5) vezes, quando o cliente pede uma pessoa ou quando a IA falha; o cliente é avisado no idioma dele. Se um atendente responde num atendimento da IA, ele assume. Os limites e a chave `ia_auto_ativo` ficam em `app_config`. Coluna `tickets.modo` (`ia` | `humano`), `escalado_em` e `motivo_escalada` (migração 012).
+
+**Consequências:**
+- As respostas da IA são assinadas como "Assistente NEXUS (IA)" e não contam como resposta humana: um atendimento transferido volta para "Em espera" até uma pessoa responder. A 1ª resposta da IA conta para o prazo (SLA).
+- O painel mostra a aba "🤖 IA atendendo", o selo "↗ veio da IA" com o motivo e as falas da IA destacadas.
+- Erros da IA viram transferência, nunca silêncio para o cliente.

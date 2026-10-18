@@ -13,6 +13,9 @@ CONFIG_PADRAO = {
     "min_group_size": 3.0,
     "slo_alvo_pct": 95.0,
     "slo_janela_dias": 7.0,
+    "ia_auto_ativo": 1.0,      # 1 = a IA atende sozinha as urgências baixa e média (ADR-019)
+    "ia_max_minutos": 15.0,    # passou disso desde a 1ª mensagem: vai para um atendente
+    "ia_max_respostas": 5.0,   # a IA já respondeu tantas vezes: vai para um atendente
 }
 
 

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
-from . import (canais, corrections, demo_celular, demo_chat, demo_email, https_celular, incidents, metrics, midias,
+from . import (atendimento_ia, canais, corrections, demo_celular, demo_chat, demo_email, https_celular, incidents, metrics, midias,
                pipeline, relatorios, tickets, usuarios)
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
@@ -652,12 +652,16 @@ def create_app() -> FastAPI:
             anexos = [midias.validar(m.tipo, m.mime, m.dados_base64) for m in corpo.midias]
         except midias.MidiaInvalida as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        if autor == tickets.AUTOR_IA:  # só a própria IA assina como ela (a fila depende disso, ADR-019)
+            autor = "Atendente"
         try:
-            return tickets.responder_chat(ticket_id, corpo.texto, autor, anexos)
+            resposta = tickets.responder_chat(ticket_id, corpo.texto, autor, anexos)
         except tickets.TicketNaoEncontrado:
             raise HTTPException(status_code=404, detail="ticket não encontrado")
         except tickets.TicketEncerrado:
             raise HTTPException(status_code=409, detail="atendimento já encerrado")
+        atendimento_ia.assumir(ticket_id, autor)  # se a IA estava atendendo, a conversa passa a ser desta pessoa
+        return resposta
 
     def _quem(request: Request, autor: Optional[str]) -> Optional[str]:
         logado = getattr(request.state, "usuario", None)

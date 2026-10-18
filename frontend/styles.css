@@ -235,7 +235,7 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
 .filtro-canal button { font: inherit; font-size: 13px; background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 9px; cursor: pointer; }
 .filtro-canal button[aria-pressed="true"] { background: var(--destaque-fundo); color: #7ff0df; font-weight: 600; }
 .atendimento { display: grid; grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); gap: 20px; align-items: start; }
-.abas-lista { display: flex; gap: 4px; border-bottom: 1px solid var(--borda); margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
+.abas-lista { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--borda); margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
 .abas-lista button {
   font: inherit; font-size: 14px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted);
   padding: 8px 10px; cursor: pointer; white-space: nowrap;
@@ -461,3 +461,11 @@ img.logo { background: #0b0d12; object-fit: cover; box-shadow: 0 0 12px rgba(139
   .linha, .grade-campos { grid-template-columns: 1fr; }
   .barra-linha { grid-template-columns: 96px 1fr 28px; }
 }
+
+/* ---------- atendimento pela IA (ADR-019) */
+.s-ia { color: #a78bfa; }
+.s-escalado { color: var(--alta); }
+.bolha.saida.ia { background: rgba(167, 139, 250, .14); border-color: rgba(167, 139, 250, .55); }
+.aviso-ia { border: 1px solid rgba(167, 139, 250, .55); background: rgba(167, 139, 250, .10); color: var(--texto);
+  border-radius: 12px; padding: 8px 12px; font-size: 13.5px; }
+.aviso-ia.escalado { border-color: var(--alta); background: rgba(251, 146, 60, .10); }

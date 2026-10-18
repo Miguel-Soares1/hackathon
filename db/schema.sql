@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS tickets (
   sugestao_contexto TEXT NULL,
   sugestao_em DATETIME NULL,
   sugestao_mensagem_id BIGINT UNSIGNED NULL,
+  modo VARCHAR(10) NULL,
+  escalado_em DATETIME NULL,
+  motivo_escalada VARCHAR(160) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tickets_received (received_at),
   INDEX idx_tickets_status (status),
@@ -163,7 +166,11 @@ INSERT IGNORE INTO app_config (chave, valor) VALUES
   ('window_minutes', '30'),
   ('min_group_size', '3'),
   ('slo_alvo_pct', '95'),
-  ('slo_janela_dias', '7');
+  ('slo_janela_dias', '7'),
+  -- Atendimento pela IA (ADR-019): urgência baixa e média; vai para um atendente se passar destes limites.
+  ('ia_auto_ativo', '1'),
+  ('ia_max_minutos', '15'),
+  ('ia_max_respostas', '5');
 
 -- Visão com os valores efetivos (predição da IA ou última correção do atendente).
 -- Usuários do painel e sessões de login (ADR-018). Senha só como hash PBKDF2; sessão só como hash do token.
@@ -192,7 +199,7 @@ CREATE TABLE IF NOT EXISTS sessoes (
 CREATE OR REPLACE VIEW vw_tickets AS
 SELECT
   t.id AS ticket_id, t.canal, t.cliente, t.texto, t.status, t.received_at, t.first_response_at,
-  t.desfecho, t.encerrado_em, t.encerrado_por,
+  t.desfecho, t.encerrado_em, t.encerrado_por, t.modo, t.escalado_em, t.motivo_escalada,
   cl.origem, cl.prompt_version, cl.exemplos, cl.idioma,
   cl.assunto AS assunto_original, cl.urgencia AS urgencia_original,
   cl.sentimento AS sentimento_original, cl.equipe AS equipe_original,

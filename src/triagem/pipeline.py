@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import text
 
-from . import exemplos, incidents, midias, tickets
+from . import atendimento_ia, exemplos, incidents, midias, tickets
 from .classifier import LLMError, classificar, sugerir_resposta
 from .db import com_retry_deadlock, get_engine, utcnow
 
@@ -70,6 +70,8 @@ def processar_ticket(ticket_id: int) -> str:
         logger.exception("erro ao agrupar o ticket %s", ticket_id)
     # O cliente pode ter escrito de novo enquanto a 1ª mensagem era classificada: a sugestão já responde à última.
     atualizar_sugestao(ticket_id)
+    # Urgência baixa ou média: a IA responde sozinha; alta ou crítica: vai para um atendente (ADR-019).
+    atendimento_ia.iniciar(ticket_id)
     return "classificado"
 
 
@@ -130,4 +132,7 @@ def mensagem_anexada(ticket_id: int, mensagem_id: Optional[int], texto: str = ""
             midias.processar(ticket_id, texto, mensagem_id)
         except Exception:
             logger.exception("erro ao ler a mídia da mensagem %s do ticket %s", mensagem_id, ticket_id)
+    # Atendimento da IA: ela responde (ou passa para um atendente); nos outros, só a sugestão para o atendente muda.
+    if atendimento_ia.responder(ticket_id, mensagem_id) in ("respondida", "ignorado"):
+        return
     atualizar_sugestao(ticket_id, mensagem_id)

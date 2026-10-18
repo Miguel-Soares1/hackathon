@@ -175,6 +175,7 @@ setInterval(() => {
 // Situação de cada cliente: em espera (falta responder), em atendimento (respondido e em aberto), cancelado, encerrado.
 function situacao(t) {
   if (t.desfecho) return t.desfecho === "cancelado" ? "cancelado" : "encerrado";
+  if (t.ia_atendendo) return "ia"; // urgência baixa ou média: a IA responde sozinha (ADR-019)
   return aguardando(t) ? "espera" : "atendimento";
 }
 
@@ -308,6 +309,7 @@ function filtrados() {
     : base;
   return {
     espera: aplicarFiltro(todos.filter((t) => situacao(t) === "espera")),
+    ia: aplicarFiltro(todos.filter((t) => situacao(t) === "ia")),
     atendimento: aplicarFiltro(todos.filter((t) => situacao(t) === "atendimento")),
     finalizados: aplicarFiltro(todos.filter((t) => t.desfecho)),
   };
@@ -322,7 +324,9 @@ function cartao(t) {
   const marcas = [];
   if (t.desfecho) marcas.push(selo(t.desfecho, t.desfecho === "cancelado" ? "u-critica" : "s-no_prazo"));
   else {
-    if (t.first_response_at && aguardando(t)) marcas.push(selo("nova mensagem", "s-novo"));
+    if (t.ia_atendendo) marcas.push(selo("🤖 IA atendendo", "s-ia"));
+    else if (t.escalado_em && aguardando(t)) marcas.push(`<span class="selo s-escalado" title="${esc(t.motivo_escalada || "")}">↗ veio da IA</span>`);
+    else if (t.first_response_at && aguardando(t)) marcas.push(selo("nova mensagem", "s-novo"));
     if (t.urgencia === "critica" || t.urgencia === "alta") marcas.push(pill(t.urgencia));
     if (aguardando(t) && (t.sla.estado === "estourado" || t.sla.estado === "em_risco")) marcas.push(selo(ROTULO_SLA_CURTO[t.sla.estado], `s-${esc(t.sla.estado)}`));
   }
@@ -339,6 +343,7 @@ function cartao(t) {
 function renderCartoes() {
   const listas = filtrados();
   $("#qtd-espera").textContent = listas.espera.length;
+  $("#qtd-ia").textContent = listas.ia.length;
   $("#qtd-atendimento").textContent = listas.atendimento.length;
   $("#qtd-finalizados").textContent = listas.finalizados.length;
   const badge = $("#badge-espera");
@@ -373,6 +378,8 @@ function renderDetalhe() {
       <div class="cab-info"><div class="nome">${esc(c.nome)}</div>
         <div class="sub">${tagCanal(t.canal)}${c.detalhe ? `<span>${esc(c.detalhe)}</span>` : ""}<span>#${t.ticket_id}</span></div></div>
       <div class="cab-acoes">${acoes}</div></div>
+    ${t.ia_atendendo ? `<div class="aviso-ia">🤖 A IA está atendendo este cliente (urgência ${esc(t.urgencia)}). Se você responder, o atendimento passa a ser seu.</div>`
+      : t.escalado_em ? `<div class="aviso-ia escalado">↗ ${esc(t.motivo_escalada && t.motivo_escalada.startsWith("assumido") ? t.motivo_escalada.replace("assumido por", "Assumido da IA por") : `A IA passou para um atendente: ${t.motivo_escalada || ""}`)}</div>` : ""}
     <div id="conversa" class="conversa" aria-live="polite">${bolha({ direcao: "entrada", autor: t.cliente, texto: t.texto, created_at: t.received_at })}</div>
     ${renderMidias(t)}
     ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
@@ -512,8 +519,10 @@ function triagem(t) {
 }
 
 // ---------------------------------------------------------------- conversa (chat do atendimento)
+const AUTOR_IA = "Assistente NEXUS (IA)";
+
 function bolha(m) {
-  const lado = m.direcao === "saida" ? "saida" : "entrada";
+  const lado = m.direcao === "saida" ? (m.autor === AUTOR_IA ? "saida ia" : "saida") : "entrada";
   const autor = lado === "saida" ? m.autor || "Atendente" : contato({ cliente: m.autor }).nome.replace("Cliente sem identificação", "Cliente");
   const anexos = (m.midias || []).map((x) => `<div class="bolha-midia" data-midia="${x.id}">${x.tipo === "audio" ? "🎙 Áudio" : "📷 Imagem"} <span class="muted">carregando…</span></div>`).join("");
   return `<div class="bolha ${lado}">${anexos}${esc(m.texto)}<div class="bolha-autor">${esc(autor)} · ${esc(horaCurta(m.created_at))}</div></div>`;
