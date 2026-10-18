@@ -256,6 +256,8 @@ def create_app() -> FastAPI:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         resp.headers.setdefault("X-Frame-Options", "DENY")
+        # Painel sem build nem versão no nome dos arquivos: o navegador sempre confere (ETag) se há versão nova.
+        resp.headers.setdefault("Cache-Control", "no-cache")
         return resp
 
     @app.exception_handler(RequestValidationError)
