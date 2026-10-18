@@ -71,10 +71,10 @@ def _normalizar_usuario(usuario: str) -> str:
 
 def _publico(r) -> dict:
     return {"id": r.id, "usuario": r.usuario, "nome": r.nome, "papel": r.papel, "ativo": bool(r.ativo),
-            "created_at": r.created_at, "ultimo_login": r.ultimo_login}
+            "de_plantao": bool(getattr(r, "de_plantao", 1)), "created_at": r.created_at, "ultimo_login": r.ultimo_login}
 
 
-_CAMPOS = "id, usuario, nome, papel, ativo, created_at, ultimo_login"
+_CAMPOS = "id, usuario, nome, papel, ativo, de_plantao, created_at, ultimo_login"
 
 
 # ---------------------------------------------------------------- usuários
@@ -216,3 +216,16 @@ def usuario_da_sessao(token: str) -> Optional[dict]:
 def encerrar_sessao(token: str) -> None:
     with get_engine().begin() as conn:
         conn.execute(text("DELETE FROM sessoes WHERE token_hash = :t"), {"t": _hash_token(token or "")})
+
+
+# ---------------------------------------------------------------- plantão (ADR-020)
+def definir_plantao(usuario_id: int, de_plantao: bool) -> dict:
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE usuarios SET de_plantao = :p WHERE id = :i"), {"p": 1 if de_plantao else 0, "i": usuario_id})
+    return obter(usuario_id)
+
+
+def de_plantao() -> list[str]:
+    """Nomes dos atendentes ativos de plantão, avisados quando chega um problema crítico."""
+    with get_engine().connect() as conn:
+        return [r.nome for r in conn.execute(text("SELECT nome FROM usuarios WHERE ativo = 1 AND de_plantao = 1 ORDER BY nome"))]

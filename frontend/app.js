@@ -11,7 +11,7 @@ const ROTULO_SLA_CURTO = {
   estourado: "prazo estourado", em_risco: "prazo em risco", no_prazo: "no prazo",
   respondido: "1ª resposta feita", aguardando_classificacao: "classificando",
 };
-const TITULOS = { atendimento: "Atendimento", incidentes: "Incidentes" };
+const TITULOS = { atendimento: "Atendimento", incidentes: "Incidentes", relatorios: "Relatórios" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const ORDEM_ESTADO = { estourado: 0, em_risco: 1, no_prazo: 2, aguardando_classificacao: 3, respondido: 4 };
 // Filtro das chamadas, o mesmo no Dashboard e no Atendimento (guardado neste navegador).
@@ -40,7 +40,7 @@ const estado = {
   canal: "",
   selecionado: null,
   editando: false, // não redesenhar o detalhe enquanto o atendente digita
-  triagemAberta: false,
+  problemas: [],
   encerrando: false, // formulário de encerramento aberto no detalhe
   relatorios: {}, // relatório já carregado por ticket (não muda depois do encerramento)
   timer: null,
@@ -96,10 +96,6 @@ function chaveCanal(c) {
   return "outro";
 }
 const svgCanal = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${CANAIS[k].ic}</svg>`;
-function tagCanal(canal) {
-  const k = chaveCanal(canal);
-  return `<span class="canal c-${k}">${svgCanal(k)}${esc(CANAIS[k].rotulo)}</span>`;
-}
 // Nome amigável + contato: "Ana (5511...)" -> Ana / 5511...; "instagram:ana.r" -> @ana.r
 function telefone(n) {
   const d = String(n).replace(/\D/g, "");
@@ -163,7 +159,7 @@ async function carregar() {
 
 function agendar() {
   clearInterval(estado.timer);
-  const s = Number($("#intervalo").value);
+  const s = Number($("#intervalo")?.value || 10);
   if (s > 0) estado.timer = setInterval(carregar, s * 1000);
 }
 
@@ -321,20 +317,11 @@ const listaDe = (t) => (t.desfecho ? "finalizados" : situacao(t));
 function cartao(t) {
   const c = contato(t);
   const ultimo = t.ultima_texto || t.texto || "";
-  const marcas = [];
-  if (t.desfecho) marcas.push(selo(t.desfecho, t.desfecho === "cancelado" ? "u-critica" : "s-no_prazo"));
-  else {
-    if (t.ia_atendendo) marcas.push(selo("🤖 IA atendendo", "s-ia"));
-    else if (t.escalado_em && aguardando(t)) marcas.push(`<span class="selo s-escalado" title="${esc(t.motivo_escalada || "")}">↗ veio da IA</span>`);
-    else if (t.first_response_at && aguardando(t)) marcas.push(selo("nova mensagem", "s-novo"));
-    if (t.urgencia === "critica" || t.urgencia === "alta") marcas.push(pill(t.urgencia));
-    if (aguardando(t) && (t.sla.estado === "estourado" || t.sla.estado === "em_risco")) marcas.push(selo(ROTULO_SLA_CURTO[t.sla.estado], `s-${esc(t.sla.estado)}`));
-  }
-  return `<button type="button" class="cartao${t.ticket_id === estado.selecionado ? " sel" : ""}" data-id="${t.ticket_id}">
+  const marca = !t.desfecho && (t.urgencia === "critica" || t.urgencia === "alta") ? pill(t.urgencia) : "";
+  return `<button type="button" class="cartao${t.ticket_id === estado.selecionado ? " sel" : ""}${t.urgencia === "critica" && aguardando(t) ? " critico" : ""}" data-id="${t.ticket_id}">
     ${avatar(t)}
     <div class="cartao-corpo">
-      <div class="cartao-linha"><span class="nome">${esc(c.nome)}</span><span class="quando">${esc(horaCurta(t.ultima_entrada_at || t.received_at))}</span></div>
-      <div class="cartao-linha">${tagCanal(t.canal)}${marcas.join("")}</div>
+      <div class="cartao-linha"><span class="nome">${esc(c.nome)}</span>${marca}<span class="quando">${esc(horaCurta(t.ultima_entrada_at || t.received_at))}</span></div>
       <div class="msg">${iconesMidia(t)}${esc(ultimo)}</div>
     </div>
   </button>`;
@@ -367,25 +354,21 @@ function renderDetalhe() {
     painel.innerHTML = `<div class="vazio">Escolha um atendimento na lista para conversar com o cliente.</div>`;
     return;
   }
-  const classificado = t.status === "classificado";
   const c = contato(t);
   const acoes = t.desfecho
     ? `<span class="finalizado">${t.desfecho === "cancelado" ? "Cancelado" : "Encerrado"} · ${esc(horaCurta(t.encerrado_em))}</span><button type="button" class="btn pequeno" data-acao="reabrir">↺ Reabrir</button>`
-    : `<button type="button" class="btn pequeno ok" data-acao="abrir-encerramento" ${estado.encerrando ? "disabled" : ""}>✓ Encerrar</button><button type="button" class="btn pequeno perigo" data-acao="cancelar">✕ Cancelar</button>`;
+    : `<button type="button" class="btn pequeno" data-acao="registrar-problema" title="Registrar este cliente num problema da aba Relatórios">📋 Registrar problema</button><button type="button" class="btn pequeno ok" data-acao="abrir-encerramento" ${estado.encerrando ? "disabled" : ""}>✓ Encerrar</button><button type="button" class="btn pequeno perigo" data-acao="cancelar">✕ Cancelar</button>`;
   // Conversa (ADR-016): a primeira mensagem do cliente aparece até a conversa carregar.
   painel.innerHTML = `
     <div class="cab-chat">${avatar(t, true)}
       <div class="cab-info"><div class="nome">${esc(c.nome)}</div>
-        <div class="sub">${tagCanal(t.canal)}${c.detalhe ? `<span>${esc(c.detalhe)}</span>` : ""}<span>#${t.ticket_id}</span></div></div>
+        <div class="sub">${c.detalhe ? `<span>${esc(c.detalhe)}</span>` : ""}<span>#${t.ticket_id}</span></div></div>
       <div class="cab-acoes">${acoes}</div></div>
-    ${t.ia_atendendo ? `<div class="aviso-ia">🤖 A IA está atendendo este cliente (urgência ${esc(t.urgencia)}). Se você responder, o atendimento passa a ser seu.</div>`
-      : t.escalado_em ? `<div class="aviso-ia escalado">↗ ${esc(t.motivo_escalada && t.motivo_escalada.startsWith("assumido") ? t.motivo_escalada.replace("assumido por", "Assumido da IA por") : `A IA passou para um atendente: ${t.motivo_escalada || ""}`)}</div>` : ""}
     <div id="conversa" class="conversa" aria-live="polite">${bolha({ direcao: "entrada", autor: t.cliente, texto: t.texto, created_at: t.received_at })}</div>
     ${renderMidias(t)}
     ${t.desfecho ? `<div id="relatorio" class="relatorio">${estado.relatorios[t.ticket_id] ? htmlRelatorio(estado.relatorios[t.ticket_id]) : `<p class="muted">Carregando o relatório…</p>`}</div>`
       : estado.encerrando ? formEncerramento() : `
     <form id="form-chat" class="form-chat">
-      ${classificado && t.resposta_sugerida ? `<button type="button" class="btn sugestao pequeno" data-acao="sugestao" title="A IA escreve na hora uma resposta para a última mensagem do cliente, considerando a conversa">💡 Sugerir resposta para a última mensagem</button>` : ""}
       <ul id="lista-anexos" class="anexos"></ul>
       <div class="compositor">
         <textarea name="texto" rows="2" maxlength="2000" placeholder="Responder pelo ${esc(CANAIS[chaveCanal(t.canal)].rotulo)}…" aria-label="Resposta ao cliente"></textarea>
@@ -398,11 +381,7 @@ function renderDetalhe() {
         <span id="chat-status" class="muted" aria-live="polite"></span>
       </div>
     </form>
-    `}
-    <details class="triagem" id="triagem" ${estado.triagemAberta ? "open" : ""}>
-      <summary>Triagem da IA${classificado ? ` <span class="resumo-triagem">${esc(t.assunto || "")} · ${esc((t.equipe || "").replace("_", " "))}</span>` : ""}</summary>
-      <div class="corpo">${classificado ? triagem(t) : `<p class="muted">⏳ A IA ainda está ${t.midias?.length ? "lendo as mídias e " : ""}classificando este atendimento.</p>`}</div>
-    </details>`;
+    `}`;
   carregarConversa(t.ticket_id);
   carregarMidias(t);
   renderAnexos();
@@ -488,35 +467,6 @@ async function encerrarAtendimento(form) {
   }
 }
 
-function triagem(t) {
-  const s = t.sla;
-  const d = estado.dominio;
-  return `
-    <div>${pill(t.urgencia)}${selo(t.assunto, "s-respondido")}${selo(t.sentimento, "s-respondido")}${selo("→ " + t.equipe.replace("_", " "), "s-novo")}</div>
-    <p class="muted">Prazo: ${esc(ROTULO_ESTADO[s.estado])} — ${s.prazo_minutos} min · vence ${esc(hora(s.vence_em))} · origem da triagem: ${esc(t.origem)}</p>
-    <div><h3>Resposta sugerida</h3><div class="resposta" lang="${esc(t.idioma || "pt")}">${esc(t.resposta_sugerida)}</div>
-      <p class="muted">${t.sugestao_atualizada ? "💬 Para a última mensagem do cliente, com a conversa como contexto." : t.sugestao_mensagem_id ? "✏️ Texto corrigido pelo atendente." : "💬 Para a mensagem que abriu o atendimento."}</p></div>
-    <p class="muted">🌐 Cliente escreveu em ${esc(nomeIdioma(t.idioma))}${t.idioma && t.idioma !== "pt" ? " · resposta sugerida no mesmo idioma" : ""}</p>
-    <p class="muted">Confiança: ${DIMS.map((k) => `${k} ${Math.round(Number(t["conf_" + k]) * 100)}%`).join(" · ")}</p>
-    ${t.exemplos
-      ? `<p class="aprendizado">🧠 Prompt ${esc(t.prompt_version)} · aprendeu com tickets já revisados parecidos: ${t.exemplos.split(",").map((i) => `#${esc(i)}`).join(", ")}</p>`
-      : `<p class="muted">Prompt ${esc(t.prompt_version || "—")} · sem exemplos revisados parecidos</p>`}
-    <div class="acoes">
-      <button type="button" class="btn" data-acao="revisar" ${t.revisado ? "disabled" : ""}>✓ Triagem correta</button>
-      <button type="button" class="btn" data-acao="responder" ${t.first_response_at ? "disabled" : ""}>📨 Marcar respondido</button>
-    </div>
-    <form id="form-correcao">
-      <h3>Corrigir triagem</h3>
-      <div class="grade-campos">
-        <label>Assunto <select name="assunto">${opcoes(d.assuntos, t.assunto)}</select></label>
-        <label>Urgência <select name="urgencia">${opcoes(d.urgencias, t.urgencia)}</select></label>
-        <label>Sentimento <select name="sentimento">${opcoes(d.sentimentos, t.sentimento)}</select></label>
-        <label>Equipe <select name="equipe">${opcoes(d.equipes, t.equipe)}</select></label>
-      </div>
-      <label style="margin-top:8px">Resposta <textarea name="resposta_sugerida" rows="4" maxlength="2000">${esc(t.resposta_sugerida)}</textarea></label>
-      <p style="margin-top:8px"><button type="submit" class="btn primario">Salvar correção</button> <span id="correcao-status" class="muted" aria-live="polite"></span></p>
-    </form>`;
-}
 
 // ---------------------------------------------------------------- conversa (chat do atendimento)
 const AUTOR_IA = "Assistente NEXUS (IA)";
@@ -564,30 +514,6 @@ async function enviarChat(form) {
 
 // ---------------------------------------------------------------- resposta sugerida para a última mensagem
 // A IA escreve na hora, com a conversa inteira como contexto; sem a IA, usa a sugestão que já existia.
-async function sugerirResposta(id) {
-  const botao = $('#detalhe button[data-acao="sugestao"]');
-  const caixa = $("#form-chat textarea");
-  if (!botao || !caixa) return;
-  const rotulo = botao.textContent;
-  botao.disabled = true;
-  botao.textContent = "⏳ Gerando sugestão…";
-  estado.editando = true; // não redesenha o detalhe enquanto a IA responde
-  try {
-    const r = await api(`/tickets/${id}/sugestao`, { method: "POST" });
-    if (estado.selecionado !== id) return; // o atendente trocou de ticket enquanto a IA respondia
-    caixa.value = r.resposta_sugerida || "";
-    caixa.focus();
-    const t = estado.tickets.find((x) => x.ticket_id === id);
-    if (t && r.atualizada) { t.resposta_sugerida = r.resposta_sugerida; t.sugestao_atualizada = 1; t.sugestao_mensagem_id = r.mensagem_id; }
-    if (!r.atualizada) alertaStatus("A IA não respondeu agora: usei a última sugestão disponível.");
-  } catch (e) {
-    if (e instanceof NaoAutorizado) return sair("Sua sessão expirou. Entre de novo.");
-    alertaStatus(e.message);
-  } finally {
-    botao.disabled = false;
-    botao.textContent = rotulo;
-  }
-}
 
 // ---------------------------------------------------------------- mídias do cliente (áudio e foto, ADR-017)
 const ESTADO_MIDIA = { pendente: "⏳ a IA está lendo…", lido: "✓ lido pela IA (o texto está na conversa)", erro: "⚠ a IA não conseguiu ler" };
@@ -729,7 +655,7 @@ async function acaoDetalhe(acao) {
     renderDetalhe();
     return;
   }
-  if (acao === "sugestao") return sugerirResposta(id);
+  if (acao === "registrar-problema") return abrirRegistroProblema(id);
   try {
     if (acao === "revisar") await api(`/tickets/${id}/revisao`, { method: "POST" });
     if (acao === "responder") await api(`/tickets/${id}/resposta`, { method: "POST", body: "{}" });
@@ -747,18 +673,6 @@ async function acaoDetalhe(acao) {
   await carregar();
 }
 
-async function salvarCorrecao(form) {
-  const dados = Object.fromEntries(new FormData(form));
-  try {
-    const r = await api(`/tickets/${estado.selecionado}/correcoes`, { method: "POST", body: JSON.stringify(dados) });
-    estado.editando = false;
-    await carregar();
-    $("#correcao-status").textContent = r.correcoes_registradas.length
-      ? `${r.correcoes_registradas.length} campo(s) corrigido(s).` : "Nenhuma diferença; triagem confirmada.";
-  } catch (e) {
-    $("#correcao-status").textContent = `⚠ ${e.message}`;
-  }
-}
 
 function alertaStatus(msg) {
   $("#status").textContent = `⚠ ${msg}`;
@@ -772,6 +686,7 @@ function irPara(pagina) {
   document.querySelectorAll(".pagina").forEach((s) => { s.hidden = s.id !== `pagina-${pagina}`; });
   $("#titulo").textContent = TITULOS[pagina];
   gravarArmazenado(sessionStorage, "triagem.pagina", pagina);
+  if (pagina === "relatorios") carregarProblemas();
 }
 
 function abrirTicket(id) {
@@ -787,6 +702,185 @@ function abrirTicket(id) {
   estado.encerrando = false;
   renderCartoes();
   renderDetalhe();
+}
+
+// ---------------------------------------------------------------- alerta de problema crítico e plantão (ADR-020)
+// Atendimento crítico esperando uma pessoa ou incidente aberto: a faixa pisca para todos; quem está de plantão
+// também recebe a notificação do Windows e um aviso sonoro, uma vez por problema.
+const avisados = new Set(JSON.parse(lerArmazenado(sessionStorage, "triagem.avisados") || "[]"));
+
+function bipe() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25, 0.5].forEach((t) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.frequency.value = 880; g.gain.value = 0.15; o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15);
+    });
+  } catch { /* navegador sem áudio */ }
+}
+
+function avisarPlantao(chave, titulo, corpo, abrir) {
+  if (avisados.has(chave)) return;
+  avisados.add(chave);
+  gravarArmazenado(sessionStorage, "triagem.avisados", JSON.stringify([...avisados].slice(-200)));
+  if (!estado.usuario?.de_plantao) return;
+  bipe();
+  if ("Notification" in window && Notification.permission === "granted") {
+    const n = new Notification(titulo, { body: corpo, tag: chave, requireInteraction: true });
+    n.onclick = () => { window.focus(); abrir(); n.close(); };
+  }
+}
+
+async function verificarAlertas() {
+  if (!estado.token) return;
+  let r;
+  try { r = await api("/alertas"); } catch { return; }
+  const faixa = $("#alerta-critico");
+  const itens = [
+    ...r.criticos.map((c) => ({ chave: `t${c.ticket_id}`, texto: `CRÍTICO · ${contato(c).nome}: ${c.texto}`, botao: "Atender",
+      abrir: () => { irPara("atendimento"); mostrarLista("espera"); abrirTicket(c.ticket_id); } })),
+    ...r.incidentes.map((g) => ({ chave: `i${g.id}`, texto: `INCIDENTE · ${g.assunto || "problema"} · ${g.size} clientes`, botao: "Ver",
+      abrir: () => irPara("incidentes") })),
+  ];
+  faixa.hidden = !itens.length;
+  if (!itens.length) return;
+  const plantao = r.plantao.length ? `Avisados (de plantão): ${r.plantao.join(", ")}` : "Ninguém de plantão agora.";
+  faixa.innerHTML = itens.slice(0, 3).map((x, i) => `<div class="alerta-linha"><span>🚨 ${esc(x.texto)}</span>
+    <button type="button" class="btn pequeno" data-alerta="${i}">${x.botao}</button></div>`).join("")
+    + `<div class="alerta-plantao">${esc(plantao)}${itens.length > 3 ? ` · e mais ${itens.length - 3}` : ""}</div>`;
+  faixa.onclick = (ev) => { const b = ev.target.closest("[data-alerta]"); if (b) itens[Number(b.dataset.alerta)].abrir(); };
+  itens.forEach((x) => avisarPlantao(x.chave, "🚨 Problema crítico", x.texto, x.abrir));
+}
+setInterval(verificarAlertas, 5000);
+
+function mostrarLista(lista) {
+  estado.lista = lista;
+  document.querySelectorAll(".abas-lista button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.lista === lista)));
+  renderCartoes();
+}
+
+async function mudarPlantao(ligado) {
+  try {
+    estado.usuario = await api("/auth/plantao", { method: "POST", body: JSON.stringify({ de_plantao: ligado }) });
+    if (ligado && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  } catch (e) {
+    alertaStatus(e.message);
+    $("#plantao").checked = !ligado;
+  }
+}
+
+// ---------------------------------------------------------------- relatórios: problemas e ocorrências (ADR-020)
+async function carregarProblemas() {
+  try {
+    estado.problemas = await api("/problemas");
+    renderProblemas();
+  } catch (e) {
+    $("#problema-status").textContent = `⚠ ${e.message}`;
+  }
+}
+
+function renderProblemas() {
+  const lista = estado.problemas || [];
+  $("#lista-problemas").innerHTML = lista.length ? lista.map((p) => `
+    <article class="card problema${p.status === "resolvido" ? " resolvido" : ""}" data-problema="${p.id}">
+      <header class="problema-topo">
+        <div><h3>${esc(p.titulo)}</h3>
+          <div class="muted">${p.status === "resolvido" ? `✅ resolvido em ${esc(hora(p.resolvido_em))}` : "aberto"} · criado por ${esc(p.criado_por || "—")}</div></div>
+        <div class="problema-contagem"><b>${p.total}</b><span>vez(es)</span><small>${p.clientes_distintos} cliente(s)</small></div>
+      </header>
+      <p class="problema-carac">${esc(p.caracteristicas)}</p>
+      <table class="tabela ocorrencias"><thead><tr><th>Cliente (identificação)</th><th>Atendimento</th><th>Quando</th><th>Registrado por</th><th></th></tr></thead>
+        <tbody>${p.ocorrencias.map((o) => `<tr><td>${esc(o.cliente_id)}${o.observacao ? `<div class="muted">${esc(o.observacao)}</div>` : ""}</td>
+          <td>${o.ticket_id ? `#${o.ticket_id}` : "—"}</td><td>${esc(hora(o.created_at))}</td><td>${esc(o.registrado_por || "—")}</td>
+          <td><button type="button" class="btn pequeno" data-remover-ocorrencia="${o.id}" title="Remover esta ocorrência">✕</button></td></tr>`).join("")
+          || `<tr><td colspan="5" class="muted">Nenhuma ocorrência registrada ainda.</td></tr>`}</tbody></table>
+      <form class="form-ocorrencia-rapida">
+        <input name="cliente_id" maxlength="190" required placeholder="Identificação do cliente (telefone, e-mail ou protocolo)">
+        <input name="ticket_id" type="number" min="1" placeholder="Nº do atendimento (opcional)">
+        <button type="submit" class="btn">+ Ocorrência</button>
+        <button type="button" class="btn" data-status="${p.status === "resolvido" ? "aberto" : "resolvido"}">${p.status === "resolvido" ? "↺ Reabrir" : "✓ Marcar resolvido"}</button>
+      </form>
+    </article>`).join("") : `<p class="card muted">Nenhum problema registrado. Crie o primeiro acima ou pelo botão "📋 Registrar problema" de um atendimento.</p>`;
+}
+
+async function acaoProblema(ev) {
+  const art = ev.target.closest("[data-problema]");
+  if (!art) return;
+  const id = art.dataset.problema;
+  try {
+    const rem = ev.target.closest("[data-remover-ocorrencia]");
+    if (rem) await api(`/problemas/${id}/ocorrencias/${rem.dataset.removerOcorrencia}`, { method: "DELETE" });
+    const st = ev.target.closest("button[data-status]");
+    if (st) await api(`/problemas/${id}`, { method: "PATCH", body: JSON.stringify({ status: st.dataset.status }) });
+    if (rem || st) carregarProblemas();
+  } catch (e) {
+    $("#problema-status").textContent = `⚠ ${e.message}`;
+  }
+}
+
+async function ocorrenciaRapida(form) {
+  const id = form.closest("[data-problema]").dataset.problema;
+  const d = Object.fromEntries(new FormData(form));
+  try {
+    await api(`/problemas/${id}/ocorrencias`, { method: "POST", body: JSON.stringify({ cliente_id: d.cliente_id, ticket_id: d.ticket_id ? Number(d.ticket_id) : null }) });
+    carregarProblemas();
+  } catch (e) {
+    $("#problema-status").textContent = `⚠ ${e.message}`;
+  }
+}
+
+async function criarProblema(form) {
+  const d = Object.fromEntries(new FormData(form));
+  try {
+    await api("/problemas", { method: "POST", body: JSON.stringify(d) });
+    form.reset();
+    $("#problema-status").textContent = "✅ Problema criado. Registre as ocorrências abaixo.";
+    carregarProblemas();
+  } catch (e) {
+    $("#problema-status").textContent = `⚠ ${e.message}`;
+  }
+}
+
+// Identificação do cliente para o relatório: o telefone (WhatsApp), o usuário ou o contato; senão, o protocolo.
+function identificacao(t) {
+  const bruto = (t.cliente || "").trim();
+  const fone = bruto.match(/\((\+?\d{8,15})\)$/);
+  if (fone) return fone[1];
+  return bruto.replace(/^instagram:/i, "@") || `protocolo #${t.ticket_id}`;
+}
+
+async function abrirRegistroProblema(id) {
+  const t = estado.tickets.find((x) => x.ticket_id === id);
+  if (!t) return;
+  try { estado.problemas = await api("/problemas"); } catch { estado.problemas = estado.problemas || []; }
+  const f = $("#form-ocorrencia");
+  const abertos = (estado.problemas || []).filter((p) => p.status === "aberto");
+  f.problema_id.innerHTML = abertos.map((p) => `<option value="${p.id}">${esc(p.titulo)} (${p.total}×)</option>`).join("")
+    + `<option value="novo">+ Novo problema…</option>`;
+  f.querySelector(".novo-problema").hidden = abertos.length > 0;
+  if (!abertos.length) f.problema_id.value = "novo";
+  f.cliente_id.value = identificacao(t);
+  f.ticket_id.value = t.ticket_id;
+  f.observacao.value = "";
+  f.titulo.value = ""; f.caracteristicas.value = t.assunto ? `Assunto: ${t.assunto}. ${t.texto}`.slice(0, 400) : (t.texto || "").slice(0, 400);
+  $("#ocorrencia-status").textContent = "";
+  $("#dlg-ocorrencia").showModal();
+}
+
+async function registrarOcorrencia(f) {
+  const st = $("#ocorrencia-status");
+  try {
+    let pid = f.problema_id.value;
+    if (pid === "novo") pid = (await api("/problemas", { method: "POST", body: JSON.stringify({ titulo: f.titulo.value, caracteristicas: f.caracteristicas.value }) })).id;
+    const p = await api(`/problemas/${pid}/ocorrencias`, { method: "POST", body: JSON.stringify({
+      cliente_id: f.cliente_id.value, ticket_id: Number(f.ticket_id.value) || null, observacao: f.observacao.value || null }) });
+    $("#dlg-ocorrencia").close();
+    $("#status").textContent = `📋 Registrado em "${p.titulo}" (${p.total}× até agora).`;
+    if (estado.pagina === "relatorios") carregarProblemas();
+  } catch (e) {
+    st.textContent = `⚠ ${e.message}`;
+  }
 }
 
 // ---------------------------------------------------------------- acesso (usuário e senha, ADR-018)
@@ -814,6 +908,8 @@ async function entrar() {
   $("#eu-nome").textContent = u.nome;
   $("#eu-papel").textContent = `${u.usuario} · ${u.papel === "admin" ? "administrador" : "atendente"}`;
   $("#eu-inicial").textContent = (u.nome || "?").trim().slice(0, 1).toUpperCase();
+  $("#plantao").checked = !!u.de_plantao;
+  if (u.de_plantao && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
   $("#login").hidden = true;
   $("#app").hidden = false;
   renderFiltros();
@@ -821,6 +917,7 @@ async function entrar() {
   irPara(TITULOS[ultima] ? ultima : "atendimento");
   await carregar();
   agendar();
+  verificarAlertas();
 }
 
 async function sair(erro) {
@@ -877,7 +974,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#form-login").addEventListener("submit", (ev) => { ev.preventDefault(); fazerLogin(); });
   $("#form-primeiro").addEventListener("submit", (ev) => { ev.preventDefault(); criarPrimeiroAdmin(ev.target); });
   $("#sair").addEventListener("click", () => sair());
-  $("#intervalo").addEventListener("change", agendar);
+  $("#plantao").addEventListener("change", (ev) => mudarPlantao(ev.target.checked));
+  $("#form-problema").addEventListener("submit", (ev) => { ev.preventDefault(); criarProblema(ev.target); });
+  $("#lista-problemas").addEventListener("click", acaoProblema);
+  $("#lista-problemas").addEventListener("submit", (ev) => { ev.preventDefault(); ocorrenciaRapida(ev.target); });
+  const dlg = $("#dlg-ocorrencia");
+  dlg.addEventListener("click", (ev) => { if (ev.target.closest("[data-fechar]")) dlg.close(); });
+  $("#form-ocorrencia").problema_id.addEventListener("change", (ev) => {
+    $("#form-ocorrencia .novo-problema").hidden = ev.target.value !== "novo";
+  });
+  $("#form-ocorrencia").addEventListener("submit", (ev) => { ev.preventDefault(); registrarOcorrencia(ev.target); });
   $("#todos-grupos").addEventListener("change", carregar);
   $(".menu").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-pagina]");
@@ -885,13 +991,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   $("#busca").addEventListener("input", renderCartoes);
-  $("#filtro-canal").addEventListener("click", (ev) => {
-    const b = ev.target.closest("button[data-canal]");
-    if (!b) return;
-    estado.canal = b.dataset.canal;
-    document.querySelectorAll("#filtro-canal button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    renderCartoes();
-  });
   document.querySelectorAll(".filtros").forEach((caixa) => {
     caixa.addEventListener("change", () => mudarFiltro(lerFiltrosDe(caixa)));
     caixa.addEventListener("click", (ev) => {
@@ -935,18 +1034,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     ev.target.value = ""; // permite escolher o mesmo arquivo de novo
   });
-  detalhe.addEventListener("toggle", (ev) => { if (ev.target.id === "triagem") estado.triagemAberta = ev.target.open; }, true);
   detalhe.addEventListener("input", () => { estado.editando = true; });
   detalhe.addEventListener("submit", (ev) => {
     if (ev.target.id === "form-chat") {
       ev.preventDefault();
       enviarChat(ev.target);
-    } else if (ev.target.id === "form-correcao") {
-      ev.preventDefault();
-      salvarCorrecao(ev.target);
-    } else if (ev.target.id === "form-encerrar") {
-      ev.preventDefault();
-      encerrarAtendimento(ev.target);
     }
   });
   // Enter envia a resposta do chat; Shift+Enter quebra a linha.

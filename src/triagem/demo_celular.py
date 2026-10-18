@@ -13,7 +13,7 @@ from typing import Optional
 import qrcode
 import qrcode.image.svg
 
-CANAIS = (("whatsapp", "WhatsApp"), ("instagram", "Instagram"), ("email", "E-mail"))
+CANAIS = (("whatsapp", "WhatsApp"),)  # Instagram e e-mail saíram da demonstração (as rotas continuam)
 _LOCAIS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"}
 HOTSPOT_WINDOWS = "192.168.137.1"  # endereço fixo do notebook quando o hotspot móvel do Windows está ligado
 

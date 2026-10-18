@@ -141,7 +141,7 @@ _PAGINA = r"""<!doctype html>
 <body>
 <div class="topo">
   <h1>Simulador de canais</h1>
-  <nav class="abas"><a href="/demo/whatsapp" data-c="whatsapp">WhatsApp</a><a href="/demo/instagram" data-c="instagram">Instagram</a><a href="/demo/email" data-c="email">E-mail</a></nav>
+  <nav class="abas"><a href="/demo/whatsapp" data-c="whatsapp">WhatsApp</a></nav>
   <a class="no-cel" href="/demo/celular">📱 Abrir no celular</a>
   <span class="tag-demo">AMBIENTE DE DEMONSTRAÇÃO</span>
 </div>
@@ -169,7 +169,7 @@ _PAGINA = r"""<!doctype html>
 <script>
 const CANAL = document.documentElement.dataset.canal;
 const $ = (id) => document.getElementById(id);
-document.querySelector('.abas a[data-c="' + CANAL + '"]').classList.add('on');
+document.querySelector('.abas a[data-c="' + CANAL + '"]')?.classList.add('on');
 $('sub').textContent = CANAL === 'whatsapp' ? 'Conta comercial · online' : 'sua.empresa · Ativo agora';
 
 const PESSOAS = CANAL === 'whatsapp'

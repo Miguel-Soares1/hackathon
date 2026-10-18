@@ -46,8 +46,8 @@ def test_pagina_tem_um_qr_por_canal_com_o_ip_da_rede(monkeypatch):
     r = c.get("/demo/celular", headers={"host": "localhost:8000"})
     # Assert
     assert r.status_code == 200 and "Content-Security-Policy" in r.headers
-    assert r.text.count("<svg") == 3
-    for canal in ("whatsapp", "instagram", "email"):
+    assert r.text.count("<svg") == 1  # só WhatsApp: Instagram e e-mail saíram da demonstração
+    for canal in ("whatsapp",):
         assert f"http://192.168.0.10:8000/demo/{canal}" in r.text
 
 

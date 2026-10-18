@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 
-from . import (atendimento_ia, canais, corrections, demo_celular, demo_chat, demo_email, https_celular, incidents, metrics, midias,
+from . import (atendimento_ia, canais, corrections, demo_celular, problemas, demo_chat, demo_email, https_celular, incidents, metrics, midias,
                pipeline, relatorios, tickets, usuarios)
 from .config import get_settings, validar_producao
 from .db import get_engine, utcnow
@@ -195,6 +195,27 @@ class UsuarioNovoIn(BaseModel):
     nome: str = Field(min_length=1, max_length=120)
     senha: str = Field(min_length=1, max_length=200)
     papel: str = "atendente"
+
+
+class PlantaoIn(BaseModel):
+    de_plantao: bool
+
+
+class ProblemaIn(BaseModel):
+    titulo: str = Field(min_length=1, max_length=160)
+    caracteristicas: str = Field(min_length=1, max_length=4000)
+
+
+class ProblemaAlteracaoIn(BaseModel):
+    status: Optional[str] = None
+    titulo: Optional[str] = Field(default=None, max_length=160)
+    caracteristicas: Optional[str] = Field(default=None, max_length=4000)
+
+
+class OcorrenciaIn(BaseModel):
+    cliente_id: str = Field(min_length=1, max_length=190, description="telefone, e-mail ou protocolo do cliente")
+    ticket_id: Optional[int] = None
+    observacao: Optional[str] = Field(default=None, max_length=500)
 
 
 class UsuarioAlteracaoIn(BaseModel):
@@ -380,6 +401,68 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="usuário não encontrado")
         except usuarios.UsuarioInvalido as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+
+
+    @app.post("/auth/plantao")
+    def auth_plantao(corpo: PlantaoIn, usuario: dict = Depends(usuario_logado)):
+        """O atendente liga ou desliga o próprio plantão (quem está de plantão é avisado dos problemas críticos)."""
+        return usuarios.definir_plantao(usuario["id"], corpo.de_plantao)
+
+    # ---- Alertas de problema crítico para quem está de plantão (ADR-020) ----
+    @app.get("/alertas", dependencies=[Depends(exigir_chave)])
+    def alertas():
+        """Atendimentos críticos esperando uma pessoa, incidentes abertos nas últimas 2 h e quem está de plantão."""
+        limite = utcnow() - timedelta(hours=2)  # incidente pisca nas 2 primeiras horas; crítico, até alguém responder
+        criticos = [
+            {"ticket_id": t["ticket_id"], "cliente": t["cliente"], "texto": t.get("ultima_texto") or t["texto"],
+             "received_at": t["received_at"], "assunto": t.get("assunto")}
+            for t in tickets.listar(limite=500)
+            if t.get("urgencia") == "critica" and t.get("aguardando") and not t.get("desfecho")
+        ]
+        abertos = [
+            {"id": g["id"], "assunto": g.get("assunto_predominante"), "size": g["size"], "aberto_em": g["incident_opened_at"]}
+            for g in incidents.listar_incidentes(apenas_incidentes=True)
+            if g.get("incident_opened_at") and g["incident_opened_at"] >= limite
+        ]
+        return {"criticos": criticos, "incidentes": abertos, "plantao": usuarios.de_plantao()}
+
+    # ---- Relatório de problemas (ADR-020) ----
+    @app.get("/problemas", dependencies=[Depends(exigir_chave)])
+    def listar_problemas():
+        return problemas.listar()
+
+    @app.post("/problemas", status_code=201, dependencies=[Depends(exigir_chave)])
+    def criar_problema(corpo: ProblemaIn, request: Request):
+        try:
+            return problemas.criar(corpo.titulo, corpo.caracteristicas, _quem(request, None))
+        except problemas.ProblemaInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.patch("/problemas/{problema_id}", dependencies=[Depends(exigir_chave)])
+    def alterar_problema(problema_id: int, corpo: ProblemaAlteracaoIn):
+        try:
+            return problemas.alterar(problema_id, corpo.status, corpo.titulo, corpo.caracteristicas)
+        except problemas.ProblemaNaoEncontrado:
+            raise HTTPException(status_code=404, detail="problema não encontrado")
+        except problemas.ProblemaInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/problemas/{problema_id}/ocorrencias", status_code=201, dependencies=[Depends(exigir_chave)])
+    def registrar_ocorrencia(problema_id: int, corpo: OcorrenciaIn, request: Request):
+        try:
+            return problemas.registrar_ocorrencia(problema_id, corpo.cliente_id, corpo.ticket_id, corpo.observacao,
+                                                  _quem(request, None))
+        except problemas.ProblemaNaoEncontrado:
+            raise HTTPException(status_code=404, detail="problema não encontrado")
+        except problemas.ProblemaInvalido as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.delete("/problemas/{problema_id}/ocorrencias/{ocorrencia_id}", dependencies=[Depends(exigir_chave)])
+    def remover_ocorrencia(problema_id: int, ocorrencia_id: int):
+        try:
+            return problemas.remover_ocorrencia(problema_id, ocorrencia_id)
+        except problemas.ProblemaNaoEncontrado:
+            raise HTTPException(status_code=404, detail="ocorrência não encontrada")
 
     @app.post("/webhook/mensagens", status_code=202, dependencies=[Depends(exigir_chave)])
     def webhook(msg: MensagemIn, background: BackgroundTasks):

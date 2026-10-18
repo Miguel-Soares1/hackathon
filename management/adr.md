@@ -318,3 +318,20 @@ Consequências: ...
 - As respostas da IA são assinadas como "Assistente NEXUS (IA)" e não contam como resposta humana: um atendimento transferido volta para "Em espera" até uma pessoa responder. A 1ª resposta da IA conta para o prazo (SLA).
 - O painel mostra a aba "🤖 IA atendendo", o selo "↗ veio da IA" com o motivo e as falas da IA destacadas.
 - Erros da IA viram transferência, nunca silêncio para o cliente.
+
+---
+
+## ADR-020: Painel mínimo, alerta de problema crítico para o plantão e relatório de problemas
+
+**Status:** accepted
+
+**Contexto:** a equipe quer a tela de atendimento com o mínimo de informação, só WhatsApp, um aviso impossível de ignorar quando aparece um problema crítico e um lugar para contar quantas vezes cada problema aconteceu, com os clientes afetados, para priorizar a solução.
+
+**Decisão:**
+- Painel: cartão com nome, hora, última mensagem e urgência (só alta e crítica); detalhe com a conversa, as mídias do cliente e a resposta. Saem o filtro por canal, a barra de filtros, a triagem e a sugestão da IA no chat. Instagram e e-mail saem da navegação das telas de demo e dos QR codes (as rotas continuam).
+- Alerta: `GET /alertas` lista atendimentos críticos esperando uma pessoa e incidentes abertos nas últimas 2 h. A faixa pisca no topo do painel para todos e cada atendente **de plantão** (`usuarios.de_plantao`, botão no menu, `POST /auth/plantao`) recebe uma notificação do Windows e um aviso sonoro, uma vez por problema. Responder o atendimento tira o alerta.
+- Relatórios: tabelas `problemas` (título, características, aberto/resolvido) e `problema_ocorrencias` (identificação do cliente, atendimento opcional, observação, quem registrou). A aba mostra quantas vezes cada problema aconteceu e quantos clientes distintos; o botão "📋 Registrar problema" do atendimento já preenche o cliente e o número do atendimento. Migração 013.
+
+**Consequências:**
+- A notificação é do navegador (precisa da permissão e do painel aberto); não há envio por SMS ou e-mail aos atendentes.
+- Com os dados de demonstração, os atendimentos críticos sem resposta mantêm a faixa piscando até alguém responder.

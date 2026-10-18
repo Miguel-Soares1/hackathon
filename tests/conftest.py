@@ -21,7 +21,7 @@ LIMPEZA = [
     "TRUNCATE TABLE group_members", "TRUNCATE TABLE incident_groups", "TRUNCATE TABLE ticket_embeddings",
     "TRUNCATE TABLE reviews", "TRUNCATE TABLE relatorios", "TRUNCATE TABLE messages", "TRUNCATE TABLE corrections",
     "TRUNCATE TABLE classifications", "TRUNCATE TABLE ticket_midias", "TRUNCATE TABLE tickets", "TRUNCATE TABLE sessoes",
-    "TRUNCATE TABLE usuarios",
+    "TRUNCATE TABLE usuarios", "TRUNCATE TABLE problema_ocorrencias", "TRUNCATE TABLE problemas",
 ]
 CHAVE = {"X-API-Key": "chave-de-teste"}
 
@@ -46,7 +46,8 @@ def engine():
         conn.execute(text("DROP VIEW IF EXISTS vw_tickets"))
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
         for tabela in ("group_members", "incident_groups", "ticket_embeddings", "reviews", "corrections", "relatorios",
-                       "classifications", "ticket_midias", "messages", "sessoes", "usuarios", "tickets", "sla_policy",
+                       "classifications", "ticket_midias", "messages", "sessoes", "usuarios", "problema_ocorrencias",
+                       "problemas", "tickets", "sla_policy",
                        "app_config"):
             conn.execute(text(f"DROP TABLE IF EXISTS {tabela}"))
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))

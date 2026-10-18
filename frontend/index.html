@@ -51,38 +51,26 @@
       <nav class="menu" aria-label="Páginas">
         <button type="button" data-pagina="atendimento" aria-current="page"><span aria-hidden="true">💬</span> Atendimento <span id="badge-espera" class="badge" hidden></span></button>
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes <span id="badge-incidentes" class="badge" hidden></span></button>
+        <button type="button" data-pagina="relatorios"><span aria-hidden="true">📋</span> Relatórios</button>
       </nav>
       <hr>
       <div class="quem-logado"><div class="avatar" id="eu-inicial">?</div>
         <div><div class="nome" id="eu-nome"></div><div class="legenda" id="eu-papel"></div></div></div>
-      <label>Atualização automática
-        <select id="intervalo">
-          <option value="5">a cada 5 s</option>
-          <option value="10" selected>a cada 10 s</option>
-          <option value="30">a cada 30 s</option>
-          <option value="0">pausada</option>
-        </select>
-      </label>
-      <p class="legenda">Datas exibidas em horário de Brasília.</p>
+      <!-- De plantão: recebe o alerta (piscando, notificação e som) quando chega um problema crítico (ADR-020) -->
+      <label class="toggle plantao" title="Quem está de plantão é avisado na hora dos problemas críticos">
+        <input type="checkbox" id="plantao"> De plantão</label>
       <p id="status" class="legenda" aria-live="polite"></p>
       <button id="sair" class="btn sair" type="button">Sair</button>
     </aside>
 
     <main class="conteudo">
+      <!-- Alerta de problema crítico: pisca para todos e avisa quem está de plantão -->
+      <div id="alerta-critico" class="alerta-critico" role="alert" hidden></div>
       <h1 id="titulo">Atendimento</h1>
 
       <!-- Atendimento: fila estilo chat (em espera × respondidos) e conversa com a triagem -->
       <section id="pagina-atendimento" class="pagina">
-        <div class="barra-filtros">
-          <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente ou mensagem…" aria-label="Buscar atendimento">
-          <div id="filtro-canal" class="filtro-canal" role="group" aria-label="Filtrar por canal">
-            <button type="button" data-canal="" aria-pressed="true">Todos</button>
-            <button type="button" data-canal="whatsapp" aria-pressed="false">WhatsApp</button>
-            <button type="button" data-canal="instagram" aria-pressed="false">Instagram</button>
-            <button type="button" data-canal="email" aria-pressed="false">E-mail</button>
-          </div>
-        </div>
-        <div class="filtros" data-contexto="atendimento"></div>
+        <input id="busca" class="busca" type="search" placeholder="Pesquisar cliente ou mensagem…" aria-label="Buscar atendimento">
         <div class="atendimento">
           <div class="coluna-lista">
             <div class="abas-lista" role="tablist">
@@ -94,7 +82,7 @@
             <div id="cartoes" class="cartoes"></div>
           </div>
           <div id="detalhe" class="detalhe">
-            <div class="vazio">Escolha um atendimento na lista para conversar com o cliente, ver a triagem e a resposta sugerida, e corrigir a IA.</div>
+            <div class="vazio">Escolha um atendimento na lista.</div>
           </div>
         </div>
       </section>
@@ -103,6 +91,37 @@
         <label class="toggle"><input type="checkbox" id="todos-grupos"> Mostrar também grupos que ainda não são incidente</label>
         <div id="lista-incidentes"></div>
       </section>
+
+      <!-- Relatórios: problemas, quantas vezes aconteceram e quais clientes foram afetados (ADR-020) -->
+      <section id="pagina-relatorios" class="pagina" hidden>
+        <form id="form-problema" class="card form-problema">
+          <h2>Novo problema</h2>
+          <label>Título <input name="titulo" maxlength="160" required placeholder="Ex.: Pix não cai no Banco X"></label>
+          <label>Características <textarea name="caracteristicas" rows="3" maxlength="4000" required
+            placeholder="O que acontece, desde quando, em que situação, mensagens de erro…"></textarea></label>
+          <button type="submit" class="btn primario">Criar problema</button>
+          <span id="problema-status" class="muted" aria-live="polite"></span>
+        </form>
+        <div id="lista-problemas"></div>
+      </section>
+
+    <!-- Registrar o atendimento aberto como ocorrência de um problema -->
+    <dialog id="dlg-ocorrencia" class="modal">
+      <form id="form-ocorrencia" method="dialog">
+        <h2>Registrar problema</h2>
+        <label>Problema <select name="problema_id"></select></label>
+        <div class="novo-problema" hidden>
+          <label>Título <input name="titulo" maxlength="160" placeholder="Ex.: Pix não cai no Banco X"></label>
+          <label>Características <textarea name="caracteristicas" rows="3" maxlength="4000"></textarea></label>
+        </div>
+        <label>Identificação do cliente <input name="cliente_id" maxlength="190" required></label>
+        <label>Observação (opcional) <input name="observacao" maxlength="500"></label>
+        <input type="hidden" name="ticket_id">
+        <p id="ocorrencia-status" class="muted" aria-live="polite"></p>
+        <div class="acoes-modal"><button type="button" class="btn" data-fechar>Cancelar</button>
+          <button type="submit" class="btn primario" value="registrar">Registrar</button></div>
+      </form>
+    </dialog>
     </main>
   </div>
 </body>

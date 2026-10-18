@@ -38,6 +38,7 @@ MIGRACOES = [
     ("010_encerramento.sql", "tickets", "encerrado_por"),
     ("011_sugestao_contexto.sql", "tickets", "sugestao_contexto"),
     ("012_atendimento_ia.sql", "tickets", "modo"),
+    ("013_problemas_plantao.sql", "usuarios", "de_plantao"),
 ]
 # Coluna ou índice que já existe (banco que rodou uma versão antiga de outra branch): segue para o próximo comando.
 JA_EXISTE = (1060, 1061)
