@@ -17,7 +17,7 @@ const POLITICA_TEXTO = {
   congelar_funcionalidades: "Error budget esgotado: congelar funcionalidades novas e corrigir as causas dos atrasos.",
   sem_dados: "Ainda não há tickets com desfecho para calcular o SLI.",
 };
-const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", atendimentos: "Atendimentos" };
+const TITULOS = { dashboard: "Dashboard", atendimento: "Atendimento", incidentes: "Incidentes", correcoes: "Correções", atendimentos: "Atendimentos", mensagens: "Mensagens internas" };
 const DIMS = ["assunto", "urgencia", "sentimento", "equipe"];
 const nomeIdioma = (c) => (estado.dominio?.idiomas?.[c] ? `${estado.dominio.idiomas[c]} (${c})` : c || "—");
 
@@ -482,7 +482,8 @@ function irPara(pagina) {
   });
   document.querySelectorAll(".pagina").forEach((s) => { s.hidden = s.id !== `pagina-${pagina}`; });
   $("#titulo").textContent = TITULOS[pagina];
-  $("#titulo").hidden = pagina === "dashboard" || pagina === "atendimentos";
+  $("#titulo").hidden = ["dashboard", "atendimentos", "mensagens"].includes(pagina);
+  if (pagina === "mensagens") carregarContatos();
   gravarArmazenado(sessionStorage, "triagem.pagina", pagina);
   if (pagina === "correcoes") api("/correcoes").then(renderCorrecoes).catch((e) => alertaStatus(e.message));
 }
@@ -684,6 +685,266 @@ function ligarRelatorio() {
   });
 }
 
+// ---------------------------------------------------------------- mensagens internas (chat da equipe)
+const interno = { com: null, contatos: [], ultimoId: 0, msgs: [], urls: new Map(), gravador: null, timer: null, inicioGravacao: 0 };
+const meuNome = () => ($("#atendente").value || "").trim() || "Atendente 1";
+
+function iniciarPresenca() {
+  const ping = async () => {
+    if (!estado.chave || document.hidden) return;
+    try {
+      await api("/equipe/presenca", { method: "POST", body: JSON.stringify({ nome: meuNome() }) });
+      await carregarContatos();
+    } catch (e) { if (e instanceof NaoAutorizado) sair("Chave inválida ou expirada."); }
+  };
+  ping();
+  clearInterval(interno.timer);
+  interno.timer = setInterval(ping, 30000);
+  setInterval(() => { // conversa aberta: novas mensagens a cada 3 s; lista a cada 6 s
+    if (!estado.chave || document.hidden || estado.pagina !== "mensagens") return;
+    if (interno.com) carregarMensagens();
+  }, 3000);
+  setInterval(() => { if (estado.chave && !document.hidden && estado.pagina === "mensagens") carregarContatos(); }, 6000);
+}
+
+function quandoCurto(iso) {
+  if (!iso) return "";
+  const h = hora(iso);
+  return diaLocal(iso) === hojeLocal() ? h.split(", ")[1] || h : h;
+}
+
+async function carregarContatos() {
+  if (!estado.chave) return;
+  try {
+    interno.contatos = await api(`/equipe?eu=${encodeURIComponent(meuNome())}`);
+  } catch (e) { return; }
+  const total = interno.contatos.reduce((n, c) => n + c.nao_lidas, 0);
+  const badge = $("#badge-internas");
+  badge.hidden = !total;
+  badge.textContent = total;
+  renderContatos();
+  if (interno.com) renderCabecalho();
+}
+
+function renderContatos() {
+  $("#int-eu").textContent = meuNome();
+  const q = $("#int-busca").value.trim().toLowerCase();
+  const lista = interno.contatos.filter((c) => !q || c.nome.toLowerCase().includes(q));
+  $("#int-contatos").innerHTML = lista.map((c) => {
+    const u = c.ultima_mensagem;
+    const previa = u ? `${u.minha ? "Você: " : ""}${u.texto}` : "Nenhuma conversa ainda";
+    return `<button type="button" class="int-contato${c.nome === interno.com ? " sel" : ""}" data-nome="${esc(c.nome)}">
+      <div class="avatar">${inicial(c.nome)}</div>
+      <div class="int-c-corpo">
+        <div class="int-c-linha"><span class="ponto ${c.online ? "on" : "off"}" title="${c.online ? "Online" : "Offline"}"></span><span class="int-c-nome">${esc(c.nome)}</span>
+          ${c.nao_lidas ? `<span class="badge">${c.nao_lidas}</span>` : ""}</div>
+        <div class="int-c-linha"><span class="int-c-previa">${esc(previa)}</span>${u ? `<span class="int-c-quando">${esc(quandoCurto(u.created_at))}</span>` : ""}</div>
+      </div></button>`;
+  }).join("") || `<div class="vazio">${q ? "Ninguém com esse nome." : "Ainda não há colegas. Use o botão ao lado de “Conversas” para adicionar, ou peça para abrirem o painel com o nome deles."}</div>`;
+}
+
+function renderCabecalho() {
+  const c = interno.contatos.find((x) => x.nome === interno.com);
+  if (!c) { $("#int-cab").innerHTML = ""; return; }
+  $("#int-cab").innerHTML = `<div class="avatar grande">${inicial(c.nome)}</div><div>
+    <div class="nome">${esc(c.nome)}</div>
+    <div class="status"><span class="ponto ${c.online ? "on" : "off"}"></span>${c.online ? "Online" : "Offline"}</div>
+    <div class="sub">Última atividade: ${c.ultima_atividade ? esc(hora(c.ultima_atividade)) : "—"}</div></div>`;
+}
+
+async function abrirConversa(nome) {
+  interno.com = nome;
+  interno.ultimoId = 0;
+  interno.msgs = [];
+  $("#int-msgs").innerHTML = "";
+  $("#int-form").hidden = false;
+  $("#int-aviso").textContent = "";
+  renderContatos();
+  renderCabecalho();
+  await carregarMensagens();
+  $("#int-texto").focus();
+}
+
+async function carregarMensagens() {
+  const com = interno.com;
+  if (!com) return;
+  let novas;
+  try {
+    novas = await api(`/equipe/conversa?eu=${encodeURIComponent(meuNome())}&com=${encodeURIComponent(com)}&depois_de=${interno.ultimoId}`);
+  } catch (e) { return; }
+  if (com !== interno.com || !novas.length) return;
+  const caixa = $("#int-msgs");
+  const noFim = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight < 60;
+  novas.forEach((m) => { if (m.id > interno.ultimoId) { interno.msgs.push(m); caixa.insertAdjacentHTML("beforeend", bolhaInterna(m)); } });
+  interno.ultimoId = Math.max(interno.ultimoId, ...novas.map((m) => m.id));
+  novas.filter((m) => m.anexo).forEach(carregarAnexo);
+  if (noFim || interno.msgs.length === novas.length) caixa.scrollTop = caixa.scrollHeight;
+  const c = interno.contatos.find((x) => x.nome === com);
+  if (c && c.nao_lidas) carregarContatos();
+}
+
+function tamanho(b) { return b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`; }
+
+function bolhaInterna(m) {
+  let anexo = "";
+  if (m.anexo) {
+    const t = m.anexo.tipo;
+    anexo = t.startsWith("audio/") ? `<div class="int-anexo" data-anexo="${m.id}" data-tipo="audio"><span class="muted">carregando áudio…</span></div>`
+      : t.startsWith("image/") ? `<div class="int-anexo" data-anexo="${m.id}" data-tipo="imagem"><span class="muted">carregando imagem…</span></div>`
+      : `<button type="button" class="int-arquivo" data-baixar="${m.id}">📎 ${esc(m.anexo.nome)} <span class="muted">· ${tamanho(m.anexo.tamanho)}</span></button>`;
+  }
+  return `<div class="int-bolha ${m.minha ? "minha" : "dele"}">
+    <div class="int-autor">${m.minha ? "Você" : esc(interno.com)}</div>
+    ${m.texto ? `<div class="int-texto">${esc(m.texto)}</div>` : ""}${anexo}
+    <div class="int-hora">${esc(hora(m.created_at))}${m.minha ? (m.lida_em ? " · lida" : "") : ""}</div></div>`;
+}
+
+async function urlAnexo(id) {
+  if (interno.urls.has(id)) return interno.urls.get(id);
+  const r = await fetch(`/equipe/anexos/${id}?eu=${encodeURIComponent(meuNome())}`, { headers: { "X-API-Key": estado.chave } });
+  if (!r.ok) throw new Error(`erro ${r.status}`);
+  const url = URL.createObjectURL(await r.blob());
+  interno.urls.set(id, url);
+  return url;
+}
+
+async function carregarAnexo(m) {
+  const alvo = $(`#int-msgs [data-anexo="${m.id}"]`);
+  if (!alvo) return;
+  try {
+    const url = await urlAnexo(m.id);
+    if (alvo.dataset.tipo === "audio") alvo.innerHTML = `<audio controls preload="metadata" src="${url}"></audio>`;
+    else alvo.innerHTML = `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${esc(m.anexo.nome)}"></a>`;
+  } catch (e) { alvo.innerHTML = `<span class="muted">Não foi possível carregar o anexo.</span>`; }
+}
+
+function lerBase64(blob) {
+  return new Promise((ok, falha) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(String(fr.result).split(",")[1] || "");
+    fr.onerror = () => falha(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
+async function enviarInterna({ texto = null, blob = null, nome = null }) {
+  const corpo = { de: meuNome(), para: interno.com, texto };
+  if (blob) {
+    if (blob.size > 3 * 1024 * 1024) { $("#int-aviso").textContent = "⚠ Arquivo maior que 3 MB."; return false; }
+    Object.assign(corpo, { anexo_nome: nome, anexo_tipo: blob.type, anexo_base64: await lerBase64(blob) });
+  }
+  try {
+    await api("/equipe/mensagens", { method: "POST", body: JSON.stringify(corpo) });
+    $("#int-aviso").textContent = "";
+    await carregarMensagens();
+    $("#int-msgs").scrollTop = $("#int-msgs").scrollHeight;
+    carregarContatos();
+    return true;
+  } catch (e) {
+    $("#int-aviso").textContent = `⚠ ${e.message}`;
+    return false;
+  }
+}
+
+async function alternarGravacao() {
+  const botao = $("#int-audio");
+  if (interno.gravador) { interno.gravador.stop(); return; }
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    $("#int-aviso").textContent = "⚠ Gravação de áudio não disponível neste navegador (precisa de https ou localhost).";
+    return;
+  }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { $("#int-aviso").textContent = "⚠ Sem permissão para usar o microfone."; return; }
+  const partes = [];
+  const rec = new MediaRecorder(stream);
+  interno.gravador = rec;
+  interno.inicioGravacao = Date.now();
+  botao.classList.add("gravando");
+  const relogio = setInterval(() => {
+    const s = Math.floor((Date.now() - interno.inicioGravacao) / 1000);
+    botao.querySelector("span").textContent = `Parar ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    if (s >= 120) rec.stop(); // limite de 2 min
+  }, 250);
+  rec.ondataavailable = (ev) => { if (ev.data.size) partes.push(ev.data); };
+  rec.onstop = async () => {
+    clearInterval(relogio);
+    stream.getTracks().forEach((t) => t.stop());
+    interno.gravador = null;
+    botao.classList.remove("gravando");
+    botao.querySelector("span").textContent = "Áudio";
+    const tipo = (rec.mimeType || "audio/webm").split(";")[0];
+    const blob = new Blob(partes, { type: tipo });
+    if (blob.size) await enviarInterna({ blob, nome: `audio-${Date.now()}.${tipo.includes("ogg") ? "ogg" : tipo.includes("mp4") ? "m4a" : "webm"}` });
+  };
+  rec.start();
+}
+
+function ligarInterno() {
+  $("#int-contatos").addEventListener("click", (ev) => {
+    const b = ev.target.closest(".int-contato[data-nome]");
+    if (b) abrirConversa(b.dataset.nome);
+  });
+  $("#int-busca").addEventListener("input", renderContatos);
+  $("#int-novo").addEventListener("click", () => {
+    const f = $("#int-novo-form");
+    f.hidden = !f.hidden;
+    $("#int-novo").setAttribute("aria-expanded", String(!f.hidden));
+    if (!f.hidden) f.nome.focus();
+  });
+  $("#int-novo-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const nome = ev.target.nome.value.trim();
+    if (!nome) return;
+    try {
+      await api("/equipe", { method: "POST", body: JSON.stringify({ nome }) });
+      ev.target.reset();
+      ev.target.hidden = true;
+      await carregarContatos();
+      if (nome !== meuNome()) abrirConversa(nome);
+    } catch (e) { alertaStatus(e.message); }
+  });
+  $("#int-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const caixa = $("#int-texto");
+    const texto = caixa.value.trim();
+    if (!texto || !interno.com) return;
+    caixa.disabled = true;
+    if (await enviarInterna({ texto })) caixa.value = "";
+    caixa.disabled = false;
+    caixa.focus();
+  });
+  $("#int-texto").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("#int-form").requestSubmit(); }
+  });
+  $("#int-anexar").addEventListener("click", () => $("#int-arquivo").click());
+  $("#int-arquivo").addEventListener("change", async (ev) => {
+    const f = ev.target.files[0];
+    ev.target.value = "";
+    if (f) await enviarInterna({ blob: f, nome: f.name });
+  });
+  $("#int-audio").addEventListener("click", alternarGravacao);
+  $("#int-msgs").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-baixar]");
+    if (!b) return;
+    const m = interno.msgs.find((x) => x.id === Number(b.dataset.baixar));
+    try {
+      const a = document.createElement("a");
+      a.href = await urlAnexo(m.id);
+      a.download = m.anexo.nome;
+      a.click();
+    } catch (e) { $("#int-aviso").textContent = `⚠ ${e.message}`; }
+  });
+  // trocar o nome no menu troca a identidade no chat
+  $("#atendente").addEventListener("change", () => {
+    interno.com = null;
+    $("#int-form").hidden = true;
+    $("#int-cab").innerHTML = "";
+    $("#int-msgs").innerHTML = `<div class="vazio">Escolha um colega na lista para conversar.</div>`;
+    api("/equipe/presenca", { method: "POST", body: JSON.stringify({ nome: meuNome() }) }).then(carregarContatos).catch(() => {});
+  });
+}
+
 // ---------------------------------------------------------------- acesso
 async function entrar() {
   try {
@@ -697,6 +958,7 @@ async function entrar() {
   irPara(TITULOS[salva] ? salva : "dashboard");
   await carregar();
   agendar();
+  iniciarPresenca();
 }
 
 function sair(erro) {
@@ -721,7 +983,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#sair").addEventListener("click", () => sair());
   $("#intervalo").addEventListener("change", agendar);
   $("#todos-grupos").addEventListener("change", carregar);
-  $("#atendente").value = lerArmazenado(localStorage, "triagem.atendente") || "Atendente";
+  $("#atendente").value = lerArmazenado(localStorage, "triagem.atendente") || "Atendente 1";
   $("#atendente").addEventListener("change", (ev) => gravarArmazenado(localStorage, "triagem.atendente", ev.target.value.trim()));
   $(".menu").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-pagina]");
@@ -787,6 +1049,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   ligarRelatorio();
+  ligarInterno();
 
   if (estado.chave) entrar(); else sair();
 });

@@ -26,7 +26,7 @@ python -m uvicorn triagem.api:app --app-dir src --port 8000     # 1) API + paine
 python scripts/simular.py                                       # 2) envia as 34 mensagens de demo
 ```
 
-Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. O painel tem menu lateral: **Dashboard** (visão geral: clientes em espera, em atendimento, cancelados e encerrados; indicadores da triagem, incidentes e métricas), **Atendimento** (em espera × em atendimento × finalizados, conversa e triagem da IA), **Incidentes**, **Correções** e **Atendimentos** (relatório de controle: abertos e finalizados por status, período, canal, time e urgência, com busca por nome/telefone/protocolo e exportação em CSV). Para simular mensagens de clientes, use o simulador de canais em http://localhost:8000/demo. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
+Abra http://localhost:8000 e entre com a `API_KEY` do `.env`. O painel tem menu lateral: **Dashboard** (visão geral: clientes em espera, em atendimento, cancelados e encerrados; indicadores da triagem, incidentes e métricas), **Atendimento** (em espera × em atendimento × finalizados, conversa e triagem da IA), **Incidentes**, **Correções**, **Mensagens internas** (chat direto entre os atendentes, com status online/offline, anexos de até 3 MB e áudio; cada um se identifica pelo campo "Seu nome no chat"; `scripts/resetar_demo.py` cria a equipe da demo: Atendente 1, 2 e 3, Supervisor, Financeiro e Suporte Técnico) e **Atendimentos** (relatório de controle: abertos e finalizados por status, período, canal, time e urgência, com busca por nome/telefone/protocolo e exportação em CSV). Para simular mensagens de clientes, use o simulador de canais em http://localhost:8000/demo. Documentação interativa da API: http://localhost:8000/docs (header `X-API-Key`).
 
 Simulador de canais para a apresentação (WhatsApp, Instagram e e-mail fictícios): http://localhost:8000/demo (veja `docs/canais.md`).
 
@@ -99,7 +99,7 @@ python scripts/avaliar_triagem.py --saida data/avaliacoes/v3.json   # regras × 
 
 **Banco criado antes desta versão:** aplique as migrações em ordem e recrie a visão:
 ```powershell
-Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql, db/migrations/005_chat.sql, db/migrations/006_desfecho.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
+Get-Content db/migrations/002_external_id.sql, db/migrations/003_prompt_version.sql, db/migrations/004_idioma.sql, db/migrations/005_chat.sql, db/migrations/006_desfecho.sql, db/migrations/007_mensagens_internas.sql | docker exec -i hackathon-mysql mysql -uhackathon -phackathon hackathon
 python scripts/criar_banco.py
 ```
 
@@ -185,6 +185,6 @@ management/    vision · arch · adr · roadmap · specs
 
 - O limiar de incidentes depende do modelo de embeddings e precisa ser calibrado (acima).
 - Prazos contam 24x7 (sem horário comercial) e não há notificação push.
-- Sem autenticação por atendente (chave única do painel): correções não registram autoria.
+- Sem autenticação por atendente (chave única do painel): correções não registram autoria e, nas Mensagens internas, cada um se identifica só pelo nome (quem tem a chave pode escrever como outra pessoa). A gravação de áudio exige `localhost` ou HTTPS.
 - O few-shot propaga as correções, inclusive as erradas: acompanhe a taxa de acerto por versão do prompt e rode `scripts/avaliar_triagem.py` antes de mudar o prompt.
 - Limitador de taxa em memória: rodar a API com 1 worker. Sem alta disponibilidade (servidor único).

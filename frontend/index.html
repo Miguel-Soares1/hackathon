@@ -34,9 +34,10 @@
         <button type="button" data-pagina="incidentes"><span aria-hidden="true">🚨</span> Incidentes</button>
         <button type="button" data-pagina="correcoes"><span aria-hidden="true">📝</span> Correções</button>
         <button type="button" data-pagina="atendimentos"><span aria-hidden="true">🗂️</span> Atendimentos</button>
+        <button type="button" data-pagina="mensagens"><span aria-hidden="true">💭</span> Mensagens internas <span id="badge-internas" class="badge" hidden></span></button>
       </nav>
       <hr>
-      <label>Seu nome no chat <input id="atendente" maxlength="60" value="Atendente"></label>
+      <label>Seu nome no chat <input id="atendente" maxlength="60" value="Atendente 1"></label>
       <label>Atualização automática
         <select id="intervalo">
           <option value="5">a cada 5 s</option>
@@ -103,6 +104,48 @@
 
       <section id="pagina-correcoes" class="pagina" hidden>
         <div class="tabela-wrap"><table id="tabela-correcoes" class="tabela"></table></div>
+      </section>
+
+      <!-- Mensagens internas: chat direto entre os atendentes -->
+      <section id="pagina-mensagens" class="pagina" hidden>
+        <header class="hero">
+          <svg class="hero-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
+          <div class="hero-texto">
+            <h2 class="hero-titulo">Mensagens internas</h2>
+            <p>Acompanhe as conversas internas da equipe e abra um chat direto quando precisar.</p>
+          </div>
+          <span class="hero-hora">Você: <b id="int-eu">Atendente 1</b></span>
+        </header>
+        <div class="interno">
+          <aside class="int-lista" aria-label="Conversas">
+            <div class="int-lista-topo">
+              <b>Conversas</b>
+              <button type="button" id="int-novo" class="btn icone mini" title="Adicionar atendente" aria-label="Adicionar atendente" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="4"/><path d="M3 20a7 7 0 0 1 14 0M19 8v6M16 11h6"/></svg></button>
+            </div>
+            <form id="int-novo-form" class="int-novo" hidden>
+              <input name="nome" maxlength="60" placeholder="Nome do atendente" aria-label="Nome do atendente" required>
+              <button type="submit" class="btn primario">Adicionar</button>
+            </form>
+            <label class="int-busca"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+              <input id="int-busca" type="search" placeholder="Buscar atendente" aria-label="Buscar atendente"></label>
+            <div id="int-contatos" class="int-contatos"></div>
+          </aside>
+          <section class="int-chat" aria-label="Conversa">
+            <div id="int-cab" class="int-cab"></div>
+            <div id="int-msgs" class="int-msgs" aria-live="polite"><div class="vazio">Escolha um colega na lista para conversar.</div></div>
+            <form id="int-form" class="int-form" hidden>
+              <div class="int-ferramentas">
+                <button type="button" id="int-anexar" class="btn chip-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m20 12-8.2 8.2a5 5 0 0 1-7-7L13 5a3.3 3.3 0 0 1 4.7 4.7l-8.2 8.2a1.7 1.7 0 0 1-2.4-2.4L14.6 8"/></svg>Anexar</button>
+                <button type="button" id="int-audio" class="btn chip-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Áudio</span></button>
+                <span id="int-aviso" class="muted" aria-live="polite"></span>
+                <input type="file" id="int-arquivo" hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,audio/*">
+              </div>
+              <textarea id="int-texto" rows="3" maxlength="4000" placeholder="Escreva uma mensagem…" aria-label="Mensagem"></textarea>
+              <div class="int-enviar"><button type="submit" class="btn contorno"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></svg>Enviar</button></div>
+            </form>
+          </section>
+        </div>
       </section>
 
       <!-- Atendimentos: relatório de controle (abertos e finalizados), filtros e exportação -->
